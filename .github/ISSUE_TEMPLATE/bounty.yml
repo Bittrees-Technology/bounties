@@ -1,0 +1,43 @@
+name: Bounty
+description: Propose a task, milestone, or project bounty.
+title: "[Bounty]: "
+labels: ["bounty", "triage"]
+body:
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - task
+        - milestone
+        - project
+    validations:
+      required: true
+  - type: input
+    id: reward
+    attributes:
+      label: Reward
+      placeholder: "500 USDC"
+    validations:
+      required: true
+  - type: textarea
+    id: support
+    attributes:
+      label: Support criteria
+      description: Links, reviewers, review SLA, required context, and resources.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Objective checks required before payout approval.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence expected
+      description: PRs, tests, deployments, documents, or other proof.
+    validations:
+      required: true
