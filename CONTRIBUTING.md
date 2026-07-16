@@ -1,12 +1,13 @@
 # Contributing
 
-Use issues to propose bounty work. Each bounty should include:
+Use issues to propose marketplace work or bounty-backed services. Each request should include:
 
-- Scope: task, milestone, or project.
-- Reward amount and token.
-- Creator/reviewer authority.
+- Scope: task, milestone, project, or retainer.
+- Budget amount and token.
+- Buyer/reviewer authority.
+- Preferred provider, if any.
 - Support criteria: context, links, reviewers, review SLA, and required resources.
 - Acceptance criteria: objective checks a reviewer can approve or reject.
 - Evidence requirements: PR, deployment URL, test output, docs, or other proof.
 
-Do not add production escrow code, deploy contracts, move funds, or change repository licensing without explicit operator approval.
+Do not add production escrow code, deploy contracts, or move funds without explicit operator approval.

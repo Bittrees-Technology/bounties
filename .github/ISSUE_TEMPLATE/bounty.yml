@@ -1,6 +1,6 @@
-name: Bounty
-description: Propose a task, milestone, or project bounty.
-title: "[Bounty]: "
+name: Marketplace Request
+description: Propose a service request, bounty, milestone, or project.
+title: "[Request]: "
 labels: ["bounty", "triage"]
 body:
   - type: dropdown
@@ -11,12 +11,13 @@ body:
         - task
         - milestone
         - project
+        - retainer
     validations:
       required: true
   - type: input
     id: reward
     attributes:
-      label: Reward
+      label: Budget
       placeholder: "500 USDC"
     validations:
       required: true

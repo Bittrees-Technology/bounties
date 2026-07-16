@@ -46,7 +46,8 @@ main {
 .sidebar h1,
 .topbar h2,
 .section-heading h3,
-.bounty-card h4 {
+.service-card h4,
+.order-card h4 {
   margin: 0;
   letter-spacing: 0;
 }
@@ -98,6 +99,22 @@ nav a:hover {
 
 .content {
   padding: 28px;
+}
+
+.demo-banner {
+  align-items: center;
+  background: #fff4cf;
+  border: 1px solid #e7bd48;
+  border-radius: 14px;
+  color: #503d08;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+}
+
+.demo-banner svg {
+  flex: 0 0 auto;
 }
 
 .topbar {
@@ -228,12 +245,26 @@ button:disabled {
   gap: 14px;
 }
 
-.bounty-card {
+.market-section {
+  margin-bottom: 20px;
+}
+
+.service-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.service-card,
+.order-card {
+  background: #ffffff;
   border: 1px solid #e1e7e2;
   border-radius: 8px;
   padding: 16px;
 }
 
+.service-topline,
+.service-footer,
 .bounty-card-header,
 .status-line {
   display: flex;
@@ -241,15 +272,49 @@ button:disabled {
   justify-content: space-between;
 }
 
-.bounty-card h4 {
-  font-size: 18px;
-  margin-top: 6px;
+.service-topline,
+.service-footer,
+.status-line {
+  align-items: center;
 }
 
-.bounty-card p,
+.service-card h4,
+.order-card h4 {
+  font-size: 18px;
+  margin-top: 12px;
+}
+
+.service-card p,
+.order-card p,
+.service-footer,
 .status-line {
   color: #69766f;
   font-size: 13px;
+}
+
+.rating {
+  align-items: center;
+  color: #725b12;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 800;
+  gap: 4px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 14px 0;
+}
+
+.tag-row span {
+  background: #f0f4f1;
+  border-radius: 999px;
+  color: #4a574f;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 5px 8px;
 }
 
 .scope {
@@ -276,6 +341,108 @@ li {
   display: flex;
   gap: 8px;
   line-height: 1.35;
+}
+
+.milestone-breakdown,
+.lifecycle-panel {
+  border-top: 1px solid #e5ebe6;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.milestone-breakdown h5,
+.proposal-list h5 {
+  color: #425047;
+  font-size: 13px;
+  margin: 0 0 10px;
+  text-transform: uppercase;
+}
+
+.milestone-row,
+.proposal-row {
+  align-items: flex-start;
+  border: 1px solid #e5ebe6;
+  border-radius: 8px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.milestone-row + .milestone-row,
+.proposal-row + .proposal-row {
+  margin-top: 10px;
+}
+
+.milestone-row p,
+.proposal-row p,
+.delivery-note,
+.empty-state {
+  color: #69766f;
+  font-size: 13px;
+  line-height: 1.4;
+  margin: 6px 0 0;
+}
+
+.milestone-meta {
+  align-items: flex-end;
+  color: #425047;
+  display: grid;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  justify-items: end;
+  text-transform: uppercase;
+}
+
+.proposal-form {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 150px;
+}
+
+.proposal-form .wide-field,
+.proposal-form button,
+.delivery-form label {
+  grid-column: 1 / -1;
+}
+
+.proposal-list {
+  margin-top: 16px;
+}
+
+.proposal-row button {
+  flex: 0 0 auto;
+}
+
+.delivery-form {
+  display: grid;
+  gap: 12px;
+}
+
+.criteria-checklist {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.check-row {
+  align-items: flex-start;
+  display: flex;
+  font-weight: 650;
+  gap: 8px;
+}
+
+.check-row input {
+  min-height: 0;
+  margin-top: 2px;
+}
+
+.release-button:disabled {
+  background: #d5d9d7;
+  border: 1px solid #c0c8c3;
+  color: #5c6761;
 }
 
 .gates {
@@ -311,9 +478,24 @@ li {
   }
 
   .metrics,
+  .service-grid,
   .gate-grid {
     grid-template-columns: 1fr;
     min-width: 0;
+  }
+
+  .proposal-form {
+    grid-template-columns: 1fr;
+  }
+
+  .milestone-row,
+  .proposal-row {
+    display: grid;
+  }
+
+  .milestone-meta {
+    align-items: start;
+    justify-items: start;
   }
 }
 

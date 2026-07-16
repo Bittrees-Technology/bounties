@@ -1,5 +1,6 @@
-export type BountyScope = "task" | "milestone" | "project";
-export type EscrowStatus = "draft" | "ready" | "funded" | "review" | "approved" | "paid";
+export type WorkScope = "task" | "milestone" | "project" | "retainer";
+export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid";
+export type ServiceCategory = "Engineering" | "Design" | "Research" | "Operations" | "Onchain" | "Growth";
 
 export interface AcceptanceCriterion {
   id: string;
@@ -7,28 +8,63 @@ export interface AcceptanceCriterion {
   required: boolean;
 }
 
-export interface Bounty {
+export interface Proposal {
+  id: string;
+  provider: string;
+  note: string;
+  proposedBudget: number;
+}
+
+export interface Milestone {
+  id: string;
+  label: string;
+  amount: number;
+  status: OrderStatus;
+  criteria: AcceptanceCriterion[];
+  deliveryNote?: string;
+}
+
+export interface MarketplaceService {
   id: string;
   title: string;
-  scope: BountyScope;
-  project: string;
-  reward: number;
+  provider: string;
+  category: ServiceCategory;
+  rating: number;
+  completedOrders: number;
+  startingAt: number;
+  deliveryDays: number;
+  tags: string[];
+  packageTiers: string[];
+}
+
+export interface MarketplaceOrder {
+  id: string;
+  title: string;
+  scope: WorkScope;
+  category: ServiceCategory;
+  budget: number;
   token: "USDC" | "ETH" | "BTREE";
-  creator: string;
-  assignee?: string;
+  buyer: string;
+  provider?: string;
+  project: string;
   support: string[];
   criteria: AcceptanceCriterion[];
-  escrowStatus: EscrowStatus;
+  proposals?: Proposal[];
+  milestones?: Milestone[];
+  deliveryNote?: string;
+  status: OrderStatus;
   dueDate: string;
 }
 
-export interface BountyDraft {
+export interface RequestDraft {
   title: string;
-  scope: BountyScope;
+  scope: WorkScope;
+  category: ServiceCategory;
   project: string;
-  reward: number;
-  token: Bounty["token"];
-  creator: string;
+  budget: number;
+  token: MarketplaceOrder["token"];
+  buyer: string;
+  providerPreference: string;
   support: string;
   criteria: string;
 }

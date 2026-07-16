@@ -1,24 +1,26 @@
-# Bittrees Bounties
+# Bittrees Services Marketplace
 
-Clean-room MVP for `bounties.bittrees.org`.
+MIT-licensed MVP for `bounties.bittrees.org`.
 
-The product goal is to let anyone create a bounty for a task, milestone, or project, define support and acceptance criteria, and track escrow intent through review and payout. This repository uses `stigmergic-org/simplebounty` as product/architecture reference only until licensing is resolved; it does not copy the GPLv3 source into this MIT repository.
+The product goal is to make Bittrees bounties feel like a general services marketplace: buyers can discover providers, post work requests, scope tasks through full projects, define support and acceptance criteria, and stage escrow-backed payment workflows.
+
+The repository is released under MIT. `stigmergic-org/simplebounty` informed the escrow/bounty concept, but this app is a Bittrees marketplace implementation with a broader Fiverr-style flow.
 
 ## Current scope
 
-- Create a bounty with task, milestone, or project scope.
-- Capture reward token/amount, creator/reviewer, support criteria, and acceptance criteria.
-- Track escrow status as a gated workflow.
-- Surface launch gates for legal, security, onchain, and licensing review.
+- Browse service listings by category, provider, package tier, rating, delivery time, and starting price.
+- Publish buyer requests with task, milestone, project, or retainer scope.
+- Capture budget, token, buyer/reviewer, preferred provider, support criteria, and acceptance criteria.
+- Track order states from open request through provider match, staged escrow, delivery, acceptance, and payout.
+- Surface launch controls for payments, security, dispute handling, and production deployment.
 
 ## Hard gates
 
-Production escrow and value-bearing contract deployment are blocked until:
+Production escrow and value-bearing contract deployment remain gated until:
 
 - Legal signs off on escrow/payment terms, contributor/IP language, disputes, sanctions/AML posture, and contributor classification.
 - Security signs off on wallet auth, signing, input validation, secrets, release/refund/dispute logic, and abuse prevention.
 - Onchain preflight completes on Base Sepolia with review from an auditor and deployment operator.
-- The operator chooses the license path for the SimpleBounty fork: adopt GPLv3 for derivative code, secure relicense permission, or continue with clean-room implementation.
 
 ## Development
 
@@ -31,13 +33,13 @@ npm run dev
 
 ## Suggested board columns
 
-`Backlog/Triage -> Available -> Claimed/In Progress -> In Review -> Approved for Payout -> Paid/Closed`
+`Backlog/Triage -> Available -> Matched/In Progress -> Delivered/In Review -> Accepted for Payout -> Paid/Closed`
 
 ## Initial backlog
 
-- Connect wallet auth and signer identity.
-- Persist bounties in an API/database instead of local state.
+- Connect wallet auth and buyer/provider identity.
+- Persist service listings and orders in an API/database instead of local state.
 - Add issue/GitHub project sync.
-- Add Base Sepolia escrow contract prototype after legal/security gates.
+- Add Base Sepolia escrow contract prototype after legal/security launch controls.
 - Add refund, dispute, and arbiter workflows.
-- Add notifications and contributor reputation.
+- Add notifications, provider search, reviews, and contributor reputation.
