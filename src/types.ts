@@ -15,6 +15,17 @@ export interface Proposal {
   proposedBudget: number;
 }
 
+export type FeatureProposalStatus = "Planned" | "In review" | "Shipped";
+export type FeatureProposalPriority = "P0" | "P1" | "P2";
+
+export interface FeatureProposal {
+  id: string;
+  title: string;
+  status: FeatureProposalStatus;
+  priority: FeatureProposalPriority;
+  value: string;
+}
+
 export interface Milestone {
   id: string;
   label: string;

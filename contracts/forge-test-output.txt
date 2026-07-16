@@ -1,0 +1,94 @@
+No files changed, compilation skipped
+
+Ran 1 test for test/fuzz/BountyEscrowFunding.t.sol:BountyEscrowFundingFuzzTest
+[PASS] testFuzzFundingAmount(uint96) (runs: 256, μ: 168317, ~: 168314)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 6.03ms (5.20ms CPU time)
+
+Ran 11 tests for test/BountyEscrow.t.sol:BountyEscrowTest
+[PASS] testDisputeResolutionCanRefundAllToRequester() (gas: 175355)
+[PASS] testDisputeResolutionCanReleaseAllToProvider() (gas: 199004)
+[PASS] testDisputeResolutionCanSplitEscrow() (gas: 208733)
+[PASS] testDoubleAcceptAndDoubleReleaseRevert() (gas: 204776)
+[PASS] testHappyPath() (gas: 205097)
+[PASS] testPauseBlocksCreationAndFunding() (gas: 106341)
+[PASS] testPauseDoesNotBlockReleaseRefundOrResolve() (gas: 472095)
+[PASS] testReentrantTokenCannotReenterCreate() (gas: 690659)
+[PASS] testRequesterCanCancelBeforeAssignment() (gas: 142425)
+[PASS] testRequesterCanRefundAssignedBountyAfterTimeout() (gas: 171394)
+[PASS] testUnauthorizedCallersRevertAcrossGatedFunctions() (gas: 465419)
+Suite result: ok. 11 passed; 0 failed; 0 skipped; finished in 4.14s (1.97ms CPU time)
+
+Ran 3 tests for test/fuzz/BountyEscrowInvariant.t.sol:BountyEscrowInvariantTest
+[PASS] invariant_escrowBalanceMatchesRecordedLiability() (runs: 256, calls: 128000, reverts: 0)
+
+╭---------------------+----------+-------+---------+----------╮
+| Contract            | Selector | Calls | Reverts | Discards |
++=============================================================+
+| BountyEscrowHandler | accept   | 18491 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | assign   | 18325 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | cancel   | 18313 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | deliver  | 18277 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | dispute  | 18331 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | release  | 18099 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | resolve  | 18164 | 0       | 0        |
+╰---------------------+----------+-------+---------+----------╯
+
+[PASS] invariant_payoutsNeverExceedOriginalFunding() (runs: 256, calls: 128000, reverts: 0)
+
+╭---------------------+----------+-------+---------+----------╮
+| Contract            | Selector | Calls | Reverts | Discards |
++=============================================================+
+| BountyEscrowHandler | accept   | 18491 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | assign   | 18325 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | cancel   | 18313 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | deliver  | 18277 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | dispute  | 18331 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | release  | 18099 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | resolve  | 18164 | 0       | 0        |
+╰---------------------+----------+-------+---------+----------╯
+
+[PASS] invariant_terminalStatesHaveNoEscrowLiability() (runs: 256, calls: 128000, reverts: 0)
+
+╭---------------------+----------+-------+---------+----------╮
+| Contract            | Selector | Calls | Reverts | Discards |
++=============================================================+
+| BountyEscrowHandler | accept   | 18491 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | assign   | 18325 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | cancel   | 18313 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | deliver  | 18277 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | dispute  | 18331 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | release  | 18099 | 0       | 0        |
+|---------------------+----------+-------+---------+----------|
+| BountyEscrowHandler | resolve  | 18164 | 0       | 0        |
+╰---------------------+----------+-------+---------+----------╯
+
+Suite result: ok. 3 passed; 0 failed; 0 skipped; finished in 4.69s (12.73s CPU time)
+
+╭-----------------------------+--------+--------+---------╮
+| Test Suite                  | Passed | Failed | Skipped |
++=========================================================+
+| BountyEscrowTest            | 11     | 0      | 0       |
+|-----------------------------+--------+--------+---------|
+| BountyEscrowFundingFuzzTest | 1      | 0      | 0       |
+|-----------------------------+--------+--------+---------|
+| BountyEscrowInvariantTest   | 3      | 0      | 0       |
+╰-----------------------------+--------+--------+---------╯
+
+

@@ -25,3 +25,19 @@ jobs:
         with:
           name: bittrees-bounties-${{ github.ref_name }}
           path: dist/
+
+  verify-contracts:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+      - run: forge install --no-git OpenZeppelin/openzeppelin-contracts@v5.0.2
+      - run: forge install --no-git foundry-rs/forge-std@v1.9.6
+      - run: forge build
+      - run: forge test
+      - run: FOUNDRY_INVARIANT_RUNS=512 FOUNDRY_INVARIANT_DEPTH=64 forge test --match-path test/fuzz/BountyEscrowInvariant.t.sol

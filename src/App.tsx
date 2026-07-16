@@ -1,11 +1,13 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   BadgeCheck,
   Banknote,
   BriefcaseBusiness,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  Loader2,
   LockKeyhole,
   Lightbulb,
   Rocket,
@@ -15,7 +17,24 @@ import {
   Star
 } from "lucide-react";
 import * as bountyModel from "./bountyModel";
-import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
+import {
+  checkEscrowReadiness,
+  errorCodeOf,
+  getChainConfig,
+  getDefaultEscrowClient,
+  isSupportedAsset,
+  mapErrorToUserMessage,
+  mapEventTypeToLabel
+} from "./chain";
+import type {
+  EscrowAction,
+  EscrowEvent,
+  EscrowEventType,
+  EscrowTransactionState,
+  EscrowTxResult,
+  SupportedAsset
+} from "./chain";
+import type { FeatureProposal, MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
 import "./styles.css";
 
 const defaultDraft: RequestDraft = {
@@ -41,18 +60,72 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
 
 const categories: ServiceCategory[] = ["Engineering", "Design", "Research", "Operations", "Onchain", "Growth"];
 
-const launchControls = [
-  { title: "Marketplace workflows", status: "Live", detail: "Post requests, compare proposals, define milestones, and review delivery evidence.", owner: "Product" },
-  { title: "Payment protection", status: "Demo", detail: "Escrow and payout states are visible for evaluation; no funds are held or transferred.", owner: "Onchain + Security" },
-  { title: "Disputes and refunds", status: "Planned", detail: "Policy, appeal windows, reviewer authority, and refund paths are in launch review.", owner: "Trust + Legal" },
-  { title: "Production readiness", status: "Planned", detail: "Independent audit, deployment controls, monitoring, and incident response remain required.", owner: "Operations" }
+type FeatureProposalDraft = Omit<FeatureProposal, "id">;
+
+const readinessCards = [
+  {
+    category: "Request intake",
+    status: "Live",
+    title: "Publish work requests",
+    detail: "Customers can scope work, set budgets, and collect proposals in one flow.",
+    owner: "Product"
+  },
+  {
+    category: "Payment preview",
+    status: "Demo",
+    title: "See protected payment states",
+    detail: "Escrow, delivery, and payout states can be reviewed, but no funds move.",
+    owner: "Security"
+  },
+  {
+    category: "Policy",
+    status: "Planned",
+    title: "Finalize dispute and refund rules",
+    detail: "Appeals, refund timing, and escalation paths are still being reviewed.",
+    owner: "Trust"
+  },
+  {
+    category: "Operations",
+    status: "Planned",
+    title: "Complete release readiness checks",
+    detail: "Deployment, monitoring, and incident response must pass before go-live.",
+    owner: "Operations"
+  }
 ] as const;
 
-const featureProposals = [
-  { title: "Verified provider profiles", status: "Next", priority: "P0", value: "Increase buyer confidence with identity, response-time, and delivery-history signals." },
-  { title: "Proposal shortlist and comparison", status: "Proposed", priority: "P1", value: "Compare price, delivery plan, evidence, and provider fit in one decision view." },
-  { title: "Acceptance evidence workspace", status: "Proposed", priority: "P1", value: "Tie each required criterion to links, files, reviewer decisions, and change requests." }
-] as const;
+const featureStatusOptions: FeatureProposal["status"][] = ["Planned", "In review", "Shipped"];
+const featurePriorityOptions: FeatureProposal["priority"][] = ["P0", "P1", "P2"];
+
+const initialFeatureProposals: FeatureProposal[] = [
+  {
+    id: "feature-001",
+    title: "Verified provider profiles",
+    status: "Planned",
+    priority: "P0",
+    value: "Show response time, completed work, and trust signals before a buyer starts a request."
+  },
+  {
+    id: "feature-002",
+    title: "Proposal comparison board",
+    status: "In review",
+    priority: "P1",
+    value: "Let buyers compare scope, timing, and expected value before choosing a provider."
+  },
+  {
+    id: "feature-003",
+    title: "Acceptance evidence workspace",
+    status: "Planned",
+    priority: "P1",
+    value: "Attach links, files, and reviewer notes to every criterion so handoff is clear."
+  }
+];
+
+const initialFeatureDraft: FeatureProposalDraft = {
+  title: "",
+  status: "Planned",
+  priority: "P1",
+  value: ""
+};
 
 const initialOrders: MarketplaceOrder[] = [
   {
@@ -64,7 +137,7 @@ const initialOrders: MarketplaceOrder[] = [
     budget: 520,
     token: "USDC",
     buyer: "Bittrees QA",
-    support: ["Current request form", "Order pipeline states", "Launch-gate copy"],
+    support: ["Current request form", "Order pipeline states", "Readiness review notes"],
     criteria: [
       { id: "c0-1", label: "Open requests accept provider proposals inline", required: true },
       { id: "c0-2", label: "Accepted proposals move the order to matched", required: true }
@@ -93,19 +166,179 @@ const initialOrders: MarketplaceOrder[] = [
     provider: "Bittrees Research",
     support: ["Support queue notes", "Buyer acceptance checklist"],
     criteria: [
-      { id: "c4-1", label: "Support handoff is accepted by the launch reviewer", required: true },
-      { id: "c4-2", label: "Payment release remains gated by launch approval", required: true }
+      { id: "c4-1", label: "Support handoff is accepted by the readiness reviewer", required: true },
+      { id: "c4-2", label: "Payment release remains paused until readiness review", required: true }
     ],
     status: "accepted",
     dueDate: "2026-08-08",
-    deliveryNote: "Support handoff accepted; awaiting launch approval before any payment release control is enabled."
+    deliveryNote: "Support handoff accepted; waiting on readiness review before any payment release control is enabled."
   }
 ];
+
+type LifecycleEscrowAction = Extract<EscrowAction, "fundEscrow" | "submitDelivery" | "acceptDelivery">;
+
+type OrderEscrowTransactionState = EscrowTransactionState & {
+  action: LifecycleEscrowAction;
+};
+
+const escrowActionContent: Record<
+  LifecycleEscrowAction,
+  {
+    eventType: EscrowEventType;
+    pending: string;
+    submitted: string;
+    confirmed: string;
+    failed: string;
+    working: string;
+  }
+> = {
+  fundEscrow: {
+    eventType: "EscrowFunded",
+    pending: "Preparing escrow preview transaction",
+    submitted: "Preview tx submitted for escrow funding",
+    confirmed: "Preview tx confirmed for escrow funding",
+    failed: "Escrow funding preview failed",
+    working: "Escrow tx in progress..."
+  },
+  submitDelivery: {
+    eventType: "DeliverySubmitted",
+    pending: "Preparing delivery submission",
+    submitted: "Preview tx submitted for delivery",
+    confirmed: "Preview tx confirmed for delivery",
+    failed: "Delivery submission failed",
+    working: "Delivery tx in progress..."
+  },
+  acceptDelivery: {
+    eventType: "DeliveryAccepted",
+    pending: "Preparing delivery acceptance",
+    submitted: "Preview tx submitted for delivery acceptance",
+    confirmed: "Preview tx confirmed for delivery acceptance",
+    failed: "Delivery acceptance failed",
+    working: "Acceptance tx in progress..."
+  }
+};
 
 function App() {
   const [orders, setOrders] = useState<MarketplaceOrder[]>(initialOrders);
   const [draft, setDraft] = useState<RequestDraft>(defaultDraft);
+  const [featureProposals, setFeatureProposals] = useState<FeatureProposal[]>(initialFeatureProposals);
+  const [featureDraft, setFeatureDraft] = useState<FeatureProposalDraft>(initialFeatureDraft);
   const validDraft = bountyModel.isDraftValid(draft);
+  const validFeatureDraft = Boolean(featureDraft.title.trim() && featureDraft.value.trim());
+
+  const escrowClient = useMemo(() => getDefaultEscrowClient(), []);
+  const escrowChain = getChainConfig(escrowClient.chainId);
+  const [escrowTxByOrder, setEscrowTxByOrder] = useState<Record<string, OrderEscrowTransactionState>>({});
+  const [recentEscrowEvents, setRecentEscrowEvents] = useState<EscrowEvent[]>([]);
+
+  useEffect(() => {
+    return escrowClient.onEvent((event) => {
+      setRecentEscrowEvents((current) => [event, ...current].slice(0, 5));
+    });
+  }, [escrowClient]);
+
+  function setOrderTx(orderId: string, status: OrderEscrowTransactionState) {
+    setEscrowTxByOrder((current) => ({ ...current, [orderId]: status }));
+  }
+
+  function waitForEscrowEvent(orderId: string, eventType: EscrowEventType) {
+    let unsubscribe = () => {};
+    const promise = new Promise<EscrowEvent>((resolve) => {
+      unsubscribe = escrowClient.onEvent((event) => {
+        if (event.orderId === orderId && event.type === eventType) {
+          unsubscribe();
+          resolve(event);
+        }
+      });
+    });
+
+    return { promise, unsubscribe };
+  }
+
+  async function runEscrowLifecycleAction(
+    order: MarketplaceOrder,
+    action: LifecycleEscrowAction,
+    execute: (asset: SupportedAsset) => Promise<EscrowTxResult>,
+    onConfirmed: (order: MarketplaceOrder) => MarketplaceOrder
+  ) {
+    const readiness = checkEscrowReadiness(escrowClient.chainId, order.token);
+    const supportedAsset = isSupportedAsset(order.token) ? order.token : null;
+    if (!readiness.ok || !supportedAsset) {
+      setOrderTx(order.id, {
+        action,
+        state: "failed",
+        errorMessage: readiness.ok ? undefined : readiness.message,
+        errorCode: readiness.ok ? undefined : readiness.code
+      });
+      return false;
+    }
+
+    const eventWatcher = waitForEscrowEvent(order.id, escrowActionContent[action].eventType);
+    setOrderTx(order.id, { action, state: "pending" });
+
+    try {
+      const result = await execute(supportedAsset);
+
+      if (result.state === "failed") {
+        eventWatcher.unsubscribe();
+        setOrderTx(order.id, {
+          action,
+          state: "failed",
+          txHash: result.txHash,
+          errorMessage: mapErrorToUserMessage(result.error),
+          errorCode: errorCodeOf(result.error)
+        });
+        return false;
+      }
+
+      if (result.state === "confirmed") {
+        eventWatcher.unsubscribe();
+        setOrderTx(order.id, { action, state: "confirmed", txHash: result.txHash });
+        updateOrder(order.id, onConfirmed);
+        return true;
+      }
+
+      if (result.state !== "pending" && result.state !== "submitted") {
+        eventWatcher.unsubscribe();
+        setOrderTx(order.id, {
+          action,
+          state: "failed",
+          txHash: result.txHash,
+          errorMessage: mapErrorToUserMessage(result.error),
+          errorCode: errorCodeOf(result.error)
+        });
+        return false;
+      }
+
+      setOrderTx(order.id, { action, state: result.state, txHash: result.txHash });
+      const event = await eventWatcher.promise;
+      setOrderTx(order.id, { action, state: "confirmed", txHash: event.txHash });
+      updateOrder(order.id, onConfirmed);
+      return true;
+    } catch (error) {
+      eventWatcher.unsubscribe();
+      setOrderTx(order.id, { action, state: "failed", errorMessage: mapErrorToUserMessage(error), errorCode: errorCodeOf(error) });
+      return false;
+    }
+  }
+
+  async function handleStageEscrow(order: MarketplaceOrder) {
+    await runEscrowLifecycleAction(
+      order,
+      "fundEscrow",
+      (asset) => escrowClient.fundEscrow({ orderId: order.id }, order.budget, asset),
+      bountyModel.stageEscrow
+    );
+  }
+
+  async function handleAcceptDelivery(order: MarketplaceOrder) {
+    await runEscrowLifecycleAction(
+      order,
+      "acceptDelivery",
+      () => escrowClient.acceptDelivery({ orderId: order.id }),
+      bountyModel.acceptDelivery
+    );
+  }
 
   const totals = useMemo(() => {
     const open = orders.filter((order) => !["accepted", "paid"].includes(order.status)).length;
@@ -116,6 +349,10 @@ function App() {
 
   function updateDraft<K extends keyof RequestDraft>(key: K, value: RequestDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateFeatureDraft<K extends keyof FeatureProposalDraft>(key: K, value: FeatureProposalDraft[K]) {
+    setFeatureDraft((current) => ({ ...current, [key]: value }));
   }
 
   function submitRequest(event: FormEvent<HTMLFormElement>) {
@@ -142,15 +379,39 @@ function App() {
     form.reset();
   }
 
-  function submitOrderDelivery(event: FormEvent<HTMLFormElement>, order: MarketplaceOrder) {
+  async function submitOrderDelivery(event: FormEvent<HTMLFormElement>, order: MarketplaceOrder) {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
     const evidence = String(formData.get("deliveryEvidence") ?? "");
 
     if (!evidence.trim()) return;
-    updateOrder(order.id, (current) => bountyModel.submitDelivery(current, evidence));
-    form.reset();
+    const confirmed = await runEscrowLifecycleAction(
+      order,
+      "submitDelivery",
+      () => escrowClient.submitDelivery({ orderId: order.id }, evidence.trim()),
+      (current) => bountyModel.submitDelivery(current, evidence)
+    );
+
+    if (confirmed) form.reset();
+  }
+
+  function submitFeatureProposal(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!validFeatureDraft) return;
+
+    setFeatureProposals((current) => [
+      {
+        id: `feature-${String(current.length + 1).padStart(3, "0")}`,
+        title: featureDraft.title.trim(),
+        status: featureDraft.status,
+        priority: featureDraft.priority,
+        value: featureDraft.value.trim()
+      },
+      ...current
+    ]);
+    setFeatureDraft(initialFeatureDraft);
   }
 
   function renderMilestones(order: MarketplaceOrder) {
@@ -175,6 +436,51 @@ function App() {
           </div>
         ))}
       </section>
+    );
+  }
+
+  function isActionInFlight(orderId: string, action: LifecycleEscrowAction) {
+    const tx = escrowTxByOrder[orderId];
+    return tx?.action === action && (tx.state === "pending" || tx.state === "submitted");
+  }
+
+  function renderOrderTxStatus(order: MarketplaceOrder) {
+    const tx = escrowTxByOrder[order.id];
+    if (!tx || tx.state === "idle") return null;
+
+    const content = escrowActionContent[tx.action];
+    const label = {
+      pending: content.pending,
+      submitted: content.submitted,
+      confirmed: content.confirmed,
+      failed: content.failed
+    }[tx.state];
+
+    return (
+      <p
+        className={`tx-state tx-${tx.state}`}
+        role={tx.state === "failed" ? "alert" : "status"}
+        aria-live={tx.state === "failed" ? "assertive" : "polite"}
+      >
+        {tx.state === "failed" ? (
+          <AlertTriangle size={16} />
+        ) : tx.state === "confirmed" ? (
+          <CheckCircle2 size={16} />
+        ) : (
+          <Loader2 size={16} className="spin" />
+        )}
+        <span>
+          {label}
+          {tx.txHash ? (
+            <>
+              {": "}
+              <span className="tx-hash">{tx.txHash}</span>
+            </>
+          ) : tx.errorMessage ? (
+            <>: {tx.errorMessage}</>
+          ) : null}
+        </span>
+      </p>
     );
   }
 
@@ -229,17 +535,32 @@ function App() {
     }
 
     if (order.status === "matched") {
+      const readiness = checkEscrowReadiness(escrowClient.chainId, order.token);
+      const inFlight = isActionInFlight(order.id, "fundEscrow");
+
       return (
         <section className="lifecycle-panel" aria-label={`Escrow actions for ${order.title}`}>
-          <button type="button" onClick={() => updateOrder(order.id, bountyModel.stageEscrow)}>
-            <LockKeyhole size={18} />
-            Stage escrow (simulated)
+          <p className="chain-preview-note">
+            Preview network: {escrowChain?.name ?? "Unsupported network"}
+            {escrowChain?.isTestnet ? " (testnet)" : ""} · USDC only
+          </p>
+          {!readiness.ok ? (
+            <p className="guardrail-warning" role="alert">
+              <AlertTriangle size={16} />
+              {readiness.message}
+            </p>
+          ) : null}
+          <button type="button" disabled={!readiness.ok || inFlight} onClick={() => handleStageEscrow(order)}>
+            {inFlight ? <Loader2 size={18} className="spin" /> : <LockKeyhole size={18} />}
+            {inFlight ? escrowActionContent.fundEscrow.working : "Stage escrow (simulated)"}
           </button>
         </section>
       );
     }
 
     if (order.status === "escrowed") {
+      const inFlight = isActionInFlight(order.id, "submitDelivery");
+
       return (
         <section className="lifecycle-panel" aria-label={`Delivery actions for ${order.title}`}>
           <form className="delivery-form" onSubmit={(event) => submitOrderDelivery(event, order)}>
@@ -247,9 +568,9 @@ function App() {
               Delivery evidence
               <textarea name="deliveryEvidence" placeholder="Summarize delivered work and attach PRs, screenshots, or docs" required />
             </label>
-            <button type="submit">
-              <Send size={18} />
-              Submit delivery
+            <button type="submit" disabled={inFlight}>
+              {inFlight ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
+              {inFlight ? escrowActionContent.submitDelivery.working : "Submit delivery"}
             </button>
           </form>
         </section>
@@ -257,6 +578,8 @@ function App() {
     }
 
     if (order.status === "delivered") {
+      const inFlight = isActionInFlight(order.id, "acceptDelivery");
+
       return (
         <section className="lifecycle-panel" aria-label={`Acceptance actions for ${order.title}`}>
           {order.deliveryEvidence ?? order.deliveryNote ? (
@@ -270,9 +593,9 @@ function App() {
               </label>
             ))}
           </div>
-          <button type="button" onClick={() => updateOrder(order.id, bountyModel.acceptDelivery)}>
-            <BadgeCheck size={18} />
-            Accept delivery
+          <button type="button" disabled={inFlight} onClick={() => handleAcceptDelivery(order)}>
+            {inFlight ? <Loader2 size={18} className="spin" /> : <BadgeCheck size={18} />}
+            {inFlight ? escrowActionContent.acceptDelivery.working : "Accept delivery"}
           </button>
         </section>
       );
@@ -283,7 +606,7 @@ function App() {
         <section className="lifecycle-panel" aria-label={`Payment release controls for ${order.title}`}>
           <button className="release-button" type="button" disabled>
             <Banknote size={18} />
-            Payment release pending launch approval
+            Payment release locked until readiness review
           </button>
         </section>
       );
@@ -304,18 +627,18 @@ function App() {
             <a href="#services">Services</a>
             <a href="#request">Post request</a>
             <a href="#orders">Orders</a>
-            <a href="#launch">Launch controls</a>
+            <a href="#readiness">Readiness</a>
           </nav>
           <div className="gate-callout">
             <ShieldCheck size={18} />
-            <span>Marketplace orders can be staged now; live escrow release stays behind launch approval.</span>
+            <span>Requests can be staged now; live escrow release stays behind readiness review.</span>
           </div>
         </aside>
 
         <section className="content">
           <div className="demo-banner" role="status">
             <ShieldCheck size={18} aria-hidden="true" />
-            <span><strong>Demo only — no funds are held or transferred.</strong> Escrow, token, and payout states are workflow previews until legal, security, and onchain launch approval.</span>
+            <span><strong>Demo only - no funds are held or transferred.</strong> Escrow, token, and payout states are workflow previews until legal, security, and onchain readiness checks are complete.</span>
           </div>
           <header className="topbar">
             <div>
@@ -434,6 +757,19 @@ function App() {
                 <BriefcaseBusiness size={20} />
                 <h3>Order pipeline</h3>
               </div>
+              {recentEscrowEvents.length > 0 ? (
+                <section className="escrow-activity" aria-label="Escrow preview activity">
+                  <h5>Escrow preview activity</h5>
+                  <ul>
+                    {recentEscrowEvents.map((event) => (
+                      <li key={event.txHash}>
+                        <span>{mapEventTypeToLabel(event.type)}</span>
+                        <span className="tx-hash">{event.orderId} · {event.txHash}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ) : null}
               {orders.map((order) => (
                 <article className="order-card" key={order.id}>
                   <div className="bounty-card-header">
@@ -456,29 +792,31 @@ function App() {
                   </ul>
                   {renderMilestones(order)}
                   {renderLifecycleAction(order)}
+                  {renderOrderTxStatus(order)}
                 </article>
               ))}
             </section>
           </section>
 
-          <section id="launch" className="panel gates">
+          <section id="readiness" className="panel readiness-panel" aria-labelledby="readiness-title">
             <div className="section-heading">
               <Rocket size={20} />
               <div>
-                <p className="eyebrow">Trust center</p>
-                <h3>Market readiness</h3>
+                <p className="eyebrow">Customer trust</p>
+                <h3 id="readiness-title">Readiness overview</h3>
               </div>
             </div>
-            <p className="section-intro">See what works today, what is available for evaluation, and what must be approved before value-bearing launch.</p>
+            <p className="section-intro">See what customers can use now, what is only a preview, and what still needs approval before go-live.</p>
             <div className="readiness-grid">
-              {launchControls.map((control) => (
+              {readinessCards.map((control) => (
                 <article className="readiness-card" key={control.title}>
                   <div className="card-topline">
+                    <span className="card-category">{control.category}</span>
                     <span className={`readiness-status status-${control.status.toLowerCase()}`}>{control.status}</span>
-                    <span>{control.owner}</span>
                   </div>
                   <h4>{control.title}</h4>
                   <p>{control.detail}</p>
+                  <p className="card-owner">Owner: {control.owner}</p>
                 </article>
               ))}
             </div>
@@ -492,19 +830,72 @@ function App() {
                 <h3 id="feature-proposals-title">Feature proposals</h3>
               </div>
             </div>
-            <p className="section-intro">Adoption-focused improvements are ranked by customer value and launch dependency.</p>
-            <div className="feature-grid">
-              {featureProposals.map((proposal) => (
-                <article className="feature-card" key={proposal.title}>
-                  <div className="card-topline">
-                    <span className="priority-badge">{proposal.priority}</span>
-                    <span>{proposal.status}</span>
+            <p className="section-intro">Keep roadmap ideas structured so reviewers can compare status, priority, and customer value at a glance.</p>
+            <div className="feature-layout">
+              <form className="feature-intake" aria-label="Add feature proposal" onSubmit={submitFeatureProposal}>
+                <div className="intake-header">
+                  <div>
+                    <p className="eyebrow">Proposal intake</p>
+                    <h4>Add a proposal</h4>
                   </div>
-                  <h4>{proposal.title}</h4>
-                  <p>{proposal.value}</p>
-                  <a href="https://github.com/Bittrees-Technology/bounties/issues/new?template=bounty.yml">Propose or sponsor this feature</a>
-                </article>
-              ))}
+                  <p>Capture the status, priority, and value of a roadmap idea before it becomes live work.</p>
+                </div>
+                <label>
+                  Proposal title
+                  <input
+                    value={featureDraft.title}
+                    onChange={(event) => updateFeatureDraft("title", event.target.value)}
+                    placeholder="Verified provider profiles"
+                  />
+                </label>
+                <div className="form-grid">
+                  <label>
+                    Status
+                    <select value={featureDraft.status} onChange={(event) => updateFeatureDraft("status", event.target.value as FeatureProposalDraft["status"])}>
+                      {featureStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Priority
+                    <select value={featureDraft.priority} onChange={(event) => updateFeatureDraft("priority", event.target.value as FeatureProposalDraft["priority"])}>
+                      {featurePriorityOptions.map((priority) => (
+                        <option key={priority} value={priority}>
+                          {priority}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label className="wide-field">
+                  Value
+                  <textarea
+                    value={featureDraft.value}
+                    onChange={(event) => updateFeatureDraft("value", event.target.value)}
+                    placeholder="Describe the customer outcome or problem this solves"
+                  />
+                </label>
+                <button type="submit" disabled={!validFeatureDraft}>
+                  Add proposal
+                </button>
+              </form>
+
+              <div className="feature-grid" aria-live="polite">
+                {featureProposals.map((proposal) => (
+                  <article className="feature-card" key={proposal.id}>
+                    <div className="card-topline">
+                      <span className="feature-status">{proposal.status}</span>
+                      <span className="priority-badge">{proposal.priority}</span>
+                    </div>
+                    <h4>{proposal.title}</h4>
+                    <p className="feature-value-label">Value</p>
+                    <p>{proposal.value}</p>
+                  </article>
+                ))}
+              </div>
             </div>
           </section>
         </section>

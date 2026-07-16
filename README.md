@@ -23,6 +23,9 @@ Production escrow and value-bearing contract deployment remain gated until:
 - Security signs off on wallet auth, signing, input validation, secrets, release/refund/dispute logic, and abuse prevention.
 - Onchain preflight completes on Base Sepolia with review from an auditor and deployment operator.
 
+See [escrow production readiness](docs/escrow-production-readiness.md) and the
+[Foundry contract package](contracts/README.md) for the testnet-to-production plan.
+
 ## Development
 
 ```bash

@@ -8,7 +8,7 @@ import type {
 } from "./types";
 
 export const launchGates = [
-  "Payments and escrow launch approval",
+  "Payments and escrow readiness approval",
   "Wallet, account, and release-control security review",
   "Dispute, refund, and acceptance policy approval",
   "Production deployment, domain, and project-board readiness"
@@ -101,7 +101,7 @@ export const seedOrders: MarketplaceOrder[] = [
     support: ["Control matrix", "Deployment operator notes", "Rollback plan"],
     criteria: [
       { id: "c3", label: "Preflight covers create, fund, deliver, accept, release, refund, and dispute states", required: true },
-      { id: "c4", label: "Production funds remain disabled until launch approval", required: true }
+      { id: "c4", label: "Production funds remain disabled until readiness review", required: true }
     ],
     milestones: [
       {
@@ -118,7 +118,7 @@ export const seedOrders: MarketplaceOrder[] = [
         amount: 700,
         status: "delivered",
         criteria: [{ id: "m2-c2", label: "Preflight packet documents the non-production test flow", required: true }],
-        deliveryNote: "Preflight packet submitted for launch-gate review."
+        deliveryNote: "Preflight packet submitted for readiness review."
       }
     ],
     status: "delivered",
@@ -244,7 +244,7 @@ export function isDraftValid(draft: RequestDraft): boolean {
 /**
  * Lifecycle helpers are immutable: a valid transition returns a new order and
  * an invalid current status throws. The only exception is markPaid, which is a
- * guarded accepted-state no-op until the payment launch gate is approved.
+ * guarded accepted-state no-op until the payment readiness review is approved.
  */
 function requireStatus(order: MarketplaceOrder, expected: OrderStatus, action: string): void {
   if (order.status !== expected) {
@@ -323,6 +323,6 @@ export function acceptDelivery(order: MarketplaceOrder): MarketplaceOrder {
 
 export function markPaid(order: MarketplaceOrder): MarketplaceOrder {
   requireStatus(order, "accepted", "Marking an order paid");
-  // Payment release remains behind docs/launch-gates.md approval. No funds move here.
+  // Payment release remains behind docs/readiness.md approval. No funds move here.
   return order;
 }

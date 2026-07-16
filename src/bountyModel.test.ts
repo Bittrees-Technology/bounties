@@ -147,7 +147,7 @@ describe("marketplace model", () => {
     expect(() => acceptDelivery({ ...openOrder(), status: "escrowed" })).toThrow(/delivered/);
   });
 
-  it("keeps accepted orders unpaid until payment launch approval", () => {
+  it("keeps accepted orders unpaid until payment readiness review", () => {
     const accepted = { ...openOrder(), status: "accepted" as const };
 
     expect(markPaid(accepted)).toBe(accepted);
