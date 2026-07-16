@@ -6,6 +6,7 @@ import {
   isDraftValid,
   markPaid,
   parseCriteria,
+  parseMilestones,
   parseSupport,
   stageEscrow,
   submitDelivery,
@@ -39,6 +40,25 @@ describe("marketplace model", () => {
     ]);
   });
 
+  it("parses milestone breakdowns into scoped deliverables", () => {
+    expect(parseMilestones("Discovery | 150\nBuild | 350", 500, "Accepted by reviewer")).toEqual([
+      {
+        id: "draft-ms-1",
+        label: "Discovery",
+        amount: 150,
+        status: "draft",
+        criteria: [{ id: "draft-1", label: "Accepted by reviewer", required: true }]
+      },
+      {
+        id: "draft-ms-2",
+        label: "Build",
+        amount: 350,
+        status: "draft",
+        criteria: [{ id: "draft-1", label: "Accepted by reviewer", required: true }]
+      }
+    ]);
+  });
+
   it("requires support and acceptance criteria before publishing a request", () => {
     expect(isDraftValid({
       title: "Build page",
@@ -49,6 +69,7 @@ describe("marketplace model", () => {
       token: "USDC",
       buyer: "Ops",
       providerPreference: "",
+      milestones: "Discovery\nBuild",
       support: "",
       criteria: "Accepted by reviewer"
     })).toBe(false);
@@ -64,6 +85,7 @@ describe("marketplace model", () => {
       token: "USDC",
       buyer: "Ops",
       providerPreference: "Bittrees Engineering",
+      milestones: "Discovery\nBuild",
       support: "Spec",
       criteria: "Accepted by reviewer"
     }, 9);
@@ -72,6 +94,8 @@ describe("marketplace model", () => {
     expect(order.status).toBe("matched");
     expect(order.provider).toBe("Bittrees Engineering");
     expect(order.criteria).toHaveLength(1);
+    expect(order.milestones).toHaveLength(2);
+    expect(order.milestones?.[0]).toMatchObject({ label: "Discovery", status: "draft" });
   });
 
   it("moves an order through the proposal, delivery, and acceptance lifecycle", () => {
@@ -96,7 +120,8 @@ describe("marketplace model", () => {
     expect(escrowed.status).toBe("escrowed");
     expect(delivered).toMatchObject({
       status: "delivered",
-      deliveryNote: "Pull request and test evidence attached."
+      deliveryNote: "Pull request and test evidence attached.",
+      deliveryEvidence: "Pull request and test evidence attached."
     });
     expect(accepted.status).toBe("accepted");
   });

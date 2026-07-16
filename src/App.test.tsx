@@ -8,7 +8,7 @@ afterEach(() => {
 });
 
 describe("App", () => {
-  it("publishes a new marketplace request with support and acceptance criteria", async () => {
+  it("publishes a new marketplace request with milestone breakdown, support, and acceptance criteria", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -16,10 +16,16 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/project/i), "Marketplace");
     await user.type(screen.getByLabelText(/buyer/i), "Bittrees Ops");
     await user.type(screen.getByLabelText(/preferred provider/i), "Bittrees Engineering");
+    await user.clear(screen.getByLabelText(/milestone breakdown/i));
+    await user.type(screen.getByLabelText(/milestone breakdown/i), "Discovery phase\nImplementation\nReview");
     await user.click(screen.getByRole("button", { name: /publish request/i }));
 
-    expect(screen.getByText("Ship Bittrees provider storefront")).toBeInTheDocument();
-    expect(screen.getAllByText(/Provider matched/i).length).toBeGreaterThanOrEqual(1);
+    const card = screen.getByText("Ship Bittrees provider storefront").closest("article");
+    expect(card).not.toBeNull();
+
+    const order = within(card as HTMLElement);
+    expect(order.getByText("Discovery phase")).toBeInTheDocument();
+    expect(order.getByText(/Provider matched/i)).toBeInTheDocument();
   });
 
   it("accepts a provider proposal and shows the simulated escrow action", async () => {
@@ -50,5 +56,17 @@ describe("App", () => {
     await user.click(order.getByRole("button", { name: /accept delivery/i }));
 
     expect(order.getByRole("button", { name: /payment release pending launch approval/i })).toBeDisabled();
+  });
+
+  it("separates live, demo, and planned readiness from feature proposals", () => {
+    render(<App />);
+
+    expect(screen.getByRole("heading", { name: /market readiness/i })).toBeInTheDocument();
+    expect(screen.getByText("Live")).toBeInTheDocument();
+    expect(screen.getByText("Demo")).toBeInTheDocument();
+    expect(screen.getAllByText("Planned")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: /feature proposals/i })).toBeInTheDocument();
+    expect(screen.getByText("Verified provider profiles")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /propose or sponsor this feature/i })).toHaveLength(3);
   });
 });

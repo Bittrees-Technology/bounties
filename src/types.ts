@@ -22,6 +22,7 @@ export interface Milestone {
   status: OrderStatus;
   criteria: AcceptanceCriterion[];
   deliveryNote?: string;
+  deliveryEvidence?: string;
 }
 
 export interface MarketplaceService {
@@ -52,6 +53,7 @@ export interface MarketplaceOrder {
   proposals?: Proposal[];
   milestones?: Milestone[];
   deliveryNote?: string;
+  deliveryEvidence?: string;
   status: OrderStatus;
   dueDate: string;
 }
@@ -65,6 +67,7 @@ export interface RequestDraft {
   token: MarketplaceOrder["token"];
   buyer: string;
   providerPreference: string;
+  milestones: string;
   support: string;
   criteria: string;
 }

@@ -1,4 +1,11 @@
-import type { AcceptanceCriterion, MarketplaceOrder, MarketplaceService, OrderStatus, RequestDraft } from "./types";
+import type {
+  AcceptanceCriterion,
+  MarketplaceOrder,
+  MarketplaceService,
+  Milestone,
+  OrderStatus,
+  RequestDraft
+} from "./types";
 
 export const launchGates = [
   "Payments and escrow launch approval",
@@ -126,6 +133,7 @@ export const seedOrders: MarketplaceOrder[] = [
     budget: 800,
     token: "USDC",
     buyer: "General Counsel",
+    provider: "Marketplace Trust Desk",
     support: ["Policy outline", "Acceptance authority map", "Appeal window"],
     criteria: [
       { id: "c5", label: "Policy separates buyer support, provider evidence, and arbiter escalation", required: true },
@@ -155,6 +163,41 @@ export function parseSupport(raw: string): string[] {
     .filter(Boolean);
 }
 
+export function parseMilestones(raw: string, budget: number, criteria: string): Milestone[] {
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  const parsedCriteria = parseCriteria(criteria);
+  if (lines.length === 0) {
+    return [
+      {
+        id: "draft-ms-1",
+        label: "Full delivery",
+        amount: Math.max(1, budget),
+        status: "draft",
+        criteria: parsedCriteria
+      }
+    ];
+  }
+
+  const fallbackAmount = Math.max(1, Math.round(budget / lines.length));
+  return lines.map((line, index) => {
+    const [labelPart, amountPart] = line.split("|").map((part) => part.trim());
+    const parsedAmount = Number(amountPart?.replace(/[^0-9.]/g, ""));
+    const amount = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : fallbackAmount;
+
+    return {
+      id: `draft-ms-${index + 1}`,
+      label: labelPart || `Milestone ${index + 1}`,
+      amount,
+      status: "draft",
+      criteria: parsedCriteria
+    };
+  });
+}
+
 export function createMarketplaceOrder(draft: RequestDraft, existingCount: number): MarketplaceOrder {
   return {
     id: `ord-${String(existingCount + 1).padStart(3, "0")}`,
@@ -166,6 +209,7 @@ export function createMarketplaceOrder(draft: RequestDraft, existingCount: numbe
     token: draft.token,
     buyer: draft.buyer.trim(),
     provider: draft.providerPreference.trim() || undefined,
+    milestones: parseMilestones(draft.milestones, draft.budget, draft.criteria),
     support: parseSupport(draft.support),
     criteria: parseCriteria(draft.criteria),
     status: draft.providerPreference.trim() ? "matched" : "open",
@@ -264,12 +308,12 @@ export function stageEscrow(order: MarketplaceOrder): MarketplaceOrder {
 export function submitDelivery(order: MarketplaceOrder, note: string): MarketplaceOrder {
   requireStatus(order, "escrowed", "Submitting delivery");
 
-  const deliveryNote = note.trim();
-  if (!deliveryNote) {
+  const deliveryEvidence = note.trim();
+  if (!deliveryEvidence) {
     throw new Error("A delivery note is required.");
   }
 
-  return { ...order, deliveryNote, status: "delivered" };
+  return { ...order, deliveryNote: deliveryEvidence, deliveryEvidence, status: "delivered" };
 }
 
 export function acceptDelivery(order: MarketplaceOrder): MarketplaceOrder {

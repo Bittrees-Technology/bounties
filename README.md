@@ -9,10 +9,11 @@ The repository is released under MIT. `stigmergic-org/simplebounty` informed the
 ## Current scope
 
 - Browse service listings by category, provider, package tier, rating, delivery time, and starting price.
-- Publish buyer requests with task, milestone, project, or retainer scope.
+- Publish buyer requests with task, milestone, project, or retainer scope, plus scoped milestone breakdowns.
 - Capture budget, token, buyer/reviewer, preferred provider, support criteria, and acceptance criteria.
-- Track order states from open request through provider match, staged escrow, delivery, acceptance, and payout.
-- Surface launch controls for payments, security, dispute handling, and production deployment.
+- Track order states from open request through provider claim/proposal, staged escrow, delivery evidence, acceptance, and payout.
+- Present a customer-facing trust center that distinguishes live marketplace workflows, demo payment states, and planned launch controls.
+- Publish prioritized feature proposals with clear customer value and a GitHub path for sponsorship or contribution.
 
 ## Hard gates
 

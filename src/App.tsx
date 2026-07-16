@@ -6,8 +6,9 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
-  Handshake,
   LockKeyhole,
+  Lightbulb,
+  Rocket,
   Search,
   Send,
   ShieldCheck,
@@ -26,6 +27,7 @@ const defaultDraft: RequestDraft = {
   token: "USDC",
   buyer: "",
   providerPreference: "",
+  milestones: "Discovery\nBuild\nReview",
   support: "Links, examples, and source materials\nReviewer or support owner",
   criteria: "Deliverable submitted with evidence\nBuyer/reviewer accepts the work"
 };
@@ -38,6 +40,19 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
 ];
 
 const categories: ServiceCategory[] = ["Engineering", "Design", "Research", "Operations", "Onchain", "Growth"];
+
+const launchControls = [
+  { title: "Marketplace workflows", status: "Live", detail: "Post requests, compare proposals, define milestones, and review delivery evidence.", owner: "Product" },
+  { title: "Payment protection", status: "Demo", detail: "Escrow and payout states are visible for evaluation; no funds are held or transferred.", owner: "Onchain + Security" },
+  { title: "Disputes and refunds", status: "Planned", detail: "Policy, appeal windows, reviewer authority, and refund paths are in launch review.", owner: "Trust + Legal" },
+  { title: "Production readiness", status: "Planned", detail: "Independent audit, deployment controls, monitoring, and incident response remain required.", owner: "Operations" }
+] as const;
+
+const featureProposals = [
+  { title: "Verified provider profiles", status: "Next", priority: "P0", value: "Increase buyer confidence with identity, response-time, and delivery-history signals." },
+  { title: "Proposal shortlist and comparison", status: "Proposed", priority: "P1", value: "Compare price, delivery plan, evidence, and provider fit in one decision view." },
+  { title: "Acceptance evidence workspace", status: "Proposed", priority: "P1", value: "Tie each required criterion to links, files, reviewer decisions, and change requests." }
+] as const;
 
 const initialOrders: MarketplaceOrder[] = [
   {
@@ -131,10 +146,10 @@ function App() {
     event.preventDefault();
     const form = event.currentTarget;
     const formData = new FormData(form);
-    const note = String(formData.get("deliveryNote") ?? "");
+    const evidence = String(formData.get("deliveryEvidence") ?? "");
 
-    if (!note.trim()) return;
-    updateOrder(order.id, (current) => bountyModel.submitDelivery(current, note));
+    if (!evidence.trim()) return;
+    updateOrder(order.id, (current) => bountyModel.submitDelivery(current, evidence));
     form.reset();
   }
 
@@ -143,17 +158,19 @@ function App() {
 
     return (
       <section className="milestone-breakdown" aria-label={`Milestones for ${order.title}`}>
-        <h5>Milestones</h5>
+        <h5>Milestone breakdown</h5>
         {order.milestones.map((milestone) => (
           <div className="milestone-row" key={milestone.id}>
             <div>
               <strong>{milestone.label}</strong>
               <p>{milestone.criteria.map((criterion) => criterion.label).join("; ")}</p>
-              {milestone.deliveryNote ? <p className="delivery-note">Delivery: {milestone.deliveryNote}</p> : null}
+              {milestone.deliveryEvidence ?? milestone.deliveryNote ? (
+                <p className="delivery-note">Evidence: {milestone.deliveryEvidence ?? milestone.deliveryNote}</p>
+              ) : null}
             </div>
             <div className="milestone-meta">
               <span>{milestone.amount.toLocaleString()} {order.token}</span>
-              <span>{milestone.status}</span>
+              <span>{bountyModel.orderStatusLabel(milestone.status)}</span>
             </div>
           </div>
         ))}
@@ -180,12 +197,12 @@ function App() {
             </label>
             <button type="submit">
               <Send size={18} />
-              Submit proposal
+              Submit proposal / claim
             </button>
           </form>
 
-          <div className="proposal-list" aria-label={`Existing proposals for ${order.title}`}>
-            <h5>Provider proposals</h5>
+          <div className="proposal-list" aria-label={`Existing proposals and claims for ${order.title}`}>
+            <h5>Provider claims and proposals</h5>
             {order.proposals?.length ? (
               order.proposals.map((proposal) => (
                 <div className="proposal-row" key={proposal.id}>
@@ -227,8 +244,8 @@ function App() {
         <section className="lifecycle-panel" aria-label={`Delivery actions for ${order.title}`}>
           <form className="delivery-form" onSubmit={(event) => submitOrderDelivery(event, order)}>
             <label>
-              Delivery note
-              <textarea name="deliveryNote" placeholder="Summarize delivered work and attach evidence references" required />
+              Delivery evidence
+              <textarea name="deliveryEvidence" placeholder="Summarize delivered work and attach PRs, screenshots, or docs" required />
             </label>
             <button type="submit">
               <Send size={18} />
@@ -242,7 +259,9 @@ function App() {
     if (order.status === "delivered") {
       return (
         <section className="lifecycle-panel" aria-label={`Acceptance actions for ${order.title}`}>
-          {order.deliveryNote ? <p className="delivery-note">Delivery: {order.deliveryNote}</p> : null}
+          {order.deliveryEvidence ?? order.deliveryNote ? (
+            <p className="delivery-note">Evidence: {order.deliveryEvidence ?? order.deliveryNote}</p>
+          ) : null}
           <div className="criteria-checklist" aria-label={`Acceptance criteria for ${order.title}`}>
             {order.criteria.map((criterion) => (
               <label className="check-row" key={criterion.id}>
@@ -389,6 +408,14 @@ function App() {
                 <input value={draft.providerPreference} onChange={(event) => updateDraft("providerPreference", event.target.value)} placeholder="Optional" />
               </label>
               <label>
+                Milestone breakdown
+                <textarea
+                  value={draft.milestones}
+                  onChange={(event) => updateDraft("milestones", event.target.value)}
+                  placeholder="Discovery&#10;Build&#10;Review"
+                />
+              </label>
+              <label>
                 Support criteria
                 <textarea value={draft.support} onChange={(event) => updateDraft("support", event.target.value)} />
               </label>
@@ -436,11 +463,48 @@ function App() {
 
           <section id="launch" className="panel gates">
             <div className="section-heading">
-              <Handshake size={20} />
-              <h3>Launch controls</h3>
+              <Rocket size={20} />
+              <div>
+                <p className="eyebrow">Trust center</p>
+                <h3>Market readiness</h3>
+              </div>
             </div>
-            <div className="gate-grid">
-              {bountyModel.launchGates.map((gate) => <div key={gate}>{gate}</div>)}
+            <p className="section-intro">See what works today, what is available for evaluation, and what must be approved before value-bearing launch.</p>
+            <div className="readiness-grid">
+              {launchControls.map((control) => (
+                <article className="readiness-card" key={control.title}>
+                  <div className="card-topline">
+                    <span className={`readiness-status status-${control.status.toLowerCase()}`}>{control.status}</span>
+                    <span>{control.owner}</span>
+                  </div>
+                  <h4>{control.title}</h4>
+                  <p>{control.detail}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel proposals" aria-labelledby="feature-proposals-title">
+            <div className="section-heading">
+              <Lightbulb size={20} />
+              <div>
+                <p className="eyebrow">Product roadmap</p>
+                <h3 id="feature-proposals-title">Feature proposals</h3>
+              </div>
+            </div>
+            <p className="section-intro">Adoption-focused improvements are ranked by customer value and launch dependency.</p>
+            <div className="feature-grid">
+              {featureProposals.map((proposal) => (
+                <article className="feature-card" key={proposal.title}>
+                  <div className="card-topline">
+                    <span className="priority-badge">{proposal.priority}</span>
+                    <span>{proposal.status}</span>
+                  </div>
+                  <h4>{proposal.title}</h4>
+                  <p>{proposal.value}</p>
+                  <a href="https://github.com/Bittrees-Technology/bounties/issues/new?template=bounty.yml">Propose or sponsor this feature</a>
+                </article>
+              ))}
             </div>
           </section>
         </section>

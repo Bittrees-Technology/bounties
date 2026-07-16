@@ -29,6 +29,17 @@ body:
     validations:
       required: true
   - type: textarea
+    id: milestones
+    attributes:
+      label: Milestone breakdown
+      description: One milestone per line; include optional amount hints if the work should split across phases.
+      placeholder: |
+        Discovery
+        Build
+        Review
+    validations:
+      required: false
+  - type: textarea
     id: acceptance
     attributes:
       label: Acceptance criteria

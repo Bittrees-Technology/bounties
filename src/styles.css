@@ -449,18 +449,91 @@ li {
   margin-top: 20px;
 }
 
-.gate-grid {
+.section-intro {
+  color: #5c6761;
+  margin: -4px 0 18px;
+  max-width: 72ch;
+}
+
+.readiness-grid,
+.feature-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-.gate-grid div {
-  background: #fff8e8;
-  border: 1px solid #eed79b;
-  border-radius: 8px;
+.readiness-card,
+.feature-card {
+  background: #fbfcfb;
+  border: 1px solid #dfe5e1;
+  border-radius: 12px;
   line-height: 1.4;
-  padding: 14px;
+  padding: 16px;
+}
+
+.readiness-card h4,
+.feature-card h4 {
+  margin: 14px 0 8px;
+}
+
+.readiness-card p,
+.feature-card p {
+  color: #5c6761;
+  margin: 0;
+}
+
+.card-topline {
+  align-items: center;
+  color: #67736c;
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: space-between;
+}
+
+.readiness-status,
+.priority-badge {
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 4px 8px;
+  text-transform: uppercase;
+}
+
+.status-live {
+  background: #dff7e8;
+  color: #17633a;
+}
+
+.status-demo {
+  background: #e5efff;
+  color: #24508d;
+}
+
+.status-planned,
+.priority-badge {
+  background: #fff1cc;
+  color: #755400;
+}
+
+.proposals {
+  margin-top: 20px;
+}
+
+.feature-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.feature-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 190px;
+}
+
+.feature-card a {
+  color: #17633a;
+  font-weight: 750;
+  margin-top: auto;
+  padding-top: 18px;
 }
 
 @media (max-width: 980px) {
@@ -479,7 +552,8 @@ li {
 
   .metrics,
   .service-grid,
-  .gate-grid {
+  .readiness-grid,
+  .feature-grid {
     grid-template-columns: 1fr;
     min-width: 0;
   }

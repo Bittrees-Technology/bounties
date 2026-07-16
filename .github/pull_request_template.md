@@ -8,6 +8,7 @@
 ## Marketplace criteria
 
 - Support criteria covered:
+- Milestone breakdown covered:
 - Acceptance criteria covered:
 - Evidence attached:
 
