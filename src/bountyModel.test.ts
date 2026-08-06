@@ -84,7 +84,7 @@ describe("marketplace model", () => {
       budget: 500,
       token: "USDC",
       buyer: "Ops",
-      providerPreference: "Bittrees Engineering",
+      providerPreference: "Platform Engineering",
       milestones: "Discovery\nBuild",
       support: "Spec",
       criteria: "Accepted by reviewer"
@@ -92,7 +92,7 @@ describe("marketplace model", () => {
 
     expect(order.id).toBe("ord-010");
     expect(order.status).toBe("matched");
-    expect(order.provider).toBe("Bittrees Engineering");
+    expect(order.provider).toBe("Platform Engineering");
     expect(order.criteria).toHaveLength(1);
     expect(order.milestones).toHaveLength(2);
     expect(order.milestones?.[0]).toMatchObject({ label: "Discovery", status: "draft" });

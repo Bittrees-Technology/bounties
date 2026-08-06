@@ -12,15 +12,15 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.type(screen.getByLabelText(/request title/i), "Ship Bittrees provider storefront");
+    await user.type(screen.getByLabelText(/request title/i), "Ship provider storefront");
     await user.type(screen.getByLabelText(/project/i), "Marketplace");
-    await user.type(screen.getByLabelText(/buyer/i), "Bittrees Ops");
-    await user.type(screen.getByLabelText(/preferred provider/i), "Bittrees Engineering");
+    await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
+    await user.type(screen.getByLabelText(/preferred provider/i), "Platform Engineering");
     await user.clear(screen.getByLabelText(/milestone breakdown/i));
     await user.type(screen.getByLabelText(/milestone breakdown/i), "Discovery phase\nImplementation\nReview");
     await user.click(screen.getByRole("button", { name: /publish request/i }));
 
-    const card = screen.getByText("Ship Bittrees provider storefront").closest("article");
+    const card = screen.getByText("Ship provider storefront").closest("article");
     expect(card).not.toBeNull();
 
     const order = within(card as HTMLElement);
@@ -81,8 +81,8 @@ describe("App", () => {
 
     await user.type(screen.getByLabelText(/request title/i), "Ship an ETH-denominated retainer");
     await user.type(screen.getByLabelText(/project/i), "Marketplace");
-    await user.type(screen.getByLabelText(/buyer/i), "Bittrees Ops");
-    await user.type(screen.getByLabelText(/preferred provider/i), "Bittrees Engineering");
+    await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
+    await user.type(screen.getByLabelText(/preferred provider/i), "Platform Engineering");
     await user.selectOptions(screen.getByLabelText(/^token$/i), "ETH");
     await user.click(screen.getByRole("button", { name: /publish request/i }));
 

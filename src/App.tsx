@@ -35,6 +35,7 @@ import type {
   SupportedAsset
 } from "./chain";
 import type { FeatureProposal, MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
+import { productManifest } from "./productManifest";
 import "./styles.css";
 
 const defaultDraft: RequestDraft = {
@@ -136,7 +137,7 @@ const initialOrders: MarketplaceOrder[] = [
     project: "Marketplace Lifecycle",
     budget: 520,
     token: "USDC",
-    buyer: "Bittrees QA",
+    buyer: "Marketplace QA",
     support: ["Current request form", "Order pipeline states", "Readiness review notes"],
     criteria: [
       { id: "c0-1", label: "Open requests accept provider proposals inline", required: true },
@@ -162,8 +163,8 @@ const initialOrders: MarketplaceOrder[] = [
     project: "Marketplace Trust",
     budget: 360,
     token: "USDC",
-    buyer: "Bittrees Ops",
-    provider: "Bittrees Research",
+    buyer: "Marketplace Ops",
+    provider: "Research Studio",
     support: ["Support queue notes", "Buyer acceptance checklist"],
     criteria: [
       { id: "c4-1", label: "Support handoff is accepted by the readiness reviewer", required: true },
@@ -618,10 +619,10 @@ function App() {
   return (
     <main>
       <section className="workspace">
-        <aside className="sidebar" aria-label="Bittrees marketplace navigation">
+        <aside className="sidebar" aria-label="Bounties marketplace navigation">
           <div>
-            <p className="eyebrow">bounties.bittrees.org</p>
-            <h1>Bittrees Services</h1>
+            <p className="eyebrow">Standalone service marketplace preview</p>
+            <h1>{productManifest.name}</h1>
           </div>
           <nav>
             <a href="#services">Services</a>
@@ -723,7 +724,7 @@ function App() {
                 </label>
                 <label>
                   Buyer / reviewer
-                  <input value={draft.buyer} onChange={(event) => updateDraft("buyer", event.target.value)} placeholder="Bittrees Ops" />
+                  <input value={draft.buyer} onChange={(event) => updateDraft("buyer", event.target.value)} placeholder="Marketplace Ops" />
                 </label>
               </div>
               <label>

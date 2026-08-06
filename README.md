@@ -1,10 +1,12 @@
-# Bittrees Services Marketplace
+# Bounties
 
-MIT-licensed MVP for `bounties.bittrees.org`.
+MIT-licensed standalone marketplace preview for scoped service work.
 
-The product goal is to make Bittrees bounties feel like a general services marketplace: buyers can discover providers, post work requests, scope tasks through full projects, define support and acceptance criteria, and stage escrow-backed payment workflows.
+Buyers can discover providers, post work requests, scope tasks through full projects, define support and acceptance criteria, and preview escrow-backed payment workflows.
 
-The repository is released under MIT. `stigmergic-org/simplebounty` informed the escrow/bounty concept, but this app is a Bittrees marketplace implementation with a broader Fiverr-style flow.
+The repository is released under MIT. `stigmergic-org/simplebounty` informed the escrow/bounty concept, and this app provides a broader Fiverr-style workflow.
+
+See the [independent product draft](docs/independence-product-draft.md) for the user/value statement, standalone runtime, preview status, product-owned trust/support placeholders, and optional integration boundary.
 
 ## Current scope
 

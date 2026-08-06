@@ -20,7 +20,7 @@ export class EscrowClientError extends Error {
 }
 
 const USER_MESSAGES: Record<EscrowErrorCode, string> = {
-  NETWORK_UNSUPPORTED: "This action needs a supported Bittrees escrow network. Switch networks and try again.",
+  NETWORK_UNSUPPORTED: "This action needs a supported escrow preview network. Switch networks and try again.",
   ASSET_UNSUPPORTED: "This asset is not supported for escrow yet. USDC is the only supported settlement asset.",
   AMOUNT_INVALID: "Enter a valid positive escrow amount.",
   INTEGRATION_DISABLED: "Live escrow settlement is disabled until legal, security, and onchain launch gates pass.",

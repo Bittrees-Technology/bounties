@@ -12,7 +12,7 @@ export function isSupportedAsset(token: string): token is SupportedAsset {
 
 export function assertSupportedNetwork(chainId: number): asserts chainId is SupportedChainId {
   if (!isSupportedChain(chainId)) {
-    throw new EscrowClientError("NETWORK_UNSUPPORTED", `Chain ${chainId} is not a supported Bittrees escrow network.`);
+    throw new EscrowClientError("NETWORK_UNSUPPORTED", `Chain ${chainId} is not a supported escrow preview network.`);
   }
 }
 
