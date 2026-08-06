@@ -18,7 +18,7 @@ export const marketplaceServices: MarketplaceService[] = [
   {
     id: "svc-001",
     title: "Ship a production-ready React feature",
-    provider: "Bittrees Engineering",
+    provider: "Platform Engineering",
     category: "Engineering",
     rating: 4.9,
     completedOrders: 38,
@@ -42,7 +42,7 @@ export const marketplaceServices: MarketplaceService[] = [
   {
     id: "svc-003",
     title: "Research, scope, and write a project brief",
-    provider: "Bittrees Research",
+    provider: "Research Studio",
     category: "Research",
     rating: 5,
     completedOrders: 44,
@@ -62,8 +62,8 @@ export const seedOrders: MarketplaceOrder[] = [
     project: "Bounties Marketplace",
     budget: 650,
     token: "USDC",
-    buyer: "Bittrees Ops",
-    provider: "Bittrees Engineering",
+    buyer: "Marketplace Ops",
+    provider: "Platform Engineering",
     support: ["Figma-ready layout notes", "Existing project labels", "Reviewer in default/coder"],
     criteria: [
       { id: "c1", label: "Profile shows services, packages, response time, and completed orders", required: true },
