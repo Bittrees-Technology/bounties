@@ -1,0 +1,111 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
+/// @title IBountyEscrow
+/// @notice Stable interface for a permissionless, ERC20-only bounty escrow.
+/// @dev Native ETH is unsupported. A UI may represent WETH as ETH, but the escrow only
+///      accepts ERC20 contract addresses and never inspects token metadata or prices.
+interface IBountyEscrow {
+    enum State {
+        Created,
+        Funded,
+        ProviderAccepted,
+        Delivered,
+        BuyerApproved,
+        Released,
+        Cancelled,
+        Refunded
+    }
+
+    struct Bounty {
+        address requester;
+        address provider;
+        IERC20 token;
+        uint256 amount;
+        uint64 deliveryDeadline;
+        State state;
+        bytes32 scopeHash;
+        bytes32 termsHash;
+        bytes32 acceptedTermsHash;
+        bytes32 evidenceHash;
+        bytes32 approvalHash;
+    }
+
+    error ZeroAddress();
+    error InvalidToken(address token);
+    error InvalidProvider(address provider);
+    error InvalidDeadline(uint64 deliveryDeadline);
+    error InvalidAmount(uint256 amount);
+    error ZeroScopeHash();
+    error ZeroTermsHash();
+    error ZeroEvidenceHash();
+    error ZeroApprovalHash();
+    error BountyNotFound(uint256 bountyId);
+    error UnauthorizedActor(uint256 bountyId, address actor);
+    error InvalidState(uint256 bountyId, State current, State required);
+    error CancellationUnavailable(uint256 bountyId, State current);
+    error DeadlineExpired(uint256 bountyId, uint64 deliveryDeadline);
+    error RefundNotAvailable(uint256 bountyId, uint64 deliveryDeadline);
+    error TermsHashMismatch(bytes32 expected, bytes32 supplied);
+    error FundingAmountMismatch(address token, uint256 expected, uint256 received);
+    error SettlementAmountMismatch(
+        address token,
+        uint256 expected,
+        uint256 escrowBalanceBefore,
+        uint256 escrowBalanceAfter,
+        uint256 recipientBalanceBefore,
+        uint256 recipientBalanceAfter
+    );
+    error InsolventToken(address token, uint256 balance, uint256 liability);
+
+    event BountyCreated(
+        uint256 indexed bountyId,
+        address indexed requester,
+        address indexed token,
+        uint256 requestedAmount,
+        bytes32 scopeHash,
+        bytes32 termsHash,
+        uint64 deliveryDeadline
+    );
+    event BountyFunded(uint256 indexed bountyId, address indexed requester, address indexed token, uint256 amount);
+    event ProviderAccepted(uint256 indexed bountyId, address indexed provider, bytes32 acceptedTermsHash);
+    event DeliverySubmitted(uint256 indexed bountyId, address indexed provider, bytes32 evidenceHash);
+    event BuyerApproved(uint256 indexed bountyId, address indexed requester, bytes32 approvalHash);
+    event BountyReleased(uint256 indexed bountyId, address indexed provider, address indexed token, uint256 amount);
+    event BountyCancelled(
+        uint256 indexed bountyId, address indexed requester, address indexed token, uint256 refundedAmount
+    );
+    event BountyRefunded(
+        uint256 indexed bountyId,
+        address indexed requester,
+        address indexed token,
+        uint256 amount,
+        uint64 deliveryDeadline
+    );
+
+    function nextBountyId() external view returns (uint256);
+    function totalLiability(address token) external view returns (uint256);
+    function SCOPE_DOMAIN() external view returns (bytes32);
+    function TERMS_DOMAIN() external view returns (bytes32);
+    function EVIDENCE_DOMAIN() external view returns (bytes32);
+    function APPROVAL_DOMAIN() external view returns (bytes32);
+
+    function createBounty(
+        address token,
+        uint256 requestedAmount,
+        uint64 deliveryDeadline,
+        bytes32 scopeHash,
+        bytes32 termsHash
+    ) external returns (uint256 bountyId);
+
+    function fundBounty(uint256 bountyId, uint256 amount) external;
+    function acceptBounty(uint256 bountyId, bytes32 acceptedTermsHash) external;
+    function submitDelivery(uint256 bountyId, bytes32 evidenceHash) external;
+    function approveDelivery(uint256 bountyId, bytes32 approvalHash) external;
+    function release(uint256 bountyId) external;
+    function cancelBounty(uint256 bountyId) external;
+    function refundBounty(uint256 bountyId) external;
+    function getBounty(uint256 bountyId) external view returns (Bounty memory);
+}

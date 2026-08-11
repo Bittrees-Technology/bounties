@@ -1,84 +1,69 @@
-# Bounty Escrow Contracts (testnet review)
+# Bounty escrow contracts
 
-This is an original, minimal ERC20 escrow implementation prepared for deterministic
-Foundry review. It is not a production deployment package and has not been broadcast.
+`BountyEscrow` is a permissionless, ERC20-only escrow. A bounty is a record and
+never an NFT. The contract has no owner, administrator, arbiter, token allowlist,
+cap, pause, dispute, or claims flow.
+
+Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
+address. Token symbols, decimals, names, and offchain prices are never read.
 
 ## Lifecycle
 
-`Created -> Funded -> Assigned -> Delivered -> Accepted -> Released`
+```text
+Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
+    |          |              |
+    +----------+-> Cancelled  +-> Refunded (at/after deliveryDeadline)
+```
 
-Side paths:
+- Anyone can create a record.
+- The requester alone funds it, approves delivery, cancels before provider
+  acceptance, or claims the deterministic timeout refund.
+- Any non-requester can accept the exact committed terms and become the provider.
+- Only that provider can submit the immutable evidence commitment.
+- Anyone can trigger release after buyer approval; payout always goes to the
+  recorded provider.
+- `deliveryDeadline == 0` disables timeout. Otherwise acceptance and delivery
+  require `block.timestamp < deliveryDeadline`; refund requires
+  `block.timestamp >= deliveryDeadline`.
+- There is intentionally no timeout after valid delivery. If the requester does
+  not approve, no third party can adjudicate the work in this product.
 
-- `Created|Funded -> Refunded` by the requester before assignment.
-- `Assigned -> Refunded` by the requester once the optional deadline passes.
-- `Assigned|Delivered -> Disputed -> Resolved` by an arbiter payout decision.
+Terminal transfers follow checks-effects-interactions, zero principal and reduce
+per-token liability before the external call, and are guarded against reentrancy.
+Funding and payout both verify exact contract/recipient balance deltas. This
+rejects false-returning, fee-on-transfer, sender-taxed, and other inexact behavior
+when observed. Rebasing and adversarial tokens are unsupported: a later negative
+rebase cannot be prevented and causes solvency/settlement checks to fail closed.
+Direct token transfers are not credited to any bounty.
 
-Every transition emits `BountyStateTransition` with the bounty, actor, parties,
-escrow amount, and payout amounts. Creation emits `BountyCreated`.
-
-## Authority model
-
-- Requester: creates/funds, assigns, accepts, cancels before assignment, claims a
-  configured timeout refund, and can dispute.
-- Provider: delivers and can dispute after assignment.
-- `ARBITER_ROLE`: resolves only disputed bounties and may release, refund, or split
-  escrow. It cannot otherwise withdraw funds.
-- `GUARDIAN_ROLE`: pauses/unpauses creation and funding only. Release, refund, and
-  dispute resolution intentionally remain callable while paused.
-- `DEFAULT_ADMIN_ROLE`: grants/revokes arbiter and guardian roles. Operational role
-  custody and admin transfer procedures are deployment blockers for production.
-- Release after acceptance is permissionless so an already-owed payout cannot be
-  withheld by an unavailable requester.
-
-One arbitrary ERC20 address is recorded per bounty. Native ETH is not supported.
-Deposits use OpenZeppelin `SafeERC20` and actual received balance deltas. Rebasing
-tokens remain unsupported because their balances can change independently of escrow
-accounting.
+Commitment domains and canonical `abi.encode` field order are documented in
+[`src/BountyEscrow.sol`](src/BountyEscrow.sol). The stable Solidity surface,
+including enum order, events, and custom errors, is
+[`src/IBountyEscrow.sol`](src/IBountyEscrow.sol).
 
 ## Reproducible local setup
 
-Dependencies are intentionally excluded from the application repository and pinned
-by tag in the install commands:
+The package pins Solidity to `0.8.24` in `foundry.toml` and uses these audited
+dependency commits:
+
+- OpenZeppelin Contracts v5.0.2:
+  `dbb6104ce834628e473d2173bbc9d47f81a9eec3`
+- forge-std v1.9.6:
+  `3b20d60d14b343ee4f908cb8079495c07f5e8981`
+
+Install the exact commits (the ignored `lib/` directory is local-only):
 
 ```sh
 cd contracts
-mkdir -p lib
-git clone --depth 1 --branch v5.0.2 https://github.com/OpenZeppelin/openzeppelin-contracts.git lib/openzeppelin-contracts
-git clone --depth 1 --branch v1.9.6 https://github.com/foundry-rs/forge-std.git lib/forge-std
+git clone --no-checkout https://github.com/OpenZeppelin/openzeppelin-contracts.git lib/openzeppelin-contracts
+git -C lib/openzeppelin-contracts checkout dbb6104ce834628e473d2173bbc9d47f81a9eec3
+git clone --no-checkout https://github.com/foundry-rs/forge-std.git lib/forge-std
+git -C lib/forge-std checkout 3b20d60d14b343ee4f908cb8079495c07f5e8981
+forge fmt --check
 forge build
 forge test
 ```
 
-The reviewed dependency commits are OpenZeppelin `dbb6104ce834628e473d2173bbc9d47f81a9eec3`
-and forge-std `3b20d60d14b343ee4f908cb8079495c07f5e8981`.
-
-Tests are offline and do not use RPC endpoints or forks.
-
-## Deployment template (do not run in this review)
-
-`script/Deploy.s.sol` reads `ADMIN_ADDRESS`, `ARBITER_ADDRESS`,
-`GUARDIAN_ADDRESS`, and `TOKEN_ADDRESS`. The token is a review/deployment parameter
-only because the escrow supports a different ERC20 for each bounty. A deployment
-operator may later simulate the template, prepare the required preflight packet, and
-only then decide whether to broadcast on an explicitly approved test network.
-
-No private key is embedded or read by the script. No broadcast was performed during
-this task.
-
-## Stateful safety campaign
-
-`test/fuzz/BountyEscrowInvariant.t.sol` exercises assignment, delivery, acceptance,
-release, dispute, resolution, and cancellation sequences. It asserts escrow/token
-conservation, zero terminal liability, and bounded payouts. See `PROPERTIES.md` for
-the executable properties and remaining multi-bounty/token campaign gaps.
-
-## Known review gaps / production blockers
-
-- Independent security review and broader multi-bounty/stateful campaigns are still needed.
-- Define multisig/timelock custody and rotation for admin, arbiter, and guardian roles.
-- Establish maximum bounty sizes, approved-token policy, monitoring, and incident runbooks.
-- Review fee-on-transfer and callback-capable tokens; rebasing tokens are unsupported.
-- Decide provider protections and grace periods around requester timeout refunds.
-- Decide whether disputes need evidence hashes, reason codes, or an appeal window.
-- Deployment requires Base Sepolia addresses, gas estimation, simulation, and a saved
-  preflight packet. Production or mainnet deployment is explicitly out of scope.
+No RPC endpoint, signer, fork, deployment, or broadcast is required. The script
+package contains only a local construction/simulation template and no broadcast
+instruction.
