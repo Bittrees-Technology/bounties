@@ -3,23 +3,24 @@ import { mapEventTypeToLabel } from "./events";
 import type { EscrowEventType } from "./types";
 
 describe("event label mapping", () => {
-  it("maps every escrow event type to a human-readable, preview-labeled string", () => {
+  it("maps every escrow event type to a human-readable production label", () => {
     const types: EscrowEventType[] = [
-      "OrderCreated",
+      "EscrowCreated",
       "EscrowFunded",
+      "ProviderAccepted",
       "DeliverySubmitted",
       "DeliveryAccepted",
       "PaymentReleased",
-      "Refunded",
-      "Disputed"
+      "SettlementProposed",
+      "BilateralSettlementCompleted",
+      "EscrowCancelled",
+      "TimeoutRefundClaimed"
     ];
 
     for (const type of types) {
       expect(mapEventTypeToLabel(type)).toEqual(expect.any(String));
       expect(mapEventTypeToLabel(type).length).toBeGreaterThan(0);
+      expect(mapEventTypeToLabel(type)).not.toMatch(/preview|demo|simulat/i);
     }
-
-    expect(mapEventTypeToLabel("EscrowFunded")).toMatch(/preview/i);
-    expect(mapEventTypeToLabel("PaymentReleased")).toMatch(/preview/i);
   });
 });

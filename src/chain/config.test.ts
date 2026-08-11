@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig } from "./config";
+import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig, supportedChainIds } from "./config";
 
 describe("chain config", () => {
   it("stays hard-disabled for live settlement until launch gates pass", () => {
@@ -11,15 +11,23 @@ describe("chain config", () => {
     expect(chains[activeChainId].isTestnet).toBe(true);
   });
 
-  it("ships no contract addresses until a deployment-operator broadcast lands", () => {
+  it("ships curated token placeholders with no contract addresses until operations verifies them", () => {
+    expect(Object.keys(assets)).toEqual(["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT"]);
     expect(assets.USDC.addresses).toEqual({});
-    expect(assets.USDC.supportedChainIds).toEqual([84532]);
+    expect(assets.USDC.supportedChainIds).toEqual([1, 11155111, 8453, 84532, 4663, 46630]);
   });
 
   it("looks up configs by id and falls back to undefined for unsupported values", () => {
+    expect(supportedChainIds).toHaveLength(6);
+    expect(getChainConfig(1)?.name).toBe("Ethereum");
+    expect(getChainConfig(11155111)?.name).toBe("Ethereum Sepolia");
+    expect(getChainConfig(8453)?.name).toBe("Base");
     expect(getChainConfig(84532)?.name).toBe("Base Sepolia");
-    expect(getChainConfig(1)).toBeUndefined();
+    expect(getChainConfig(4663)?.name).toBe("Robinhood Chain");
+    expect(getChainConfig(46630)?.name).toBe("Robinhood Chain Testnet");
+    expect(getChainConfig(999)).toBeUndefined();
     expect(getAssetConfig("USDC")?.decimals).toBe(6);
+    expect(getAssetConfig("WETH")?.decimals).toBe(18);
     expect(getAssetConfig("DOGE")).toBeUndefined();
   });
 });

@@ -1,908 +1,662 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
   BadgeCheck,
-  Banknote,
+  Bell,
   BriefcaseBusiness,
   CheckCircle2,
-  CircleDollarSign,
   ClipboardList,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  Flag,
   Loader2,
-  LockKeyhole,
-  Lightbulb,
-  Rocket,
+  RefreshCw,
   Search,
-  Send,
   ShieldCheck,
-  Star
+  Star,
+  WalletCards
 } from "lucide-react";
-import * as bountyModel from "./bountyModel";
+import { isDraftValid, orderStatusLabel } from "./bountyModel";
+import { assets, chains, supportedChainIds } from "./chain/config";
+import { createViemEscrowAdapter } from "./chain/escrowAdapter";
+import { hashSourceJson, hashTerms } from "./chain/hashCodec";
+import type { EscrowClient, EscrowOrderRef, SupportedChainId } from "./chain/types";
 import {
-  checkEscrowReadiness,
-  errorCodeOf,
-  getChainConfig,
-  getDefaultEscrowClient,
-  isSupportedAsset,
-  mapErrorToUserMessage,
-  mapEventTypeToLabel
-} from "./chain";
-import type {
-  EscrowAction,
-  EscrowEvent,
-  EscrowEventType,
-  EscrowTransactionState,
-  EscrowTxResult,
-  SupportedAsset
-} from "./chain";
-import type { FeatureProposal, MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
-import { productManifest } from "./productManifest";
+  acceptEvidence,
+  acceptProposal,
+  createBounty,
+  createParticipantReview,
+  createProposal,
+  inspectToken,
+  loadMarketplace,
+  markNotificationRead,
+  moderateContent,
+  recordEscrowObservation,
+  refreshEscrowState,
+  reportContent,
+  selectRole,
+  signInWithWallet,
+  signOut,
+  submitEvidence,
+  toBase,
+  type MarketplaceSnapshot,
+  type TokenRecord
+} from "./persistence/supabase";
+import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
 import "./styles.css";
 
-const defaultDraft: RequestDraft = {
+const defaultDeliveryDeadline = () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+const emptyDraft: RequestDraft = {
   title: "",
   scope: "task",
   category: "Engineering",
   project: "",
-  budget: 250,
-  token: "USDC",
+  budget: "250",
+  token: "",
   buyer: "",
+  deliveryDeadline: defaultDeliveryDeadline(),
   providerPreference: "",
-  milestones: "Discovery\nBuild\nReview",
-  support: "Links, examples, and source materials\nReviewer or support owner",
-  criteria: "Deliverable submitted with evidence\nBuyer/reviewer accepts the work"
+  milestones: "Delivery",
+  support: "Source materials and reviewer contact",
+  criteria: "Deliverable submitted with evidence\nBuyer accepts the evidence"
 };
-
-const scopes: Array<{ value: WorkScope; label: string }> = [
-  { value: "task", label: "Task" },
-  { value: "milestone", label: "Milestone" },
-  { value: "project", label: "Project" },
-  { value: "retainer", label: "Retainer" }
-];
-
 const categories: ServiceCategory[] = ["Engineering", "Design", "Research", "Operations", "Onchain", "Growth"];
+const scopes: WorkScope[] = ["task", "milestone", "project", "retainer"];
 
-type FeatureProposalDraft = Omit<FeatureProposal, "id">;
+function short(value: string) {
+  return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
+}
 
-const readinessCards = [
-  {
-    category: "Request intake",
-    status: "Live",
-    title: "Publish work requests",
-    detail: "Customers can scope work, set budgets, and collect proposals in one flow.",
-    owner: "Product"
-  },
-  {
-    category: "Payment preview",
-    status: "Demo",
-    title: "See protected payment states",
-    detail: "Escrow, delivery, and payout states can be reviewed, but no funds move.",
-    owner: "Security"
-  },
-  {
-    category: "Policy",
-    status: "Planned",
-    title: "Finalize dispute and refund rules",
-    detail: "Appeals, refund timing, and escalation paths are still being reviewed.",
-    owner: "Trust"
-  },
-  {
-    category: "Operations",
-    status: "Planned",
-    title: "Complete release readiness checks",
-    detail: "Deployment, monitoring, and incident response must pass before go-live.",
-    owner: "Operations"
-  }
-] as const;
+function tokenLabel(token: TokenRecord) {
+  const symbol = token.symbol?.toUpperCase();
+  const configured = symbol && symbol in assets
+    ? assets[symbol as keyof typeof assets].addresses[token.chain_id as keyof (typeof assets)[keyof typeof assets]["addresses"]]
+    : undefined;
+  const verifiedCuratedIdentity = configured?.toLowerCase() === token.checksum_address.toLowerCase();
+  if (verifiedCuratedIdentity && symbol === "WETH") return "ETH (backed by verified WETH)";
+  if (verifiedCuratedIdentity) return symbol;
+  return `${token.symbol || short(token.checksum_address)} · unverified token address`;
+}
 
-const featureStatusOptions: FeatureProposal["status"][] = ["Planned", "In review", "Shipped"];
-const featurePriorityOptions: FeatureProposal["priority"][] = ["P0", "P1", "P2"];
+function displayedOrderStatus(order: MarketplaceOrder): string {
+  const onchain = order.escrowObservation?.onchain_state;
+  if (onchain === "Released") return "Paid onchain";
+  if (onchain === "Settled") return "Settled bilaterally";
+  if (onchain === "Cancelled") return "Cancelled and refunded";
+  if (onchain === "Refunded") return "Timeout refund completed";
+  if (onchain === "Delivered") return "Delivered · seven-day review";
+  if (onchain === "BuyerApproved") return "Approved · ready to release";
+  if (onchain === "ProviderAccepted") return "Provider accepted onchain";
+  if (onchain === "Funded" || onchain === "Created") return `Escrow ${onchain.toLowerCase()}`;
+  return orderStatusLabel(order.status);
+}
 
-const initialFeatureProposals: FeatureProposal[] = [
-  {
-    id: "feature-001",
-    title: "Verified provider profiles",
-    status: "Planned",
-    priority: "P0",
-    value: "Show response time, completed work, and trust signals before a buyer starts a request."
-  },
-  {
-    id: "feature-002",
-    title: "Proposal comparison board",
-    status: "In review",
-    priority: "P1",
-    value: "Let buyers compare scope, timing, and expected value before choosing a provider."
-  },
-  {
-    id: "feature-003",
-    title: "Acceptance evidence workspace",
-    status: "Planned",
-    priority: "P1",
-    value: "Attach links, files, and reviewer notes to every criterion so handoff is clear."
-  }
-];
+function settlementBaseUnits(value: string, decimals: number): string {
+  return value === "0" ? "0" : toBase(value, decimals);
+}
 
-const initialFeatureDraft: FeatureProposalDraft = {
-  title: "",
-  status: "Planned",
-  priority: "P1",
-  value: ""
-};
+export default function App() {
+  const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
+  const [draft, setDraft] = useState(emptyDraft);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [inspectChain, setInspectChain] = useState("84532");
+  const [inspectAddress, setInspectAddress] = useState("");
+  const [inspected, setInspected] = useState<TokenRecord | null>(null);
+  const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
+  const actionPending = useRef(false);
 
-const initialOrders: MarketplaceOrder[] = [
-  {
-    id: "ord-090",
-    title: "Refine lifecycle QA for marketplace requests",
-    scope: "task",
-    category: "Operations",
-    project: "Marketplace Lifecycle",
-    budget: 520,
-    token: "USDC",
-    buyer: "Marketplace QA",
-    support: ["Current request form", "Order pipeline states", "Readiness review notes"],
-    criteria: [
-      { id: "c0-1", label: "Open requests accept provider proposals inline", required: true },
-      { id: "c0-2", label: "Accepted proposals move the order to matched", required: true }
-    ],
-    status: "open",
-    dueDate: "2026-08-04",
-    proposals: [
-      {
-        id: "prop-090-a",
-        provider: "Frontend Ops",
-        note: "Can cover the lifecycle controls and a Vitest interaction.",
-        proposedBudget: 500
-      }
-    ]
-  },
-  ...bountyModel.seedOrders,
-  {
-    id: "ord-404",
-    title: "Finalize marketplace support handoff",
-    scope: "milestone",
-    category: "Operations",
-    project: "Marketplace Trust",
-    budget: 360,
-    token: "USDC",
-    buyer: "Marketplace Ops",
-    provider: "Research Studio",
-    support: ["Support queue notes", "Buyer acceptance checklist"],
-    criteria: [
-      { id: "c4-1", label: "Support handoff is accepted by the readiness reviewer", required: true },
-      { id: "c4-2", label: "Payment release remains paused until readiness review", required: true }
-    ],
-    status: "accepted",
-    dueDate: "2026-08-08",
-    deliveryNote: "Support handoff accepted; waiting on readiness review before any payment release control is enabled."
-  }
-];
+  const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
+  const selectedToken = availableTokens.find((token) => token.id === draft.token);
+  const wallet = session?.account.wallet_address;
 
-type LifecycleEscrowAction = Extract<EscrowAction, "fundEscrow" | "submitDelivery" | "acceptDelivery">;
-
-type OrderEscrowTransactionState = EscrowTransactionState & {
-  action: LifecycleEscrowAction;
-};
-
-const escrowActionContent: Record<
-  LifecycleEscrowAction,
-  {
-    eventType: EscrowEventType;
-    pending: string;
-    submitted: string;
-    confirmed: string;
-    failed: string;
-    working: string;
-  }
-> = {
-  fundEscrow: {
-    eventType: "EscrowFunded",
-    pending: "Preparing escrow preview transaction",
-    submitted: "Preview tx submitted for escrow funding",
-    confirmed: "Preview tx confirmed for escrow funding",
-    failed: "Escrow funding preview failed",
-    working: "Escrow tx in progress..."
-  },
-  submitDelivery: {
-    eventType: "DeliverySubmitted",
-    pending: "Preparing delivery submission",
-    submitted: "Preview tx submitted for delivery",
-    confirmed: "Preview tx confirmed for delivery",
-    failed: "Delivery submission failed",
-    working: "Delivery tx in progress..."
-  },
-  acceptDelivery: {
-    eventType: "DeliveryAccepted",
-    pending: "Preparing delivery acceptance",
-    submitted: "Preview tx submitted for delivery acceptance",
-    confirmed: "Preview tx confirmed for delivery acceptance",
-    failed: "Delivery acceptance failed",
-    working: "Acceptance tx in progress..."
-  }
-};
-
-function App() {
-  const [orders, setOrders] = useState<MarketplaceOrder[]>(initialOrders);
-  const [draft, setDraft] = useState<RequestDraft>(defaultDraft);
-  const [featureProposals, setFeatureProposals] = useState<FeatureProposal[]>(initialFeatureProposals);
-  const [featureDraft, setFeatureDraft] = useState<FeatureProposalDraft>(initialFeatureDraft);
-  const validDraft = bountyModel.isDraftValid(draft);
-  const validFeatureDraft = Boolean(featureDraft.title.trim() && featureDraft.value.trim());
-
-  const escrowClient = useMemo(() => getDefaultEscrowClient(), []);
-  const escrowChain = getChainConfig(escrowClient.chainId);
-  const [escrowTxByOrder, setEscrowTxByOrder] = useState<Record<string, OrderEscrowTransactionState>>({});
-  const [recentEscrowEvents, setRecentEscrowEvents] = useState<EscrowEvent[]>([]);
-
-  useEffect(() => {
-    return escrowClient.onEvent((event) => {
-      setRecentEscrowEvents((current) => [event, ...current].slice(0, 5));
-    });
-  }, [escrowClient]);
-
-  function setOrderTx(orderId: string, status: OrderEscrowTransactionState) {
-    setEscrowTxByOrder((current) => ({ ...current, [orderId]: status }));
-  }
-
-  function waitForEscrowEvent(orderId: string, eventType: EscrowEventType) {
-    let unsubscribe = () => {};
-    const promise = new Promise<EscrowEvent>((resolve) => {
-      unsubscribe = escrowClient.onEvent((event) => {
-        if (event.orderId === orderId && event.type === eventType) {
-          unsubscribe();
-          resolve(event);
-        }
-      });
-    });
-
-    return { promise, unsubscribe };
-  }
-
-  async function runEscrowLifecycleAction(
-    order: MarketplaceOrder,
-    action: LifecycleEscrowAction,
-    execute: (asset: SupportedAsset) => Promise<EscrowTxResult>,
-    onConfirmed: (order: MarketplaceOrder) => MarketplaceOrder
-  ) {
-    const readiness = checkEscrowReadiness(escrowClient.chainId, order.token);
-    const supportedAsset = isSupportedAsset(order.token) ? order.token : null;
-    if (!readiness.ok || !supportedAsset) {
-      setOrderTx(order.id, {
-        action,
-        state: "failed",
-        errorMessage: readiness.ok ? undefined : readiness.message,
-        errorCode: readiness.ok ? undefined : readiness.code
-      });
-      return false;
-    }
-
-    const eventWatcher = waitForEscrowEvent(order.id, escrowActionContent[action].eventType);
-    setOrderTx(order.id, { action, state: "pending" });
-
+  async function refresh(allowDisconnected = false) {
     try {
-      const result = await execute(supportedAsset);
-
-      if (result.state === "failed") {
-        eventWatcher.unsubscribe();
-        setOrderTx(order.id, {
-          action,
-          state: "failed",
-          txHash: result.txHash,
-          errorMessage: mapErrorToUserMessage(result.error),
-          errorCode: errorCodeOf(result.error)
-        });
-        return false;
+      setLoading(true);
+      setError(null);
+      const next = await loadMarketplace();
+      setSession(next);
+      setExpired(false);
+      if (!draft.token && next.tokens.length) setDraft((current) => ({ ...current, token: next.tokens[0].id }));
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Unable to load the marketplace.";
+      if (allowDisconnected && message.toLowerCase().includes("expired")) {
+        setSession(null);
+        setError(null);
+        setExpired(false);
+      } else {
+        setError(message);
+        setExpired(message.toLowerCase().includes("expired"));
       }
-
-      if (result.state === "confirmed") {
-        eventWatcher.unsubscribe();
-        setOrderTx(order.id, { action, state: "confirmed", txHash: result.txHash });
-        updateOrder(order.id, onConfirmed);
-        return true;
-      }
-
-      if (result.state !== "pending" && result.state !== "submitted") {
-        eventWatcher.unsubscribe();
-        setOrderTx(order.id, {
-          action,
-          state: "failed",
-          txHash: result.txHash,
-          errorMessage: mapErrorToUserMessage(result.error),
-          errorCode: errorCodeOf(result.error)
-        });
-        return false;
-      }
-
-      setOrderTx(order.id, { action, state: result.state, txHash: result.txHash });
-      const event = await eventWatcher.promise;
-      setOrderTx(order.id, { action, state: "confirmed", txHash: event.txHash });
-      updateOrder(order.id, onConfirmed);
-      return true;
-    } catch (error) {
-      eventWatcher.unsubscribe();
-      setOrderTx(order.id, { action, state: "failed", errorMessage: mapErrorToUserMessage(error), errorCode: errorCodeOf(error) });
-      return false;
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function handleStageEscrow(order: MarketplaceOrder) {
-    await runEscrowLifecycleAction(
-      order,
-      "fundEscrow",
-      (asset) => escrowClient.fundEscrow({ orderId: order.id }, order.budget, asset),
-      bountyModel.stageEscrow
-    );
+  async function act(action: () => Promise<unknown>) {
+    if (actionPending.current) return;
+    try {
+      actionPending.current = true;
+      setLoading(true);
+      setError(null);
+      await action();
+      await refresh();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Marketplace action failed.";
+      setError(message);
+      setExpired(message.toLowerCase().includes("expired"));
+    } finally {
+      actionPending.current = false;
+      setLoading(false);
+    }
   }
 
-  async function handleAcceptDelivery(order: MarketplaceOrder) {
-    await runEscrowLifecycleAction(
-      order,
-      "acceptDelivery",
-      () => escrowClient.acceptDelivery({ orderId: order.id }),
-      bountyModel.acceptDelivery
-    );
+  // Session discovery runs once; subsequent refreshes follow explicit mutations.
+  useEffect(() => {
+    void refresh(true);
+    // `refresh` intentionally runs once for session discovery.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function connect() {
+    try {
+      setError(null);
+      await signInWithWallet();
+      await refresh();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Wallet sign-in failed.");
+    }
   }
 
-  const totals = useMemo(() => {
-    const open = orders.filter((order) => !["accepted", "paid"].includes(order.status)).length;
-    const value = orders.reduce((sum, order) => sum + order.budget, 0);
-    const providers = new Set(orders.map((order) => order.provider).filter(Boolean)).size;
-    return { open, value, providers };
-  }, [orders]);
-
-  function updateDraft<K extends keyof RequestDraft>(key: K, value: RequestDraft[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+  async function disconnect() {
+    try {
+      await signOut();
+    } finally {
+      setSession(null);
+      setExpired(false);
+    }
   }
 
-  function updateFeatureDraft<K extends keyof FeatureProposalDraft>(key: K, value: FeatureProposalDraft[K]) {
-    setFeatureDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  function submitRequest(event: FormEvent<HTMLFormElement>) {
+  async function publish(event: FormEvent) {
     event.preventDefault();
-    if (!validDraft) return;
-    setOrders((current) => [bountyModel.createMarketplaceOrder(draft, current.length), ...current]);
-    setDraft(defaultDraft);
+    if (!selectedToken) return setError("Inspect or select a configured ERC20 token first.");
+    if (!isDraftValid(draft)) return setError("Complete every required bounty field.");
+    await act(async () => {
+      await createBounty(draft, selectedToken);
+      setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: defaultDeliveryDeadline() }));
+    });
   }
 
-  function updateOrder(orderId: string, updater: (order: MarketplaceOrder) => MarketplaceOrder) {
-    setOrders((current) => current.map((order) => (order.id === orderId ? updater(order) : order)));
-  }
-
-  function submitOrderProposal(event: FormEvent<HTMLFormElement>, order: MarketplaceOrder) {
+  async function inspect(event: FormEvent) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const provider = String(formData.get("provider") ?? "");
-    const note = String(formData.get("note") ?? "");
-    const proposedBudget = Number(formData.get("proposedBudget"));
-
-    if (!provider.trim() || !note.trim() || proposedBudget <= 0) return;
-    updateOrder(order.id, (current) => bountyModel.submitProposal(current, provider, note, proposedBudget));
-    form.reset();
+    await act(async () => {
+      const token = await inspectToken(Number(inspectChain), inspectAddress);
+      setInspected(token);
+      setDraft((current) => ({ ...current, token: token.id }));
+    });
   }
 
-  async function submitOrderDelivery(event: FormEvent<HTMLFormElement>, order: MarketplaceOrder) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const formData = new FormData(form);
-    const evidence = String(formData.get("deliveryEvidence") ?? "");
+  const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
+  const isProvider = (order: MarketplaceOrder) => order.providerId === session?.account.id;
+  const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
+  const mayReview = (order: MarketplaceOrder) => isParticipant(order) && ["Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "");
 
-    if (!evidence.trim()) return;
-    const confirmed = await runEscrowLifecycleAction(
-      order,
-      "submitDelivery",
-      () => escrowClient.submitDelivery({ orderId: order.id }, evidence.trim()),
-      (current) => bountyModel.submitDelivery(current, evidence)
-    );
-
-    if (confirmed) form.reset();
+  function escrowBoundary(order: MarketplaceOrder): { client: EscrowClient; ref: EscrowOrderRef } {
+    if (!window.ethereum || !order.tokenRecord || !order.providerAddress || !order.scopeHash || !order.proposalHash) {
+      throw new Error("This bounty is missing the wallet, token, scope, or accepted-provider commitment required for escrow.");
+    }
+    const chain = chains[order.tokenRecord.chain_id as SupportedChainId];
+    if (!chain?.enabled || !chain.escrowContractAddress) {
+      throw new Error(`Escrow transactions are not enabled for chain ${order.tokenRecord.chain_id}.`);
+    }
+    const onchainId = order.escrowObservation?.onchain_bounty_id;
+    const deliveryDeadline = BigInt(Math.floor(Date.parse(`${order.dueDate}T23:59:59Z`) / 1000));
+    const termsHash = hashTerms({
+      chainId: BigInt(chain.chainId),
+      escrowAddress: chain.escrowContractAddress,
+      scopeHash: order.scopeHash,
+      proposalHash: order.proposalHash,
+      provider: order.providerAddress
+    }).value;
+    const approvalHash = hashSourceJson({
+      version: "bounty-approval-source.v1",
+      bountyId: order.id,
+      onchainId: onchainId ?? "pending",
+      buyer: wallet?.toLowerCase() ?? "unknown",
+      decision: "accept-delivery"
+    }).value;
+    return {
+      client: createViemEscrowAdapter({ chain, eoaProvider: window.ethereum }),
+      ref: {
+        orderId: order.id,
+        onchainId,
+        scopeHash: order.scopeHash,
+        proposalHash: order.proposalHash,
+        termsHash,
+        approvalHash,
+        providerAddress: order.providerAddress,
+        deliveryDeadline
+      }
+    };
   }
 
-  function submitFeatureProposal(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (!validFeatureDraft) return;
-
-    setFeatureProposals((current) => [
-      {
-        id: `feature-${String(current.length + 1).padStart(3, "0")}`,
-        title: featureDraft.title.trim(),
-        status: featureDraft.status,
-        priority: featureDraft.priority,
-        value: featureDraft.value.trim()
-      },
-      ...current
-    ]);
-    setFeatureDraft(initialFeatureDraft);
+  async function submitEscrowTransaction(
+    order: MarketplaceOrder,
+    action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>
+  ) {
+    await act(async () => {
+      const { client, ref } = escrowBoundary(order);
+      const result = await action(client, ref);
+      if (result.txHash) setEscrowTxHashes((current) => ({ ...current, [order.id]: result.txHash! }));
+    });
   }
 
-  function renderMilestones(order: MarketplaceOrder) {
-    if (!order.milestones?.length) return null;
+  function escrowControls(order: MarketplaceOrder) {
+    const token = order.tokenRecord;
+    if (!token || !order.providerAddress || !order.scopeHash || !order.proposalHash || !order.budgetBaseUnits) return null;
+    const chain = chains[token.chain_id as SupportedChainId];
+    if (!chain?.enabled || !chain.escrowContractAddress) {
+      return <p className="form-hint">Wallet escrow actions unlock after Operations configures the deployed contract for {chain?.name ?? `chain ${token.chain_id}`}. No deployment or transaction is performed by this build.</p>;
+    }
+
+    const state = order.escrowObservation?.onchain_state;
+    const latestEvidenceHash = order.milestones?.map((milestone) => milestone.deliveryEvidenceHash).filter(Boolean).at(-1);
+    const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered";
+    const settlementProposer = order.escrowObservation?.settlement_proposer;
+    const proposedPayout = order.escrowObservation?.proposed_provider_payout_base_units;
+    const canAcceptSettlement = isParticipant(order)
+      && settlementProposer
+      && !/^0x0{40}$/i.test(settlementProposer)
+      && settlementProposer.toLowerCase() !== wallet?.toLowerCase()
+      && proposedPayout !== null
+      && proposedPayout !== undefined;
+    const reviewReady = state === "BuyerApproved"
+      || (state === "Delivered" && Boolean(order.escrowObservation?.review_deadline) && Date.parse(order.escrowObservation!.review_deadline!) <= Date.now());
+    const timeoutReady = state === "ProviderAccepted" && Date.parse(`${order.dueDate}T23:59:59Z`) <= Date.now();
 
     return (
-      <section className="milestone-breakdown" aria-label={`Milestones for ${order.title}`}>
-        <h5>Milestone breakdown</h5>
-        {order.milestones.map((milestone) => (
-          <div className="milestone-row" key={milestone.id}>
-            <div>
-              <strong>{milestone.label}</strong>
-              <p>{milestone.criteria.map((criterion) => criterion.label).join("; ")}</p>
-              {milestone.deliveryEvidence ?? milestone.deliveryNote ? (
-                <p className="delivery-note">Evidence: {milestone.deliveryEvidence ?? milestone.deliveryNote}</p>
-              ) : null}
-            </div>
-            <div className="milestone-meta">
-              <span>{milestone.amount.toLocaleString()} {order.token}</span>
-              <span>{bountyModel.orderStatusLabel(milestone.status)}</span>
-            </div>
-          </div>
-        ))}
+      <section className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
+        <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
+        {!order.escrowObservation && isBuyer(order) ? (
+          <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
+            amountBaseUnits: order.budgetBaseUnits!,
+            token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
+          }))}>Create and fund ERC20 escrow</button>
+        ) : null}
+        {state === "Funded" && isProvider(order) ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptBounty(ref))}>Accept committed bounty terms</button> : null}
+        {state === "ProviderAccepted" && isProvider(order) && latestEvidenceHash ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: latestEvidenceHash }))}>Commit submitted evidence onchain</button> : null}
+        {state === "ProviderAccepted" && isProvider(order) && !latestEvidenceHash ? <p className="form-hint">Submit an evidence URI below before committing delivery onchain.</p> : null}
+        {state === "Delivered" && isBuyer(order) ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptDelivery(ref))}>Approve delivery onchain</button> : null}
+        {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>Release full payment</button> : null}
+        {state === "Funded" && isBuyer(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel and refund before provider acceptance</button> : null}
+        {timeoutReady && isBuyer(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Claim missed-deadline refund</button> : null}
+        {isSettlementState && isParticipant(order) ? (
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const value = String(new FormData(event.currentTarget).get("providerPayout") ?? "");
+            void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementBaseUnits(value, token.decimals) }));
+          }}>
+            <label>Proposed provider payout ({token.symbol ?? "token"})<input name="providerPayout" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" required /></label>
+            <button type="submit">Propose exact bilateral split</button>
+          </form>
+        ) : null}
+        {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
+        {settlementProposer && !/^0x0{40}$/i.test(settlementProposer) ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. Only the counterparty can accept it.</p> : null}
+        {escrowTxHashes[order.id] ? <p className="form-hint">Submitted: <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">{short(escrowTxHashes[order.id])} <ExternalLink size={13} /></a>. Refresh canonical state after confirmation.</p> : null}
       </section>
     );
   }
 
-  function isActionInFlight(orderId: string, action: LifecycleEscrowAction) {
-    const tx = escrowTxByOrder[orderId];
-    return tx?.action === action && (tx.state === "pending" || tx.state === "submitted");
-  }
-
-  function renderOrderTxStatus(order: MarketplaceOrder) {
-    const tx = escrowTxByOrder[order.id];
-    if (!tx || tx.state === "idle") return null;
-
-    const content = escrowActionContent[tx.action];
-    const label = {
-      pending: content.pending,
-      submitted: content.submitted,
-      confirmed: content.confirmed,
-      failed: content.failed
-    }[tx.state];
-
+  function moderationButton(entityType: "bounty" | "review", entityId: string, hidden: boolean) {
+    if (!session?.staffRole) return null;
     return (
-      <p
-        className={`tx-state tx-${tx.state}`}
-        role={tx.state === "failed" ? "alert" : "status"}
-        aria-live={tx.state === "failed" ? "assertive" : "polite"}
+      <form
+        className="compact-action-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const reason = String(new FormData(event.currentTarget).get("reason") ?? "");
+          void act(() => moderateContent(entityType, entityId, hidden ? "restore" : "hide", reason));
+        }}
       >
-        {tx.state === "failed" ? (
-          <AlertTriangle size={16} />
-        ) : tx.state === "confirmed" ? (
-          <CheckCircle2 size={16} />
-        ) : (
-          <Loader2 size={16} className="spin" />
-        )}
-        <span>
-          {label}
-          {tx.txHash ? (
-            <>
-              {": "}
-              <span className="tx-hash">{tx.txHash}</span>
-            </>
-          ) : tx.errorMessage ? (
-            <>: {tx.errorMessage}</>
-          ) : null}
-        </span>
-      </p>
+        <label>
+          {hidden ? "Restore reason" : "Moderation reason"}
+          <input name="reason" minLength={3} maxLength={500} defaultValue={hidden ? "Restored after moderator review" : "Illegal or prohibited service listing"} required />
+        </label>
+        <button type="submit">{hidden ? <Eye size={15} /> : <EyeOff size={15} />}{hidden ? "Restore" : "Hide from site"}</button>
+      </form>
     );
   }
 
-  function renderLifecycleAction(order: MarketplaceOrder) {
+  function reportForm(entityType: "bounty" | "review", entityId: string) {
+    return (
+      <details className="report-control">
+        <summary><Flag size={14} /> Report</summary>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            const reason = String(new FormData(event.currentTarget).get("reason") ?? "");
+            void act(() => reportContent(entityType, entityId, reason));
+            event.currentTarget.reset();
+          }}
+        >
+          <label>Reason<input name="reason" minLength={3} maxLength={500} required /></label>
+          <button type="submit">Send report</button>
+        </form>
+      </details>
+    );
+  }
+
+  function reviews(order: MarketplaceOrder) {
+    const participantReviews = order.reviews ?? [];
+    const alreadyReviewed = participantReviews.some((review) => review.author_id === session?.account.id);
+    return (
+      <section className="review-panel" aria-label={`Reviews for ${order.title}`}>
+        <div className="review-heading"><Star size={17} /><h5>Participant reviews</h5></div>
+        {participantReviews.length ? participantReviews.map((review) => (
+          <article className={`review-row ${review.moderation_status === "hidden" ? "content-hidden" : ""}`} key={review.id}>
+            <div>
+              <strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong>
+              <span>{review.direction === "service_received" ? "Service received" : "Payment received"} · {short(review.author_wallet_address)}</span>
+              <p>{review.moderation_status === "hidden" ? "Hidden from public view by moderation." : review.body}</p>
+            </div>
+            <div className="review-actions">
+              {reportForm("review", review.id)}
+              {moderationButton("review", review.id, review.moderation_status === "hidden")}
+            </div>
+          </article>
+        )) : <p>No participant reviews yet.</p>}
+        {mayReview(order) && !alreadyReviewed ? (
+          <form
+            className="review-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              void act(() => createParticipantReview(order.id, Number(form.get("rating")), String(form.get("body") ?? "")));
+            }}
+          >
+            <label>Rating<select name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} star{rating === 1 ? "" : "s"}</option>)}</select></label>
+            <label>Review<textarea name="body" minLength={3} maxLength={2000} required /></label>
+            <button type="submit">Publish review</button>
+          </form>
+        ) : null}
+        {isParticipant(order) && order.escrowObservation && !mayReview(order) ? (
+          <p className="form-hint">Reviews unlock only after the API re-verifies a Released or Settled onchain escrow state.</p>
+        ) : null}
+      </section>
+    );
+  }
+
+  function proposalForm(order: MarketplaceOrder) {
+    return (
+      <form
+        className="proposal-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const note = String(new FormData(event.currentTarget).get("note") ?? "");
+          void act(() => createProposal(order, note));
+        }}
+      >
+        <label>
+          Proposal evidence and plan
+          <textarea name="note" required placeholder="Delivery approach, timing, and evidence" />
+        </label>
+        <button type="submit">Submit proposal</button>
+      </form>
+    );
+  }
+
+  function lifecycle(order: MarketplaceOrder) {
     if (order.status === "open") {
       return (
-        <section className="lifecycle-panel" aria-label={`Proposal actions for ${order.title}`}>
-          <form className="proposal-form" onSubmit={(event) => submitOrderProposal(event, order)}>
-            <label>
-              Provider name
-              <input name="provider" placeholder="Contributor or team" required />
-            </label>
-            <label>
-              Proposed budget
-              <input name="proposedBudget" type="number" min="1" defaultValue={order.budget} required />
-            </label>
-            <label className="wide-field">
-              Proposal note
-              <textarea name="note" placeholder="Scope, timing, and evidence you will deliver" required />
-            </label>
-            <button type="submit">
-              <Send size={18} />
-              Submit proposal / claim
-            </button>
-          </form>
-
-          <div className="proposal-list" aria-label={`Existing proposals and claims for ${order.title}`}>
-            <h5>Provider claims and proposals</h5>
+        <section className="lifecycle-panel">
+          {!isBuyer(order) && session?.roles.includes("provider") ? proposalForm(order) : null}
+          <div className="proposal-list">
+            <h5>Proposals</h5>
             {order.proposals?.length ? (
               order.proposals.map((proposal) => (
                 <div className="proposal-row" key={proposal.id}>
                   <div>
-                    <strong>{proposal.provider}</strong>
+                    <strong>{short(proposal.provider)}</strong>
                     <p>{proposal.note}</p>
-                    <span>{proposal.proposedBudget.toLocaleString()} {order.token}</span>
+                    <span>{proposal.proposedBudget} {order.token}</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => updateOrder(order.id, (current) => bountyModel.acceptProposal(current, proposal.id))}
-                  >
-                    <CheckCircle2 size={18} />
-                    Accept proposal
-                  </button>
+                  {isBuyer(order) ? <button onClick={() => void act(() => acceptProposal(order.id, proposal.id))}>Accept proposal</button> : null}
                 </div>
               ))
             ) : (
-              <p className="empty-state">No proposals yet.</p>
+              <p>No proposals yet.</p>
             )}
           </div>
         </section>
       );
     }
 
-    if (order.status === "matched") {
-      const readiness = checkEscrowReadiness(escrowClient.chainId, order.token);
-      const inFlight = isActionInFlight(order.id, "fundEscrow");
-
-      return (
-        <section className="lifecycle-panel" aria-label={`Escrow actions for ${order.title}`}>
-          <p className="chain-preview-note">
-            Preview network: {escrowChain?.name ?? "Unsupported network"}
-            {escrowChain?.isTestnet ? " (testnet)" : ""} · USDC only
-          </p>
-          {!readiness.ok ? (
-            <p className="guardrail-warning" role="alert">
-              <AlertTriangle size={16} />
-              {readiness.message}
-            </p>
-          ) : null}
-          <button type="button" disabled={!readiness.ok || inFlight} onClick={() => handleStageEscrow(order)}>
-            {inFlight ? <Loader2 size={18} className="spin" /> : <LockKeyhole size={18} />}
-            {inFlight ? escrowActionContent.fundEscrow.working : "Stage escrow (simulated)"}
-          </button>
-        </section>
-      );
-    }
-
-    if (order.status === "escrowed") {
-      const inFlight = isActionInFlight(order.id, "submitDelivery");
-
-      return (
-        <section className="lifecycle-panel" aria-label={`Delivery actions for ${order.title}`}>
-          <form className="delivery-form" onSubmit={(event) => submitOrderDelivery(event, order)}>
-            <label>
-              Delivery evidence
-              <textarea name="deliveryEvidence" placeholder="Summarize delivered work and attach PRs, screenshots, or docs" required />
-            </label>
-            <button type="submit" disabled={inFlight}>
-              {inFlight ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
-              {inFlight ? escrowActionContent.submitDelivery.working : "Submit delivery"}
-            </button>
-          </form>
-        </section>
-      );
-    }
-
-    if (order.status === "delivered") {
-      const inFlight = isActionInFlight(order.id, "acceptDelivery");
-
-      return (
-        <section className="lifecycle-panel" aria-label={`Acceptance actions for ${order.title}`}>
-          {order.deliveryEvidence ?? order.deliveryNote ? (
-            <p className="delivery-note">Evidence: {order.deliveryEvidence ?? order.deliveryNote}</p>
-          ) : null}
-          <div className="criteria-checklist" aria-label={`Acceptance criteria for ${order.title}`}>
-            {order.criteria.map((criterion) => (
-              <label className="check-row" key={criterion.id}>
-                <input type="checkbox" checked readOnly disabled />
-                <span>{criterion.label}</span>
-              </label>
-            ))}
+    const milestones = order.milestones ?? [];
+    return (
+      <section className="lifecycle-panel">
+        {milestones.map((milestone) => (
+          <div className="milestone-row" key={milestone.id}>
+            <div>
+              <strong>{milestone.label}</strong>
+              <p>{orderStatusLabel(milestone.status)}</p>
+              {milestone.deliveryEvidence ? (
+                <p>Evidence: <a href={milestone.deliveryEvidence} target="_blank" rel="noreferrer">{milestone.deliveryEvidence}</a></p>
+              ) : null}
+            </div>
+            <div>
+              {isProvider(order) && milestone.status === "escrowed" && order.escrowObservation?.onchain_state === "ProviderAccepted" ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const uri = String(new FormData(event.currentTarget).get("uri") ?? "");
+                    void act(() => submitEvidence(milestone.id, uri));
+                  }}
+                >
+                  <label>Evidence URI<input name="uri" type="url" required /></label>
+                  <button>Submit evidence</button>
+                </form>
+              ) : null}
+              {isBuyer(order) && milestone.status === "delivered" && ["BuyerApproved", "Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "") ? (
+                <button onClick={() => void act(() => acceptEvidence(milestone.id))}>Accept evidence</button>
+              ) : null}
+            </div>
           </div>
-          <button type="button" disabled={inFlight} onClick={() => handleAcceptDelivery(order)}>
-            {inFlight ? <Loader2 size={18} className="spin" /> : <BadgeCheck size={18} />}
-            {inFlight ? escrowActionContent.acceptDelivery.working : "Accept delivery"}
-          </button>
-        </section>
-      );
-    }
+        ))}
 
-    if (order.status === "accepted") {
-      return (
-        <section className="lifecycle-panel" aria-label={`Payment release controls for ${order.title}`}>
-          <button className="release-button" type="button" disabled>
-            <Banknote size={18} />
-            Payment release locked until readiness review
-          </button>
-        </section>
-      );
-    }
+        {escrowControls(order)}
 
-    return null;
+        {isBuyer(order) && !order.escrowObservation ? (
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const txHash = String(new FormData(event.currentTarget).get("txHash") ?? "");
+              void act(() => recordEscrowObservation(order.id, txHash));
+            }}
+          >
+            <label>
+              Escrow transaction hash
+              <input name="txHash" value={escrowTxHashes[order.id] ?? ""} onChange={(event) => setEscrowTxHashes((current) => ({ ...current, [order.id]: event.target.value }))} pattern="0x[0-9a-fA-F]{64}" required />
+            </label>
+            <button>Verify escrow observation</button>
+            <p className="form-hint">
+              The API validates required confirmations, the receipt, and canonical create/fund logs before persistence.
+            </p>
+          </form>
+        ) : null}
+
+        {order.escrowObservation ? (
+          <>
+            <div className="support-note">
+              <ShieldCheck size={18} />
+              <span>Verified escrow observation · {order.escrowObservation.onchain_state ?? order.escrowObservation.status} · {short(order.escrowObservation.transaction_hash)}</span>
+            </div>
+            {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
+            {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {new Date(order.escrowObservation.review_deadline).toLocaleString()}.</p> : null}
+          </>
+        ) : null}
+      </section>
+    );
   }
 
   return (
     <main>
       <section className="workspace">
-        <aside className="sidebar" aria-label="Bounties marketplace navigation">
-          <div>
-            <p className="eyebrow">Standalone service marketplace preview</p>
-            <h1>{productManifest.name}</h1>
-          </div>
-          <nav>
-            <a href="#services">Services</a>
-            <a href="#request">Post request</a>
-            <a href="#orders">Orders</a>
-            <a href="#readiness">Readiness</a>
-          </nav>
+        <aside className="sidebar">
+          <div><p className="eyebrow">Wallet-only marketplace</p><h1>Bounties</h1></div>
+          <nav><a href="#tokens">Tokens</a><a href="#request">Create bounty</a><a href="#orders">Marketplace</a>{session?.staffRole ? <a href="#moderation">Admin</a> : null}</nav>
           <div className="gate-callout">
             <ShieldCheck size={18} />
-            <span>Requests can be staged now; live escrow release stays behind readiness review.</span>
+            <span>
+              Participant wallet actions are enabled only for configured deployments. The API verifies confirmations, receipts, and canonical logs before displaying funding state.
+            </span>
           </div>
         </aside>
 
         <section className="content">
-          <div className="demo-banner" role="status">
-            <ShieldCheck size={18} aria-hidden="true" />
-            <span><strong>Demo only - no funds are held or transferred.</strong> Escrow, token, and payout states are workflow previews until legal, security, and onchain readiness checks are complete.</span>
-          </div>
           <header className="topbar">
-            <div>
-              <p className="eyebrow">MIT marketplace release</p>
-              <h2>Hire contributors, post bounties, and preview protected payment workflows from task to project.</h2>
-            </div>
-            <div className="metrics" aria-label="Marketplace metrics">
-              <div><strong>{totals.open}</strong><span>Active orders</span></div>
-              <div><strong>{totals.providers}</strong><span>Matched providers</span></div>
-              <div><strong>${totals.value.toLocaleString()}</strong><span>Pipeline</span></div>
+            <div><p className="eyebrow">Persisted marketplace lifecycle</p><h2>Post work, choose providers, and verify delivery with a wallet.</h2></div>
+            <div className="account-actions">
+              <button aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                <Bell size={18} /> Notifications ({session?.notifications.filter((notification) => !notification.read_at).length ?? 0})
+              </button>
+              {wallet ? (
+                <button onClick={() => void disconnect()}><WalletCards size={18} />{short(wallet)} · Sign out</button>
+              ) : (
+                <button onClick={() => void connect()}><WalletCards size={18} />Connect wallet</button>
+              )}
+              {notificationsOpen ? (
+                <div className="notification-popover">
+                  {session?.notifications.length
+                    ? session.notifications.map((notification) => (
+                        <button
+                          key={notification.id}
+                          disabled={Boolean(notification.read_at)}
+                          onClick={() => void act(() => markNotificationRead(notification.id))}
+                        >
+                          {notification.body}{notification.read_at ? " · Read" : " · Mark read"}
+                        </button>
+                      ))
+                    : "No notifications."}
+                </div>
+              ) : null}
             </div>
           </header>
 
-          <section id="services" className="market-section">
-            <div className="section-heading">
-              <Search size={20} />
-              <h3>Find a service</h3>
-            </div>
-            <div className="service-grid">
-              {bountyModel.marketplaceServices.map((service) => (
-                <article className="service-card" key={service.id}>
-                  <div className="service-topline">
-                    <span className="scope">{service.category}</span>
-                    <span className="rating"><Star size={15} /> {service.rating.toFixed(1)}</span>
-                  </div>
-                  <h4>{service.title}</h4>
-                  <p>{service.provider} · {service.completedOrders} completed</p>
-                  <div className="tag-row">
-                    {service.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                  </div>
-                  <div className="service-footer">
-                    <strong>From ${service.startingAt.toLocaleString()}</strong>
-                    <span>{service.deliveryDays} day delivery</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
+          {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Reconnect and sign</button></div> : null}
+          {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {loading ? <p><Loader2 className="spin" /> Loading persisted marketplace…</p> : null}
 
-          <section className="columns">
-            <form id="request" className="panel form-panel" onSubmit={submitRequest}>
-              <div className="section-heading">
-                <ClipboardList size={20} />
-                <h3>Post a request</h3>
-              </div>
-              <label>
-                Request title
-                <input value={draft.title} onChange={(event) => updateDraft("title", event.target.value)} placeholder="Build a provider storefront" />
-              </label>
-              <div className="form-grid">
-                <label>
-                  Work scope
-                  <select value={draft.scope} onChange={(event) => updateDraft("scope", event.target.value as WorkScope)}>
-                    {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Category
-                  <select value={draft.category} onChange={(event) => updateDraft("category", event.target.value as ServiceCategory)}>
-                    {categories.map((category) => <option key={category}>{category}</option>)}
-                  </select>
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  Project
-                  <input value={draft.project} onChange={(event) => updateDraft("project", event.target.value)} placeholder="Marketplace Launch" />
-                </label>
-                <label>
-                  Budget
-                  <input type="number" min="1" value={draft.budget} onChange={(event) => updateDraft("budget", Number(event.target.value))} />
-                </label>
-              </div>
-              <div className="form-grid">
-                <label>
-                  Token
-                  <select value={draft.token} onChange={(event) => updateDraft("token", event.target.value as RequestDraft["token"])}>
-                    <option>USDC</option>
-                    <option>ETH</option>
-                    <option>BTREE</option>
-                  </select>
-                </label>
-                <label>
-                  Buyer / reviewer
-                  <input value={draft.buyer} onChange={(event) => updateDraft("buyer", event.target.value)} placeholder="Marketplace Ops" />
-                </label>
-              </div>
-              <label>
-                Preferred provider
-                <input value={draft.providerPreference} onChange={(event) => updateDraft("providerPreference", event.target.value)} placeholder="Optional" />
-              </label>
-              <label>
-                Milestone breakdown
-                <textarea
-                  value={draft.milestones}
-                  onChange={(event) => updateDraft("milestones", event.target.value)}
-                  placeholder="Discovery&#10;Build&#10;Review"
-                />
-              </label>
-              <label>
-                Support criteria
-                <textarea value={draft.support} onChange={(event) => updateDraft("support", event.target.value)} />
-              </label>
-              <label>
-                Acceptance criteria
-                <textarea value={draft.criteria} onChange={(event) => updateDraft("criteria", event.target.value)} />
-              </label>
-              <button type="submit" disabled={!validDraft}>
-                <CircleDollarSign size={18} />
-                Publish request
-              </button>
-            </form>
+          {!wallet ? (
+            <section className="panel empty-state-panel">
+              <WalletCards size={28} />
+              <strong>Connect a wallet to enter the marketplace</strong>
+              <span>Authentication is wallet-only; email, password, and guest accounts are not supported.</span>
+            </section>
+          ) : (
+            <>
+              <section className="panel" aria-label="Marketplace roles">
+                <div className="section-heading"><BadgeCheck /><h3>Roles</h3></div>
+                <p>Roles are additive and enforced by the API.</p>
+                <button disabled={session?.roles.includes("buyer")} onClick={() => void act(() => selectRole("buyer"))}>Enable buyer role</button>{" "}
+                <button disabled={session?.roles.includes("provider")} onClick={() => void act(() => selectRole("provider"))}>Enable provider role</button>
+              </section>
 
-            <section id="orders" className="panel queue">
-              <div className="section-heading">
-                <BriefcaseBusiness size={20} />
-                <h3>Order pipeline</h3>
-              </div>
-              {recentEscrowEvents.length > 0 ? (
-                <section className="escrow-activity" aria-label="Escrow preview activity">
-                  <h5>Escrow preview activity</h5>
-                  <ul>
-                    {recentEscrowEvents.map((event) => (
-                      <li key={event.txHash}>
-                        <span>{mapEventTypeToLabel(event.type)}</span>
-                        <span className="tx-hash">{event.orderId} · {event.txHash}</span>
-                      </li>
-                    ))}
-                  </ul>
+              <section id="tokens" className="panel">
+                <div className="section-heading"><Search /><h3>Inspect an ERC20</h3></div>
+                <form className="form-grid" onSubmit={inspect}>
+                  <label>
+                    Network
+                    <select value={inspectChain} onChange={(event) => setInspectChain(event.target.value)} required>
+                      {supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name} · {chainId}</option>)}
+                    </select>
+                  </label>
+                  <label>Contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" required /></label>
+                  <button>Inspect contract</button>
+                </form>
+                {inspected ? (
+                  <article className="readiness-card">
+                    <h4>{tokenLabel(inspected)}</h4>
+                    <p>{inspected.name ?? "Unnamed ERC20"} · {inspected.decimals} decimals · chain {inspected.chain_id}</p>
+                    <p>Source: {inspected.source_verification_status} · Proxy: {inspected.proxy_status}</p>
+                    <p>Risk flags: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "none reported"}</p>
+                    <a href={inspected.explorer_url} target="_blank" rel="noreferrer">Explorer <ExternalLink size={14} /></a>
+                  </article>
+                ) : null}
+              </section>
+
+              <section className="columns">
+                <form id="request" className="panel form-panel" onSubmit={publish}>
+                  <div className="section-heading"><ClipboardList /><h3>Create bounty</h3></div>
+                  <label>Request title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required /></label>
+                  <div className="form-grid">
+                    <label>Scope<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope}>{scope}</option>)}</select></label>
+                    <label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as ServiceCategory })}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+                  </div>
+                  <label>Project<input value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} required /></label>
+                  <div className="form-grid">
+                    <label>Buyer / reviewer<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} required /></label>
+                    <label>Delivery deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
+                  </div>
+                  <div className="form-grid">
+                    <label>Budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
+                    <label>
+                      Token
+                      <select aria-label="Token" value={draft.token} onChange={(event) => setDraft({ ...draft, token: event.target.value })} required>
+                        <option value="">Select configured token</option>
+                        {availableTokens.map((token) => <option key={token.id} value={token.id}>{tokenLabel(token)} · chain {token.chain_id}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <label>Milestones<textarea value={draft.milestones} onChange={(event) => setDraft({ ...draft, milestones: event.target.value })} /><span className="form-hint">One per line. Optional exact amount: Discovery | 125.5</span></label>
+                  <label>Support<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} /></label>
+                  <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} /></label>
+                  <button disabled={!isDraftValid(draft) || !selectedToken}>Publish bounty</button>
+                </form>
+
+                <section id="orders" className="panel queue">
+                  <div className="section-heading"><BriefcaseBusiness /><h3>Marketplace</h3></div>
+                  {session?.orders.length ? (
+                    session.orders.map((order) => (
+                      <article className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
+                        <div className="bounty-card-header">
+                          <div><span className="scope">{order.scope}</span><h4>{order.title}</h4></div>
+                          <strong>{order.budgetDisplay ?? order.budget} {order.tokenRecord ? tokenLabel(order.tokenRecord) : order.token}</strong>
+                        </div>
+                        <p>{order.project} · {order.buyer} · Delivery by {order.dueDate}</p>
+                        {order.tokenRecord ? <p className="token-identity">{chains[order.tokenRecord.chain_id as keyof typeof chains]?.name ?? `Chain ${order.tokenRecord.chain_id}`} · {short(order.tokenRecord.checksum_address)} · <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? ` · Risks: ${order.tokenRecord.risk_flags.join(", ")}` : ""}</p> : null}
+                        <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You are buyer" : "Marketplace bounty"}</span></div>
+                        {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
+                        <div className="content-actions">{reportForm("bounty", order.id)}{moderationButton("bounty", order.id, order.moderationStatus === "hidden")}</div>
+                        {lifecycle(order)}
+                        {reviews(order)}
+                      </article>
+                    ))
+                  ) : (
+                    <div className="empty-state-panel"><CheckCircle2 /><strong>No persisted bounties yet</strong></div>
+                  )}
+                </section>
+              </section>
+
+              {session?.staffRole ? (
+                <section id="moderation" className="panel moderation-panel">
+                  <div className="section-heading"><EyeOff /><h3>Moderation admin</h3></div>
+                  <p>App-only visibility control. This cannot alter escrow, token balances, contract state, or onchain history.</p>
+                  <p>{session.staffRole} wallet · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
+                  {session.moderationReports.map((report) => (
+                    <article className="report-row" key={report.id}>
+                      <div><strong>{report.entity_type} · {short(report.entity_id)}</strong><p>{report.reason}</p></div>
+                      {moderationButton(report.entity_type, report.entity_id, false)}
+                    </article>
+                  ))}
                 </section>
               ) : null}
-              {orders.map((order) => (
-                <article className="order-card" key={order.id}>
-                  <div className="bounty-card-header">
-                    <div>
-                      <span className="scope">{order.scope}</span>
-                      <h4>{order.title}</h4>
-                    </div>
-                    <strong>{order.budget.toLocaleString()} {order.token}</strong>
-                  </div>
-                  <p>{order.project} · {order.buyer} · Due {order.dueDate}</p>
-                  <div className="status-line">
-                    <span>{bountyModel.orderStatusLabel(order.status)}</span>
-                    <span>{order.provider ?? "Open marketplace"}</span>
-                    <span>{order.criteria.length} acceptance checks</span>
-                  </div>
-                  <ul>
-                    {order.criteria.slice(0, 2).map((criterion) => (
-                      <li key={criterion.id}><BadgeCheck size={16} />{criterion.label}</li>
-                    ))}
-                  </ul>
-                  {renderMilestones(order)}
-                  {renderLifecycleAction(order)}
-                  {renderOrderTxStatus(order)}
-                </article>
-              ))}
-            </section>
-          </section>
-
-          <section id="readiness" className="panel readiness-panel" aria-labelledby="readiness-title">
-            <div className="section-heading">
-              <Rocket size={20} />
-              <div>
-                <p className="eyebrow">Customer trust</p>
-                <h3 id="readiness-title">Readiness overview</h3>
-              </div>
-            </div>
-            <p className="section-intro">See what customers can use now, what is only a preview, and what still needs approval before go-live.</p>
-            <div className="readiness-grid">
-              {readinessCards.map((control) => (
-                <article className="readiness-card" key={control.title}>
-                  <div className="card-topline">
-                    <span className="card-category">{control.category}</span>
-                    <span className={`readiness-status status-${control.status.toLowerCase()}`}>{control.status}</span>
-                  </div>
-                  <h4>{control.title}</h4>
-                  <p>{control.detail}</p>
-                  <p className="card-owner">Owner: {control.owner}</p>
-                </article>
-              ))}
-            </div>
-          </section>
-
-          <section className="panel proposals" aria-labelledby="feature-proposals-title">
-            <div className="section-heading">
-              <Lightbulb size={20} />
-              <div>
-                <p className="eyebrow">Product roadmap</p>
-                <h3 id="feature-proposals-title">Feature proposals</h3>
-              </div>
-            </div>
-            <p className="section-intro">Keep roadmap ideas structured so reviewers can compare status, priority, and customer value at a glance.</p>
-            <div className="feature-layout">
-              <form className="feature-intake" aria-label="Add feature proposal" onSubmit={submitFeatureProposal}>
-                <div className="intake-header">
-                  <div>
-                    <p className="eyebrow">Proposal intake</p>
-                    <h4>Add a proposal</h4>
-                  </div>
-                  <p>Capture the status, priority, and value of a roadmap idea before it becomes live work.</p>
-                </div>
-                <label>
-                  Proposal title
-                  <input
-                    value={featureDraft.title}
-                    onChange={(event) => updateFeatureDraft("title", event.target.value)}
-                    placeholder="Verified provider profiles"
-                  />
-                </label>
-                <div className="form-grid">
-                  <label>
-                    Status
-                    <select value={featureDraft.status} onChange={(event) => updateFeatureDraft("status", event.target.value as FeatureProposalDraft["status"])}>
-                      {featureStatusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Priority
-                    <select value={featureDraft.priority} onChange={(event) => updateFeatureDraft("priority", event.target.value as FeatureProposalDraft["priority"])}>
-                      {featurePriorityOptions.map((priority) => (
-                        <option key={priority} value={priority}>
-                          {priority}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label className="wide-field">
-                  Value
-                  <textarea
-                    value={featureDraft.value}
-                    onChange={(event) => updateFeatureDraft("value", event.target.value)}
-                    placeholder="Describe the customer outcome or problem this solves"
-                  />
-                </label>
-                <button type="submit" disabled={!validFeatureDraft}>
-                  Add proposal
-                </button>
-              </form>
-
-              <div className="feature-grid" aria-live="polite">
-                {featureProposals.map((proposal) => (
-                  <article className="feature-card" key={proposal.id}>
-                    <div className="card-topline">
-                      <span className="feature-status">{proposal.status}</span>
-                      <span className="priority-badge">{proposal.priority}</span>
-                    </div>
-                    <h4>{proposal.title}</h4>
-                    <p className="feature-value-label">Value</p>
-                    <p>{proposal.value}</p>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </section>
+            </>
+          )}
+          <footer className="legal-footer"><a href="/terms.html">Terms</a><a href="/acceptable-use.html">Acceptable Use</a><a href="/privacy.html">Privacy</a><span>Pre-launch legal drafts</span></footer>
         </section>
       </section>
     </main>
   );
 }
-
-export default App;

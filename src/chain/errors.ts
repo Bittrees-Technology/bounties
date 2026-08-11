@@ -20,11 +20,11 @@ export class EscrowClientError extends Error {
 }
 
 const USER_MESSAGES: Record<EscrowErrorCode, string> = {
-  NETWORK_UNSUPPORTED: "This action needs a supported escrow preview network. Switch networks and try again.",
-  ASSET_UNSUPPORTED: "This asset is not supported for escrow yet. USDC is the only supported settlement asset.",
+  NETWORK_UNSUPPORTED: "This action needs a supported escrow network. Switch networks and try again.",
+  ASSET_UNSUPPORTED: "This token is not ready for ERC20 escrow on the selected chain.",
   AMOUNT_INVALID: "Enter a valid positive escrow amount.",
   INTEGRATION_DISABLED: "Live escrow settlement is disabled until legal, security, and onchain launch gates pass.",
-  WALLET_NOT_CONNECTED: "Connect a wallet to continue. No wallet is required for this preview.",
+  WALLET_NOT_CONNECTED: "Connect a wallet to continue.",
   INSUFFICIENT_ALLOWANCE: "Spending approval is required before funds can move.",
   CONTRACT_REVERTED: "The escrow contract rejected this action.",
   USER_REJECTED: "The request was cancelled.",

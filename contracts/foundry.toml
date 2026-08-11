@@ -12,3 +12,9 @@ optimizer_runs = 200
 [fuzz]
 runs = 256
 seed = "0x9f3b3f31f6c53ca5d8ee91c7d4c42e34f2375889e81ea88fa59f3ebc1655d1c2"
+
+[invariant]
+runs = 64
+depth = 128
+dictionary_weight = 20
+include_storage = false

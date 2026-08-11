@@ -1,6 +1,7 @@
 export type WorkScope = "task" | "milestone" | "project" | "retainer";
 export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid";
 export type ServiceCategory = "Engineering" | "Design" | "Research" | "Operations" | "Onchain" | "Growth";
+export type EscrowToken = string;
 
 export interface AcceptanceCriterion {
   id: string;
@@ -11,8 +12,11 @@ export interface AcceptanceCriterion {
 export interface Proposal {
   id: string;
   provider: string;
+  providerId?: string;
   note: string;
   proposedBudget: number;
+  providerAddress?: `0x${string}`;
+  proposalHash?: `0x${string}`;
 }
 
 export type FeatureProposalStatus = "Planned" | "In review" | "Shipped";
@@ -34,6 +38,8 @@ export interface Milestone {
   criteria: AcceptanceCriterion[];
   deliveryNote?: string;
   deliveryEvidence?: string;
+  deliveryEvidenceHash?: `0x${string}`;
+  deliveryContentHash?: `0x${string}`;
 }
 
 export interface MarketplaceService {
@@ -51,13 +57,26 @@ export interface MarketplaceService {
 
 export interface MarketplaceOrder {
   id: string;
+  creatorId?: string;
+  acceptedProposalId?: string;
   title: string;
   scope: WorkScope;
+  scopeHash?: `0x${string}`;
   category: ServiceCategory;
   budget: number;
-  token: "USDC" | "ETH" | "BTREE";
+  budgetDisplay?: string;
+  budgetBaseUnits?: string;
+  token: EscrowToken;
   buyer: string;
   provider?: string;
+  providerAddress?: `0x${string}`;
+  providerId?: string;
+  tokenRecord?: import("./persistence/supabase").TokenRecord;
+  escrowObservation?: import("./persistence/supabase").EscrowObservation;
+  moderationStatus?: "visible" | "hidden";
+  moderationReason?: string;
+  reviews?: import("./persistence/supabase").ParticipantReview[];
+  proposalHash?: `0x${string}`;
   project: string;
   support: string[];
   criteria: AcceptanceCriterion[];
@@ -74,9 +93,10 @@ export interface RequestDraft {
   scope: WorkScope;
   category: ServiceCategory;
   project: string;
-  budget: number;
+  budget: string | number;
   token: MarketplaceOrder["token"];
   buyer: string;
+  deliveryDeadline: string;
   providerPreference: string;
   milestones: string;
   support: string;
