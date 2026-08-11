@@ -1,5 +1,15 @@
+-- Discoverable by `supabase test db` and executable directly with psql.
 begin;
-select plan(33);
+select plan(73);
+
+select ok(
+  not has_table_privilege('anon', 'public.milestones', 'select'),
+  'anonymous REST access cannot reconstruct hidden bounty milestones'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.bounties', 'select'),
+  'browser sessions cannot bypass the same-origin service API through base tables'
+);
 
 -- Test through the same transaction-local wallet claim used by the application API.
 -- Grants are transaction-scoped test harness setup; production grants remain migration-owned.
@@ -12,6 +22,7 @@ create temporary table qa_ids (
   buyer uuid, provider uuid, stranger uuid, token uuid, bounty uuid,
   proposal uuid, milestone_one uuid, milestone_two uuid, notification uuid
 );
+grant select on qa_ids to authenticated;
 
 insert into public.wallet_accounts (wallet_address) values
   ('0x1111111111111111111111111111111111111111'),
@@ -111,14 +122,28 @@ select set_config('app.wallet_address', '0x1111111111111111111111111111111111111
 select lives_ok(
   $$ update public.bounties set accepted_proposal_id = (select proposal from qa_ids), status = 'accepted'
      where id = (select bounty from qa_ids);
-     update public.milestones set assigned_provider_id = (select provider from qa_ids), status = 'funded'
+     update public.milestones set assigned_provider_id = (select provider from qa_ids), status = 'assigned'
      where bounty_id = (select bounty from qa_ids); set constraints all immediate $$,
-  'creator accepts the matching proposal and assigns funded milestones'
+  'creator accepts the matching proposal and assigns milestones'
 );
+reset role;
 select throws_ok(
-  $$ update public.proposals set proposed_total_base_units = 249 where id = (select proposal from qa_ids);
-     set constraints all immediate $$,
-  '23514', null, 'accepted proposal budget drift is rejected'
+  $$ select public.app_submit_delivery_evidence(
+       (select provider from qa_ids),(select milestone_one from qa_ids),'https://example.test/unfunded',
+       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaab',
+       '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaac','bounties-evidence-v1') $$,
+  '22023', null, 'server rejects delivery evidence before escrow funding is verified'
+);
+set local role authenticated;
+select set_config('app.wallet_address', '0x1111111111111111111111111111111111111111', true);
+select lives_ok(
+  $$ update public.milestones set status = 'funded'
+     where bounty_id = (select bounty from qa_ids); set constraints all immediate $$,
+  'verified funding state unlocks assigned milestones for delivery'
+);
+select is_empty(
+  $$ update public.proposals set proposed_total_base_units = 249 where id = (select proposal from qa_ids) returning id $$,
+  'buyer cannot mutate an accepted provider proposal'
 );
 select throws_ok(
   $$ insert into public.proposals (bounty_id,provider_id,note,proposed_total_base_units,proposed_milestones)
@@ -156,9 +181,33 @@ select throws_ok(
   '42501', null, 'wallet cannot bypass server-side token inspection/finalization'
 );
 select is((select jsonb_array_length(risk_flags) from public.tokens where id = (select token from qa_ids)), 2, 'token collision and verification risk flags persist');
-select like((select explorer_url from public.tokens where id = (select token from qa_ids)), 'https://basescan.org/address/%', 'token record retains a direct explorer contract link');
+select is(
+  left((select explorer_url from public.tokens where id = (select token from qa_ids)), length('https://basescan.org/address/')),
+  'https://basescan.org/address/',
+  'token record retains a direct explorer contract link'
+);
 
 reset role;
+select is(
+  jsonb_typeof(public.app_bounty_json((select bounty from qa_ids),(select buyer from qa_ids))->'budget_base_units'),
+  'string',
+  'bounty budget base units serialize as an exact JSON string'
+);
+select is(
+  public.app_bounty_json((select bounty from qa_ids),(select buyer from qa_ids))->>'budget_base_units',
+  '250',
+  'serialized bounty budget retains its exact base-unit value'
+);
+select is(
+  jsonb_typeof(public.app_bounty_json((select bounty from qa_ids),(select buyer from qa_ids))#>'{milestones,0,amount_base_units}'),
+  'string',
+  'milestone base units serialize as exact JSON strings'
+);
+select is(
+  jsonb_typeof(public.app_bounty_json((select bounty from qa_ids),(select buyer from qa_ids))#>'{token,total_supply}'),
+  'string',
+  'token total supply serializes without JavaScript precision loss'
+);
 select lives_ok(
   $$ select public.app_issue_auth_nonce(
        '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',repeat('a',64),
@@ -190,13 +239,180 @@ select set_config('app.wallet_address', '0x2222222222222222222222222222222222222
 select is((select count(*)::integer from public.wallet_sessions), 0, 'cross-account sessions are hidden');
 select set_config('app.wallet_address', '0x3333333333333333333333333333333333333333', true);
 select is((select count(*)::integer from public.wallet_sessions), 1, 'session owner can resolve its persisted session');
+reset role;
+select lives_ok(
+  $$ select * from public.app_resolve_wallet_session(repeat('b',64), repeat('c',64), true) $$,
+  'server API resolves a valid session by digest and matching CSRF digest'
+);
+select throws_ok(
+  $$ select * from public.app_resolve_wallet_session(repeat('b',64), repeat('d',64), true) $$,
+  '28000', null, 'server API rejects a valid session token with the wrong CSRF digest'
+);
+select throws_ok(
+  $$ select public.app_create_proposal((select buyer from qa_ids),(select bounty from qa_ids),'self through API',250::text,'[]'::jsonb) $$,
+  '22023', null, 'server proposal RPC rejects a proposal after bounty acceptance'
+);
+select throws_ok(
+  $$ select public.app_mark_notification_read((select provider from qa_ids),(select notification from qa_ids)) $$,
+  '42501', null, 'server notification RPC rejects cross-account notification updates'
+);
+select lives_ok(
+  $$ select public.app_mark_notification_read((select buyer from qa_ids),(select notification from qa_ids)) $$,
+  'server notification RPC lets the recipient mark a notification read'
+);
+select lives_ok(
+  $$ select public.app_revoke_wallet_session(
+       (select session_id from public.app_resolve_wallet_session(repeat('b',64), repeat('c',64), true)),
+       (select stranger from qa_ids)) $$,
+  'server logout RPC revokes the current session'
+);
+select throws_ok(
+  $$ select * from public.app_resolve_wallet_session(repeat('b',64), repeat('c',64), true) $$,
+  '28000', null, 'revoked sessions cannot be reused'
+);
 
+set local role authenticated;
 select set_config('app.wallet_address', '0x1111111111111111111111111111111111111111', true);
 select lives_ok(
   $$ update public.milestones set status = 'accepted' where id = (select milestone_one from qa_ids) $$,
   'creator accepts delivered milestone state'
 );
 select is((select status::text from public.milestones where id = (select milestone_one from qa_ids)), 'accepted', 'create/propose/accept/deliver lifecycle remains persisted');
+
+reset role;
+select lives_ok(
+  $$ insert into public.escrow_records (
+       bounty_id,chain_id,token_id,contract_address,onchain_bounty_id,
+       requested_base_units,received_base_units,status,transaction_hash,block_hash,log_index
+     ) values (
+       (select bounty from qa_ids),8453,(select token from qa_ids),
+       '0x6666666666666666666666666666666666666666','7',250,250,'confirmed',
+       '0x' || repeat('1',64),'0x' || repeat('2',64),0
+     ) $$,
+  'verified escrow record is available for canonical state observations'
+);
+select throws_ok(
+  $$ select public.app_create_participant_review((select buyer from qa_ids),(select bounty from qa_ids),5,'Null state') $$,
+  '22023', null, 'null canonical state and freshness cannot bypass terminal review verification'
+);
+select lives_ok(
+  $$ select public.app_record_escrow_observation(
+       (select buyer from qa_ids),(select bounty from qa_ids),
+       '0x6666666666666666666666666666666666666666','escrow-adapter.v1','7','250','250','confirmed',
+       '0x' || repeat('1',64),'0x' || repeat('2',64),0) $$,
+  'an identical escrow binding replay is idempotent'
+);
+select throws_ok(
+  $$ select public.app_record_escrow_observation(
+       (select buyer from qa_ids),(select bounty from qa_ids),
+       '0x6666666666666666666666666666666666666666','escrow-adapter.v1','8','250','250','confirmed',
+       '0x' || repeat('3',64),'0x' || repeat('4',64),1) $$,
+  '23505', null, 'a confirmed bounty cannot be rebound to a different escrow transaction'
+);
+select lives_ok(
+  $$ select public.app_record_escrow_state(
+       (select buyer from qa_ids),(select bounty from qa_ids),'Funded','250',null::timestamptz,
+       '0x0000000000000000000000000000000000000000','0') $$,
+  'a bounty participant can persist a canonical nonterminal escrow state'
+);
+select throws_ok(
+  $$ select public.app_create_participant_review((select buyer from qa_ids),(select bounty from qa_ids),5,'Too early') $$,
+  '22023', null, 'reviews are rejected until a fresh terminal onchain state is verified'
+);
+select throws_ok(
+  $$ select public.app_record_escrow_state(
+       (select stranger from qa_ids),(select bounty from qa_ids),'Released','0',null::timestamptz,
+       '0x0000000000000000000000000000000000000000','0') $$,
+  '42501', null, 'a nonparticipant cannot record escrow state'
+);
+select lives_ok(
+  $$ insert into public.moderation_staff (account_id,role,granted_by)
+     values ((select buyer from qa_ids),'admin','pgTAP operations fixture') $$,
+  'operations can provision a wallet account as moderation staff outside public RPCs'
+);
+select throws_ok(
+  $$ select public.app_moderate_content(
+       (select stranger from qa_ids),'bounty',(select bounty from qa_ids),'hide','Unauthorized hide') $$,
+  '42501', null, 'a normal wallet cannot hide marketplace content'
+);
+select lives_ok(
+  $$ select public.app_moderate_content(
+       (select buyer from qa_ids),'bounty',(select bounty from qa_ids),'hide','Prohibited service listing') $$,
+  'an authorized moderator can hide a bounty from public discovery'
+);
+select is(
+  (select moderation_status from public.bounties where id = (select bounty from qa_ids)),
+  'hidden', 'moderation changes only the persisted frontend visibility state'
+);
+select lives_ok(
+  $$ select public.app_moderate_content(
+       (select buyer from qa_ids),'bounty',(select bounty from qa_ids),'restore','Restored after review') $$,
+  'authorized moderation can restore a bounty'
+);
+select lives_ok(
+  $$ select public.app_record_escrow_state(
+       (select buyer from qa_ids),(select bounty from qa_ids),'Released','0',now(),
+       '0x0000000000000000000000000000000000000000','0') $$,
+  'participant refresh can persist a freshly verified released state'
+);
+select lives_ok(
+  $$ select public.app_create_participant_review(
+       (select buyer from qa_ids),(select bounty from qa_ids),5,'Service delivered as agreed') $$,
+  'buyer can review service after terminal verification'
+);
+select throws_ok(
+  $$ select public.app_create_participant_review(
+       (select buyer from qa_ids),(select bounty from qa_ids),4,'Duplicate review') $$,
+  '23505', null, 'each participant may publish only one review per bounty'
+);
+select lives_ok(
+  $$ select public.app_create_participant_review(
+       (select provider from qa_ids),(select bounty from qa_ids),5,'Payment received as agreed') $$,
+  'provider can review payment after terminal verification'
+);
+select throws_ok(
+  $$ select public.app_create_participant_review(
+       (select stranger from qa_ids),(select bounty from qa_ids),1,'Not a participant') $$,
+  '42501', null, 'nonparticipants cannot review either party'
+);
+select is(
+  (select count(*)::integer from public.participant_reviews where bounty_id = (select bounty from qa_ids)),
+  2, 'the bilateral review pair persists independently'
+);
+select lives_ok(
+  $$ select public.app_report_content(
+       (select provider from qa_ids),'bounty',(select bounty from qa_ids),'Potential policy violation') $$,
+  'participants can report content for moderator review'
+);
+select lives_ok(
+  $$ select public.app_moderate_content(
+       (select buyer from qa_ids),'review',
+       (select id from public.participant_reviews where author_id = (select provider from qa_ids)),
+       'hide','Review contains prohibited content') $$,
+  'moderators can hide a review without changing the escrow'
+);
+select is(
+  (select moderation_status from public.participant_reviews where author_id = (select provider from qa_ids)),
+  'hidden', 'hidden review remains stored for audit and participant visibility'
+);
+select is(
+  (select count(*)::integer from public.moderation_actions),
+  3, 'every hide or restore action is retained in the immutable moderation log'
+);
+select is(
+  public.app_marketplace_snapshot((select buyer from qa_ids))->>'staffRole',
+  'admin', 'staff role is returned only from the server-owned marketplace snapshot'
+);
+select lives_ok(
+  $$ select public.app_consume_rate_limit((select buyer from qa_ids),'token_inspection',30,600) $$,
+  'the first token inspection in a window is admitted'
+);
+update public.api_rate_limits set request_count = 30
+where actor_id = (select buyer from qa_ids) and action = 'token_inspection';
+select throws_ok(
+  $$ select public.app_consume_rate_limit((select buyer from qa_ids),'token_inspection',30,600) $$,
+  '22023', null, 'token inspection work is bounded per wallet and time window'
+);
 
 select * from finish();
 rollback;

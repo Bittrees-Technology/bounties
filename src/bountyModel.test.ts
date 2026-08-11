@@ -59,6 +59,54 @@ describe("marketplace model", () => {
     ]);
   });
 
+  it("splits integer budgets exactly across empty milestone amounts", () => {
+    expect(parseMilestones("Discovery\nBuild\nReview", 250, "Accepted by reviewer")).toEqual([
+      {
+        id: "draft-ms-1",
+        label: "Discovery",
+        amount: 84,
+        status: "draft",
+        criteria: [{ id: "draft-1", label: "Accepted by reviewer", required: true }]
+      },
+      {
+        id: "draft-ms-2",
+        label: "Build",
+        amount: 83,
+        status: "draft",
+        criteria: [{ id: "draft-1", label: "Accepted by reviewer", required: true }]
+      },
+      {
+        id: "draft-ms-3",
+        label: "Review",
+        amount: 83,
+        status: "draft",
+        criteria: [{ id: "draft-1", label: "Accepted by reviewer", required: true }]
+      }
+    ]);
+  });
+
+  it("accepts fractional ERC20 budgets and milestone amounts", () => {
+    expect(parseMilestones("Discovery | 0.25\nBuild | 1.25", 1.5, "Accepted by reviewer").map(milestone => milestone.amount)).toEqual([0.25, 1.25]);
+    expect(isDraftValid({
+      title: "Fractional bounty",
+      scope: "task",
+      category: "Engineering",
+      project: "Marketplace",
+      budget: 1.5,
+      token: "USDC",
+      buyer: "Ops",
+      deliveryDeadline: "2099-01-01",
+      providerPreference: "",
+      milestones: "Discovery | 0.25\nBuild | 1.25",
+      support: "Spec",
+      criteria: "Accepted by reviewer"
+    })).toBe(true);
+  });
+
+  it("rejects custom milestone totals that do not reconcile to the bounty budget", () => {
+    expect(() => parseMilestones("Discovery | 100\nBuild | 100", 250, "Accepted by reviewer")).toThrow(/sum to 250/i);
+  });
+
   it("requires support and acceptance criteria before publishing a request", () => {
     expect(isDraftValid({
       title: "Build page",
@@ -68,6 +116,7 @@ describe("marketplace model", () => {
       budget: 100,
       token: "USDC",
       buyer: "Ops",
+      deliveryDeadline: "2099-01-01",
       providerPreference: "",
       milestones: "Discovery\nBuild",
       support: "",
@@ -84,6 +133,7 @@ describe("marketplace model", () => {
       budget: 500,
       token: "USDC",
       buyer: "Ops",
+      deliveryDeadline: "2099-01-01",
       providerPreference: "Platform Engineering",
       milestones: "Discovery\nBuild",
       support: "Spec",
@@ -99,7 +149,7 @@ describe("marketplace model", () => {
   });
 
   it("moves an order through the proposal, delivery, and acceptance lifecycle", () => {
-    const proposed = submitProposal(openOrder(), "Provider One", "I can ship this this week.", 475);
+    const proposed = submitProposal(openOrder(), "Provider One", "I can ship this this week.", 500);
     const proposal = proposed.proposals?.[0];
 
     expect(proposed.status).toBe("open");
@@ -107,11 +157,11 @@ describe("marketplace model", () => {
       id: "proposal-ord-test-1",
       provider: "Provider One",
       note: "I can ship this this week.",
-      proposedBudget: 475
+      proposedBudget: 500
     });
 
     const matched = acceptProposal(proposed, proposal!.id);
-    expect(matched).toMatchObject({ status: "matched", provider: "Provider One", budget: 475 });
+    expect(matched).toMatchObject({ status: "matched", provider: "Provider One", budget: 500 });
 
     const escrowed = stageEscrow(matched);
     const delivered = submitDelivery(escrowed, "Pull request and test evidence attached.");
@@ -132,6 +182,12 @@ describe("marketplace model", () => {
 
     const proposed = submitProposal(openOrder(), "Provider", "Note", 500);
     expect(() => acceptProposal({ ...proposed, status: "matched" }, proposed.proposals![0].id)).toThrow(/open/);
+  });
+
+  it("rejects proposal acceptance when the proposed budget does not match the bounty budget", () => {
+    const proposed = submitProposal(openOrder(), "Provider One", "I can ship this this week.", 475);
+
+    expect(() => acceptProposal(proposed, proposed.proposals![0].id)).toThrow(/must match the order budget/i);
   });
 
   it("rejects escrow staging unless the order is matched", () => {

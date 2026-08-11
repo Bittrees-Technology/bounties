@@ -2,162 +2,112 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import App from "./App";
+import { configureMockStaff } from "./test/setup";
 
 afterEach(() => {
   cleanup();
 });
 
+async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+  expect(await screen.findByText(/roles are additive/i)).toBeInTheDocument();
+  expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
+}
+
+async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "Ship provider storefront", tokenName = /USDC/i) {
+  await user.type(screen.getByLabelText(/request title/i), title);
+  await user.type(screen.getByLabelText(/project/i), "Marketplace");
+  await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
+  await user.selectOptions(screen.getByLabelText(/^token$/i), screen.getByRole("option", { name: tokenName }));
+  await user.click(screen.getByRole("button", { name: /publish bounty/i }));
+  return within(await screen.findByRole("heading", { name: title }).then((node) => node.closest("article") as HTMLElement));
+}
+
 describe("App", () => {
-  it("publishes a new marketplace request with milestone breakdown, support, and acceptance criteria", async () => {
+  it("requires wallet auth before entering the marketplace", () => {
+    render(<App />);
+    expect(screen.getByText(/connect a wallet to enter the marketplace/i)).toBeInTheDocument();
+    expect(screen.queryByText(/session expired/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/request title/i)).not.toBeInTheDocument();
+  });
+
+  it("connects a wallet and publishes a persisted bounty through the API boundary", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
 
-    await user.type(screen.getByLabelText(/request title/i), "Ship provider storefront");
-    await user.type(screen.getByLabelText(/project/i), "Marketplace");
-    await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
-    await user.type(screen.getByLabelText(/preferred provider/i), "Platform Engineering");
-    await user.clear(screen.getByLabelText(/milestone breakdown/i));
-    await user.type(screen.getByLabelText(/milestone breakdown/i), "Discovery phase\nImplementation\nReview");
-    await user.click(screen.getByRole("button", { name: /publish request/i }));
+    const order = await publishBounty(user);
 
-    const card = screen.getByText("Ship provider storefront").closest("article");
-    expect(card).not.toBeNull();
-
-    const order = within(card as HTMLElement);
-    expect(order.getByText("Discovery phase")).toBeInTheDocument();
-    expect(order.getByText(/Provider matched/i)).toBeInTheDocument();
+    expect(order.getByText(/Marketplace Ops/i)).toBeInTheDocument();
+    expect(order.getByText(/250 USDC/i)).toBeInTheDocument();
+    expect(order.getByText(/Open request/i)).toBeInTheDocument();
   });
 
-  it("accepts a provider proposal and shows the simulated escrow action", async () => {
+  it("accepts fractional token budgets", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
+    await user.clear(screen.getByLabelText(/budget/i));
+    await user.type(screen.getByLabelText(/budget/i), "1.5");
+    const order = await publishBounty(user, "Fractional bounty");
 
-    const card = screen.getByText("Refine lifecycle QA for marketplace requests").closest("article");
-    expect(card).not.toBeNull();
-
-    const order = within(card as HTMLElement);
-    await user.click(order.getByRole("button", { name: /accept proposal/i }));
-
-    expect(order.getByText(/Provider matched/i)).toBeInTheDocument();
-    expect(order.getByText("Frontend Ops")).toBeInTheDocument();
-    expect(order.getByRole("button", { name: /stage escrow \(simulated\)/i })).toBeInTheDocument();
+    expect(order.getByText(/1.5 USDC/i)).toBeInTheDocument();
   });
 
-  it("stages escrow through the mock chain client and reflects a confirmed preview transaction", async () => {
+  it("preserves an exact 18-decimal budget from input through persisted display", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
+    await user.clear(screen.getByLabelText(/budget/i));
+    await user.type(screen.getByLabelText(/budget/i), "0.123456789012345678");
+    const order = await publishBounty(user, "Exact decimal bounty", /WETH/i);
 
-    const card = screen.getByText("Refine lifecycle QA for marketplace requests").closest("article");
-    const order = within(card as HTMLElement);
-    await user.click(order.getByRole("button", { name: /accept proposal/i }));
-    expect(order.getByText(/base sepolia/i)).toBeInTheDocument();
-
-    await user.click(order.getByRole("button", { name: /stage escrow \(simulated\)/i }));
-
-    expect(await order.findByText(/preview tx submitted for escrow funding/i)).toBeInTheDocument();
-    expect(await order.findByText(/preview tx confirmed for escrow funding/i)).toBeInTheDocument();
-    expect(await order.findByText(/escrow staged/i)).toBeInTheDocument();
+    expect(order.getByText(/0\.123456789012345678 WETH/i)).toBeInTheDocument();
   });
 
-  it("submits delivery through the mock chain client before moving the order to review", async () => {
+  it("does not present an unconfigured WETH symbol as verified ETH", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
 
-    const card = screen.getByText("Build the contributor service profile page").closest("article");
-    expect(card).not.toBeNull();
-
-    const order = within(card as HTMLElement);
-    await user.type(order.getByLabelText(/delivery evidence/i), "PR #42 with screenshots and test output.");
-    await user.click(order.getByRole("button", { name: /submit delivery/i }));
-
-    expect(await order.findByText(/preview tx submitted for delivery/i)).toBeInTheDocument();
-    expect(await order.findByText(/preview tx confirmed for delivery/i)).toBeInTheDocument();
-    expect(await order.findByText(/delivered for review/i)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /WETH.*unverified token address/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /ETH \(backed by verified WETH\)/i })).not.toBeInTheDocument();
   });
 
-  it("blocks staging escrow for an unsupported asset with a guardrail message", async () => {
+  it("keeps every previously inspected ERC20 available by chain and contract identity", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
 
-    await user.type(screen.getByLabelText(/request title/i), "Ship an ETH-denominated retainer");
-    await user.type(screen.getByLabelText(/project/i), "Marketplace");
-    await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
-    await user.type(screen.getByLabelText(/preferred provider/i), "Platform Engineering");
-    await user.selectOptions(screen.getByLabelText(/^token$/i), "ETH");
-    await user.click(screen.getByRole("button", { name: /publish request/i }));
-
-    const card = screen.getByText("Ship an ETH-denominated retainer").closest("article");
-    const order = within(card as HTMLElement);
-
-    expect(order.getByText(/eth is not a supported escrow settlement asset/i)).toBeInTheDocument();
-    expect(order.getByRole("button", { name: /stage escrow \(simulated\)/i })).toBeDisabled();
+    expect(screen.getByRole("option", { name: /CUSTOM.*chain 84532/i })).toBeInTheDocument();
   });
 
-  it("keeps payment release disabled after delivery acceptance", async () => {
+  it("surfaces the server-side escrow verifier while live settlement is disabled", async () => {
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
+    const order = await publishBounty(user, "Verify escrow observation");
 
-    const card = screen.getByText("Package Base Sepolia escrow preflight").closest("article");
-    expect(card).not.toBeNull();
-
-    const order = within(card as HTMLElement);
-    expect(order.getAllByRole("checkbox").every((checkbox) => checkbox.hasAttribute("disabled"))).toBe(true);
-
-    await user.click(order.getByRole("button", { name: /accept delivery/i }));
-
-    expect(await order.findByText(/preview tx submitted for delivery acceptance/i)).toBeInTheDocument();
-    expect(await order.findByText(/preview tx confirmed for delivery acceptance/i)).toBeInTheDocument();
-    expect(await order.findByRole("button", { name: /payment release locked until readiness review/i })).toBeDisabled();
+    expect(order.getByLabelText(/escrow transaction hash/i)).toBeInTheDocument();
+    expect(order.getByRole("button", { name: /verify escrow observation/i })).toBeInTheDocument();
+    expect(order.getByText(/API validates required confirmations, the receipt, and canonical create\/fund logs/i)).toBeInTheDocument();
   });
 
-  it("separates live, demo, and planned readiness from feature proposals", () => {
-    render(<App />);
-
-    const readiness = screen.getByRole("region", { name: /readiness overview/i });
-    expect(within(readiness).getByText("Request intake")).toBeInTheDocument();
-    expect(within(readiness).getByText("Live")).toBeInTheDocument();
-    expect(within(readiness).getByText("Demo")).toBeInTheDocument();
-    expect(within(readiness).getAllByText("Planned")).toHaveLength(2);
-    expect(screen.queryByText(/launch gate/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/launch approval/i)).not.toBeInTheDocument();
-
-    const proposals = screen.getByRole("region", { name: /feature proposals/i });
-    expect(within(proposals).getByRole("form", { name: /add feature proposal/i })).toBeInTheDocument();
-    expect(within(proposals).getByText("Verified provider profiles")).toBeInTheDocument();
-    expect(within(proposals).getByText("Proposal comparison board")).toBeInTheDocument();
-  });
-
-  it("shows terms, privacy, and support placeholders without final policy claims", () => {
-    render(<App />);
-
-    const policies = screen.getByRole("region", { name: /terms, privacy, and support/i });
-    expect(within(policies).getAllByText("Terms").length).toBeGreaterThan(0);
-    expect(within(policies).getAllByText("Privacy").length).toBeGreaterThan(0);
-    expect(within(policies).getAllByText("Support").length).toBeGreaterThan(0);
-    expect(within(policies).getAllByText("Pending")).toHaveLength(3);
-    expect(within(policies).getByText(/final legal or operations commitments/i)).toBeInTheDocument();
-    expect(within(policies).getByText(/public support channel/i)).toBeInTheDocument();
-  });
-
-  it("adds a feature proposal through the intake form", async () => {
+  it("shows app-only moderation controls only to provisioned staff", async () => {
+    configureMockStaff("admin", [{
+      id: "00000000-0000-4000-8000-000000000888",
+      entity_type: "bounty",
+      entity_id: "00000000-0000-4000-8000-000000000123",
+      reason: "Potentially illegal service",
+      status: "open",
+      created_at: new Date().toISOString()
+    }]);
     const user = userEvent.setup();
     render(<App />);
+    await connectWallet(user);
 
-    const proposals = screen.getByRole("region", { name: /feature proposals/i });
-    const form = within(proposals).getByRole("form", { name: /add feature proposal/i });
-
-    await user.type(within(form).getByLabelText(/proposal title/i), "Priority provider inbox");
-    await user.selectOptions(within(form).getByLabelText(/^status$/i), "In review");
-    await user.selectOptions(within(form).getByLabelText(/^priority$/i), "P0");
-    await user.type(within(form).getByLabelText(/^value$/i), "Helps buyers compare providers faster.");
-    await user.click(within(form).getByRole("button", { name: /add proposal/i }));
-
-    const card = within(proposals).getByText("Priority provider inbox").closest("article");
-    expect(card).not.toBeNull();
-
-    const proposalCard = within(card as HTMLElement);
-    expect(proposalCard.getByText("In review")).toBeInTheDocument();
-    expect(proposalCard.getByText("P0")).toBeInTheDocument();
-    expect(proposalCard.getByText("Helps buyers compare providers faster.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /moderation admin/i })).toBeInTheDocument();
+    expect(screen.getByText(/app-only visibility control/i)).toBeInTheDocument();
+    expect(screen.getByText(/potentially illegal service/i)).toBeInTheDocument();
   });
 });

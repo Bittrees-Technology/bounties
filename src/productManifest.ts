@@ -1,5 +1,5 @@
 /**
- * Product-owned identity and runtime boundary for this standalone Bounties preview.
+ * Product-owned identity and runtime boundary for the standalone Bounties product.
  * This is intentionally descriptive: it does not configure DNS, authentication,
  * payments, or external integrations.
  */
@@ -11,11 +11,11 @@ export const productManifest = {
   runtime: {
     entryModule: "/src/main.tsx",
     packageName: "bounties",
-    deployment: "Not configured by this repository."
+    deployment: "Vercel production at https://bounties.bittrees.org/."
   },
   release: {
-    status: "Preview",
-    paymentHandling: "Simulated only; no funds are held or transferred."
+    status: "Pre-deployment",
+    paymentHandling: "ERC20 escrow adapter is fail-closed until a verified deployment is configured."
   },
   trustAndSupport: {
     owner: "Bounties product team (assignment pending)",

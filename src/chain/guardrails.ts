@@ -1,6 +1,6 @@
 import { assets, chains, CHAIN_INTEGRATION_ENABLED } from "./config";
 import { EscrowClientError, type EscrowErrorCode } from "./errors";
-import type { SupportedAsset, SupportedChainId } from "./types";
+import type { EscrowTokenRef, SupportedAsset, SupportedChainId, TokenIdentity } from "./types";
 
 export function isSupportedChain(chainId: number): chainId is SupportedChainId {
   return Object.prototype.hasOwnProperty.call(chains, chainId);
@@ -12,7 +12,7 @@ export function isSupportedAsset(token: string): token is SupportedAsset {
 
 export function assertSupportedNetwork(chainId: number): asserts chainId is SupportedChainId {
   if (!isSupportedChain(chainId)) {
-    throw new EscrowClientError("NETWORK_UNSUPPORTED", `Chain ${chainId} is not a supported escrow preview network.`);
+    throw new EscrowClientError("NETWORK_UNSUPPORTED", `Chain ${chainId} is not a supported escrow network.`);
   }
 }
 
@@ -23,8 +23,8 @@ export function assertSupportedAsset(token: string): asserts token is SupportedA
 }
 
 /**
- * Rejects an asset unless it is enabled for the selected preview network. This remains useful if
- * another preview network is configured later: adding it to `chains` alone will not enable USDC.
+ * Rejects an asset unless it is enabled for the selected network. Adding a network to `chains`
+ * alone does not enable a token there.
  */
 export function assertSupportedAssetOnNetwork(chainId: number, token: string): asserts token is SupportedAsset {
   assertSupportedNetwork(chainId);
@@ -41,6 +41,19 @@ export function assertValidAmount(amount: number): void {
   }
 }
 
+export function assertValidBaseUnitAmount(amountBaseUnits: string): void {
+  if (!/^[1-9][0-9]*$/.test(amountBaseUnits)) {
+    throw new EscrowClientError("AMOUNT_INVALID", "Escrow amount must be a positive integer in token base units.");
+  }
+}
+
+export function assertTokenIdentityOnNetwork(chainId: number, token: TokenIdentity): asserts token is EscrowTokenRef {
+  assertSupportedNetwork(chainId);
+  if (token.chainId !== chainId) {
+    throw new EscrowClientError("ASSET_UNSUPPORTED", `Token identity chain ${token.chainId} does not match chain ${chainId}.`);
+  }
+}
+
 /** Live settlement stays fail-closed regardless of network/asset support until launch gates pass. */
 export function assertIntegrationEnabled(): void {
   if (!CHAIN_INTEGRATION_ENABLED) {
@@ -51,9 +64,8 @@ export function assertIntegrationEnabled(): void {
 export type GuardrailCheck = { ok: true } | { ok: false; code: EscrowErrorCode; message: string };
 
 /**
- * Network/asset readiness check used to gate UI actions before a client call is even attempted.
- * Does not check CHAIN_INTEGRATION_ENABLED - the mock client intentionally stays usable in preview
- * mode so contributors can exercise the boundary without live settlement being enabled.
+ * Network/asset readiness check used before a client call. Deployment enablement is checked
+ * separately so inspection and read-only verification remain available before deployment.
  */
 export function checkEscrowReadiness(chainId: number, token: string): GuardrailCheck {
   try {

@@ -14,7 +14,7 @@ const idleState: EscrowTransactionState = { state: "idle" };
 
 /**
  * Drives pending/confirmed/failed UX for a single escrow action. `run` is generic over any
- * EscrowClient method so callers stay decoupled from mock-vs-live client wiring.
+ * EscrowClient method so callers stay decoupled from provider-specific wallet wiring.
  */
 export function useEscrowTransaction() {
   const [status, setStatus] = useState<EscrowTransactionState>(idleState);

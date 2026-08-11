@@ -1,147 +1,10 @@
-import type {
-  AcceptanceCriterion,
-  MarketplaceOrder,
-  MarketplaceService,
-  Milestone,
-  OrderStatus,
-  RequestDraft
-} from "./types";
+import type { AcceptanceCriterion, MarketplaceOrder, Milestone, OrderStatus, RequestDraft } from "./types";
 
 export const launchGates = [
   "Payments and escrow readiness approval",
   "Wallet, account, and release-control security review",
-  "Dispute, refund, and acceptance policy approval",
+  "Refund and delivery-release timing approval",
   "Production deployment, domain, and project-board readiness"
-];
-
-export const marketplaceServices: MarketplaceService[] = [
-  {
-    id: "svc-001",
-    title: "Ship a production-ready React feature",
-    provider: "Platform Engineering",
-    category: "Engineering",
-    rating: 4.9,
-    completedOrders: 38,
-    startingAt: 450,
-    deliveryDays: 5,
-    tags: ["React", "Testing", "Deployment"],
-    packageTiers: ["Fix", "Feature", "Project sprint"]
-  },
-  {
-    id: "svc-002",
-    title: "Audit an escrow or payout workflow",
-    provider: "Onchain Review Desk",
-    category: "Onchain",
-    rating: 4.8,
-    completedOrders: 21,
-    startingAt: 900,
-    deliveryDays: 7,
-    tags: ["Escrow", "Controls", "Base"],
-    packageTiers: ["Review", "Threat model", "Launch gate"]
-  },
-  {
-    id: "svc-003",
-    title: "Research, scope, and write a project brief",
-    provider: "Research Studio",
-    category: "Research",
-    rating: 5,
-    completedOrders: 44,
-    startingAt: 300,
-    deliveryDays: 3,
-    tags: ["Requirements", "Prior art", "Acceptance criteria"],
-    packageTiers: ["Memo", "PRD", "Full project packet"]
-  }
-];
-
-export const seedOrders: MarketplaceOrder[] = [
-  {
-    id: "ord-101",
-    title: "Build the contributor service profile page",
-    scope: "task",
-    category: "Engineering",
-    project: "Bounties Marketplace",
-    budget: 650,
-    token: "USDC",
-    buyer: "Marketplace Ops",
-    provider: "Platform Engineering",
-    support: ["Figma-ready layout notes", "Existing project labels", "Reviewer in default/coder"],
-    criteria: [
-      { id: "c1", label: "Profile shows services, packages, response time, and completed orders", required: true },
-      { id: "c2", label: "Tests and build pass before acceptance", required: true }
-    ],
-    milestones: [
-      {
-        id: "ms-101-1",
-        label: "Profile implementation",
-        amount: 400,
-        status: "escrowed",
-        criteria: [{ id: "m1-c1", label: "Profile data and service packages are visible", required: true }]
-      },
-      {
-        id: "ms-101-2",
-        label: "Review and handoff",
-        amount: 250,
-        status: "matched",
-        criteria: [{ id: "m1-c2", label: "Tests and build pass before handoff", required: true }]
-      }
-    ],
-    status: "escrowed",
-    dueDate: "2026-07-24"
-  },
-  {
-    id: "ord-202",
-    title: "Package Base Sepolia escrow preflight",
-    scope: "milestone",
-    category: "Onchain",
-    project: "Escrow Launch",
-    budget: 1400,
-    token: "USDC",
-    buyer: "Onchain Lead",
-    provider: "Onchain Review Desk",
-    support: ["Control matrix", "Deployment operator notes", "Rollback plan"],
-    criteria: [
-      { id: "c3", label: "Preflight covers create, fund, deliver, accept, release, refund, and dispute states", required: true },
-      { id: "c4", label: "Production funds remain disabled until readiness review", required: true }
-    ],
-    milestones: [
-      {
-        id: "ms-202-1",
-        label: "Control matrix review",
-        amount: 700,
-        status: "accepted",
-        criteria: [{ id: "m2-c1", label: "Each control has an owner and verification step", required: true }],
-        deliveryNote: "Control matrix and reviewer notes are attached for acceptance."
-      },
-      {
-        id: "ms-202-2",
-        label: "Sepolia preflight packet",
-        amount: 700,
-        status: "delivered",
-        criteria: [{ id: "m2-c2", label: "Preflight packet documents the non-production test flow", required: true }],
-        deliveryNote: "Preflight packet submitted for readiness review."
-      }
-    ],
-    status: "delivered",
-    dueDate: "2026-07-29"
-  },
-  {
-    id: "ord-303",
-    title: "Draft marketplace dispute and support policy",
-    scope: "project",
-    category: "Operations",
-    project: "Marketplace Trust",
-    budget: 800,
-    token: "USDC",
-    buyer: "General Counsel",
-    provider: "Marketplace Trust Desk",
-    support: ["Policy outline", "Acceptance authority map", "Appeal window"],
-    criteria: [
-      { id: "c5", label: "Policy separates buyer support, provider evidence, and arbiter escalation", required: true },
-      { id: "c6", label: "Escrow release language is marked as pending final approval", required: true }
-    ],
-    status: "matched",
-    dueDate: "2026-08-02"
-  }
 ];
 
 export function parseCriteria(raw: string): AcceptanceCriterion[] {
@@ -163,7 +26,45 @@ export function parseSupport(raw: string): string[] {
     .filter(Boolean);
 }
 
+function splitEvenly(total: number, count: number): number[] {
+  if (!Number.isInteger(total)) {
+    const equal = total / count;
+    return Array.from({ length: count }, (_, index) => index === count - 1 ? total - equal * (count - 1) : equal);
+  }
+  const quotient = Math.floor(total / count);
+  const remainder = total % count;
+
+  return Array.from({ length: count }, (_, index) => quotient + (index < remainder ? 1 : 0));
+}
+
+function parseMilestoneLine(line: string, index: number): { label: string; amount?: number } {
+  const [labelPart, amountPart] = line.split("|").map((part) => part.trim());
+  const label = labelPart || `Milestone ${index + 1}`;
+
+  if (!amountPart) {
+    return { label };
+  }
+
+  if (!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(amountPart)) {
+    throw new Error(`Milestone "${label}" must use a plain positive decimal amount.`);
+  }
+  const parsedAmount = Number(amountPart);
+  if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+    throw new Error(`Milestone "${label}" must use a positive decimal amount.`);
+  }
+
+  return { label, amount: parsedAmount };
+}
+
+function assertPositiveAmount(value: number, label: string): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a positive amount.`);
+  }
+}
+
 export function parseMilestones(raw: string, budget: number, criteria: string): Milestone[] {
+  assertPositiveAmount(budget, "Budget");
+
   const lines = raw
     .split("\n")
     .map((line) => line.trim())
@@ -175,45 +76,66 @@ export function parseMilestones(raw: string, budget: number, criteria: string): 
       {
         id: "draft-ms-1",
         label: "Full delivery",
-        amount: Math.max(1, budget),
+        amount: budget,
         status: "draft",
         criteria: parsedCriteria
       }
     ];
   }
 
-  const fallbackAmount = Math.max(1, Math.round(budget / lines.length));
-  return lines.map((line, index) => {
-    const [labelPart, amountPart] = line.split("|").map((part) => part.trim());
-    const parsedAmount = Number(amountPart?.replace(/[^0-9.]/g, ""));
-    const amount = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : fallbackAmount;
+  const parsedLines = lines.map((line, index) => parseMilestoneLine(line, index));
+  const hasCustomAmounts = parsedLines.some((milestone) => milestone.amount !== undefined);
 
-    return {
+  if (hasCustomAmounts) {
+    if (parsedLines.some((milestone) => milestone.amount === undefined)) {
+      throw new Error("Custom milestone amounts must be provided for every line or omitted entirely.");
+    }
+
+    const total = parsedLines.reduce((sum, milestone) => sum + (milestone.amount ?? 0), 0);
+    const tolerance = Number.EPSILON * Math.max(1, Math.abs(total), Math.abs(budget)) * parsedLines.length;
+    if (Math.abs(total - budget) > tolerance) {
+      throw new Error(`Custom milestone amounts must sum to ${budget}. Received ${total}.`);
+    }
+
+    return parsedLines.map((milestone, index) => ({
       id: `draft-ms-${index + 1}`,
-      label: labelPart || `Milestone ${index + 1}`,
-      amount,
+      label: milestone.label,
+      amount: milestone.amount as number,
       status: "draft",
       criteria: parsedCriteria
-    };
-  });
+    }));
+  }
+
+  const amounts = splitEvenly(budget, parsedLines.length);
+  return parsedLines.map((milestone, index) => ({
+    id: `draft-ms-${index + 1}`,
+    label: milestone.label,
+    amount: amounts[index],
+    status: "draft",
+    criteria: parsedCriteria
+  }));
 }
 
 export function createMarketplaceOrder(draft: RequestDraft, existingCount: number): MarketplaceOrder {
+  const numericBudget = Number(draft.budget);
+  assertPositiveAmount(numericBudget, "Budget");
+
   return {
     id: `ord-${String(existingCount + 1).padStart(3, "0")}`,
     title: draft.title.trim(),
     scope: draft.scope,
     category: draft.category,
     project: draft.project.trim(),
-    budget: Number(draft.budget),
+    budget: numericBudget,
+    budgetDisplay: String(draft.budget),
     token: draft.token,
     buyer: draft.buyer.trim(),
     provider: draft.providerPreference.trim() || undefined,
-    milestones: parseMilestones(draft.milestones, draft.budget, draft.criteria),
+    milestones: parseMilestones(draft.milestones, numericBudget, draft.criteria),
     support: parseSupport(draft.support),
     criteria: parseCriteria(draft.criteria),
     status: draft.providerPreference.trim() ? "matched" : "open",
-    dueDate: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+    dueDate: draft.deliveryDeadline
   };
 }
 
@@ -231,13 +153,26 @@ export function orderStatusLabel(status: OrderStatus): string {
 }
 
 export function isDraftValid(draft: RequestDraft): boolean {
+  const numericBudget = Number(draft.budget);
   return Boolean(
     draft.title.trim() &&
       draft.project.trim() &&
       draft.buyer.trim() &&
-      draft.budget > 0 &&
+      /^\d{4}-\d{2}-\d{2}$/.test(draft.deliveryDeadline) &&
+      Date.parse(`${draft.deliveryDeadline}T23:59:59.999Z`) > Date.now() &&
+      /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(String(draft.budget)) &&
+      Number.isFinite(numericBudget) &&
+      numericBudget > 0 &&
       parseSupport(draft.support).length > 0 &&
-      parseCriteria(draft.criteria).length > 0
+      parseCriteria(draft.criteria).length > 0 &&
+      (() => {
+        try {
+          parseMilestones(draft.milestones, numericBudget, draft.criteria);
+          return true;
+        } catch {
+          return false;
+        }
+      })()
   );
 }
 
@@ -256,11 +191,16 @@ function nextProposalId(order: MarketplaceOrder): string {
   return `proposal-${order.id}-${(order.proposals?.length ?? 0) + 1}`;
 }
 
+function milestoneTotal(order: MarketplaceOrder): number {
+  return order.milestones?.reduce((sum, milestone) => sum + milestone.amount, 0) ?? 0;
+}
+
 export function submitProposal(
   order: MarketplaceOrder,
   provider: string,
   note: string,
-  proposedBudget: number
+  proposedBudget: number,
+  providerAddress?: `0x${string}`
 ): MarketplaceOrder {
   requireStatus(order, "open", "Submitting a proposal");
 
@@ -278,7 +218,8 @@ export function submitProposal(
         id: nextProposalId(order),
         provider: normalizedProvider,
         note: normalizedNote,
-        proposedBudget
+        proposedBudget,
+        providerAddress
       }
     ]
   };
@@ -292,10 +233,18 @@ export function acceptProposal(order: MarketplaceOrder, proposalId: string): Mar
     throw new Error(`Proposal ${proposalId} was not found on order ${order.id}.`);
   }
 
+  if (order.milestones?.length && milestoneTotal(order) !== order.budget) {
+    throw new Error(`Order ${order.id} milestone amounts must sum to ${order.budget}.`);
+  }
+
+  if (proposal.proposedBudget !== order.budget) {
+    throw new Error(`Proposal ${proposalId} must match the order budget of ${order.budget}. Received ${proposal.proposedBudget}.`);
+  }
+
   return {
     ...order,
     provider: proposal.provider,
-    budget: proposal.proposedBudget,
+    providerAddress: proposal.providerAddress,
     status: "matched"
   };
 }

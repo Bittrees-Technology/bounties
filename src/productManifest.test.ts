@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { productManifest } from "./productManifest";
 
 describe("product manifest", () => {
-  it("declares a standalone preview with an explicit entry point", () => {
+  it("declares a standalone pre-deployment product with an explicit entry point", () => {
     expect(productManifest.name).toBe("Bounties");
     expect(productManifest.runtime.entryModule).toBe("/src/main.tsx");
-    expect(productManifest.release.status).toBe("Preview");
-    expect(productManifest.release.paymentHandling).toMatch(/simulated only/i);
+    expect(productManifest.release.status).toBe("Pre-deployment");
+    expect(productManifest.release.paymentHandling).toMatch(/fail-closed|fail closed/i);
   });
 
   it("keeps trust/support ownership and integrations as product-owned placeholders", () => {

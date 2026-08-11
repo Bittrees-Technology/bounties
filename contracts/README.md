@@ -11,25 +11,38 @@ address. Token symbols, decimals, names, and offchain prices are never read.
 
 ```text
 Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
-    |          |              |
-    +----------+-> Cancelled  +-> Refunded (at/after deliveryDeadline)
+    |          |              |              |
+    +----------+-> Cancelled  +-> Refunded   +-> Released (at/after reviewDeadline)
+               \______________\______________-> Settled (bilateral exact split)
 ```
 
 - Anyone can create a record.
 - The requester alone funds it, approves delivery, cancels before provider
   acceptance, or claims the deterministic timeout refund.
-- Any non-requester can accept the exact committed terms and become the provider.
+- The requester commits the provider and proposal hash at creation time. The
+  stored terms hash is
+  `keccak256(abi.encode(TERMS_DOMAIN, chainId, escrowAddress, scopeHash, proposalHash, provider))`.
+- Only that committed provider can accept the exact committed terms.
 - Only that provider can submit the immutable evidence commitment.
-- Anyone can trigger release after buyer approval; payout always goes to the
-  recorded provider.
+- Delivery stores `reviewDeadline = block.timestamp + 7 days`. Anyone can
+  trigger full release after buyer approval or at/after that exact deadline;
+  payout always goes to the recorded provider.
+- In `Funded`, `ProviderAccepted`, or `Delivered`, either requester or provider
+  may propose an exact provider payout from zero through the full principal.
+  Only the counterparty can accept the current exact proposal. Acceptance
+  terminally pays that amount to the provider and refunds the entire remainder
+  to the requester in one atomic transaction.
 - `deliveryDeadline == 0` disables timeout. Otherwise acceptance and delivery
   require `block.timestamp < deliveryDeadline`; refund requires
   `block.timestamp >= deliveryDeadline`.
-- There is intentionally no timeout after valid delivery. If the requester does
-  not approve, no third party can adjudicate the work in this product.
+- There is no adjudication or dispute dependency. The seven-day review expiry
+  deterministically releases the full principal; a different split requires
+  bilateral requester/provider consent.
 
 Terminal transfers follow checks-effects-interactions, zero principal and reduce
-per-token liability before the external call, and are guarded against reentrancy.
+per-token liability before external calls, and are guarded against reentrancy.
+For bilateral settlement, both exact transfers revert atomically if either leg
+fails, and provider payout plus requester refund always equals the principal.
 Funding and payout both verify exact contract/recipient balance deltas. This
 rejects false-returning, fee-on-transfer, sender-taxed, and other inexact behavior
 when observed. Rebasing and adversarial tokens are unsupported: a later negative

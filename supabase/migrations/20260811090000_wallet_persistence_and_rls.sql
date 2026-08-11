@@ -94,7 +94,7 @@ create table public.bounties (
   description text not null check (char_length(description) between 1 and 20000),
   scope_source jsonb not null default '{}'::jsonb,
   scope_hash text not null check (scope_hash ~ '^0x[0-9a-fA-F]{64}$'),
-  hash_version text not null default 'pending-contract-v1',
+  hash_version text not null default 'bounty-source-json.v1',
   chain_id bigint not null check (chain_id > 0),
   token_id uuid not null references public.tokens(id) on delete restrict,
   token_decimals integer not null check (token_decimals between 0 and 255),
@@ -139,7 +139,7 @@ create table public.delivery_evidence (
   uri text not null check (uri ~ '^https://'),
   content_hash text not null check (content_hash ~ '^0x[0-9a-fA-F]{64}$'),
   evidence_hash text not null check (evidence_hash ~ '^0x[0-9a-fA-F]{64}$'),
-  hash_version text not null default 'pending-contract-v1',
+  hash_version text not null default 'bounties-evidence-v1',
   revision integer not null default 1 check (revision > 0),
   submitted_at timestamptz not null default now(),
   unique (milestone_id, revision)
@@ -151,7 +151,7 @@ create table public.escrow_records (
   chain_id bigint not null check (chain_id > 0),
   token_id uuid not null references public.tokens(id) on delete restrict,
   contract_address text check (contract_address is null or contract_address = public.app_normalize_wallet(contract_address)),
-  interface_version text not null default 'pending-contract-v1',
+  interface_version text not null default 'escrow-adapter.v1',
   onchain_bounty_id text,
   requested_base_units numeric(78,0) not null check (requested_base_units > 0 and trunc(requested_base_units) = requested_base_units),
   received_base_units numeric(78,0) not null default 0 check (received_base_units >= 0 and trunc(received_base_units) = received_base_units),
@@ -244,6 +244,13 @@ declare nonce_id uuid;
 begin
   if public.app_normalize_wallet(p_wallet_address) is null then raise exception 'invalid wallet'; end if;
   if p_issued_at < now() - interval '30 seconds' or p_issued_at > now() + interval '30 seconds' or p_expires_at <> p_issued_at + interval '5 minutes' then raise exception 'invalid nonce lifetime'; end if;
+  delete from auth_nonces where expires_at < now() - interval '1 day';
+  if (select count(*) from auth_nonces
+      where wallet_address = public.app_normalize_wallet(p_wallet_address)
+        and domain = p_domain
+        and issued_at >= now() - interval '5 minutes') >= 10 then
+    raise exception 'NONCE_RATE_LIMITED' using errcode = '22023';
+  end if;
   insert into auth_nonces (wallet_address, chain_id, domain, uri, nonce_digest, issued_at, expires_at)
   values (public.app_normalize_wallet(p_wallet_address), p_chain_id, p_domain, p_uri, p_nonce_digest, p_issued_at, p_expires_at) returning id into nonce_id;
   return nonce_id;

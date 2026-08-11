@@ -108,22 +108,6 @@ nav a:hover {
   padding: 28px;
 }
 
-.demo-banner {
-  align-items: center;
-  background: #fff4cf;
-  border: 1px solid #e7bd48;
-  border-radius: 14px;
-  color: #503d08;
-  display: flex;
-  gap: 10px;
-  margin-bottom: 18px;
-  padding: 12px 14px;
-}
-
-.demo-banner svg {
-  flex: 0 0 auto;
-}
-
 .topbar {
   align-items: flex-start;
   display: flex;
@@ -733,11 +717,6 @@ li {
   color: #17633a;
 }
 
-.status-demo {
-  background: #e5efff;
-  color: #24508d;
-}
-
 .status-planned,
 .priority-badge {
   background: #fff1cc;
@@ -829,17 +808,6 @@ main {
   display: grid;
   gap: 20px;
   padding: clamp(18px, 2.6vw, 34px);
-}
-
-.demo-banner {
-  border-radius: 18px;
-  box-shadow: 0 12px 28px rgba(18, 30, 25, 0.08);
-  line-height: 1.5;
-}
-
-.demo-banner strong {
-  display: inline-block;
-  margin-right: 0.25rem;
 }
 
 .topbar {
@@ -1202,11 +1170,6 @@ li {
   color: #17633a;
 }
 
-.status-demo {
-  background: #e2ecfb;
-  color: #224f86;
-}
-
 .status-planned,
 .priority-badge {
   background: #f7e7bf;
@@ -1330,6 +1293,153 @@ textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
+.onchain-controls {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 14px;
+}
+
+.onchain-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.content-actions,
+.review-actions {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 12px;
+}
+
+.report-control summary {
+  align-items: center;
+  color: #5a6861;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.84rem;
+  gap: 5px;
+}
+
+.report-control form,
+.compact-action-form,
+.review-form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(150px, 1fr) auto;
+  margin-top: 10px;
+}
+
+.report-control input,
+.compact-action-form input {
+  min-width: 0;
+}
+
+.review-panel {
+  border-top: 1px solid #dce5df;
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
+.review-heading {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.review-heading h5,
+.review-row p {
+  margin: 0;
+}
+
+.review-row,
+.report-row {
+  align-items: flex-start;
+  background: #f8faf8;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px;
+}
+
+.review-row > div:first-child,
+.report-row > div:first-child {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.review-row span {
+  color: #617069;
+  font-size: 0.82rem;
+}
+
+.review-form {
+  grid-template-columns: minmax(110px, 160px) minmax(220px, 1fr) auto;
+}
+
+.content-hidden {
+  background: #fff5f3;
+  border-color: #d7978d;
+}
+
+.moderation-banner {
+  background: #7b2f24;
+  border-radius: 10px;
+  color: #fff;
+  padding: 9px 11px;
+}
+
+.moderation-panel,
+.moderation-panel > * {
+  min-width: 0;
+}
+
+.escrow-actions {
+  background: #f1f8f4;
+  border: 1px solid #bdd8c7;
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 14px;
+}
+
+.escrow-actions form {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(190px, 1fr) auto;
+}
+
+.secondary-button { background: #52645c; }
+
+.token-identity {
+  color: #5d6d65;
+  font-size: .82rem;
+  overflow-wrap: anywhere;
+}
+
+.legal-footer {
+  align-items: center;
+  color: #66766e;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 22px 4px 4px;
+}
+
 @media (max-width: 1180px) {
   .workspace {
     grid-template-columns: 1fr;
@@ -1395,6 +1505,24 @@ textarea {
   .proposal-row {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .onchain-controls,
+  .onchain-actions,
+  .content-actions,
+  .review-actions,
+  .review-row,
+  .report-row {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .report-control form,
+  .compact-action-form,
+  .review-form,
+  .escrow-actions form {
+    grid-template-columns: 1fr;
   }
 
   .milestone-meta {

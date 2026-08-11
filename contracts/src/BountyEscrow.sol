@@ -15,7 +15,7 @@ import {IBountyEscrow} from "./IBountyEscrow.sol";
 /// - scopeHash: keccak256(abi.encode(keccak256("BOUNTY_SCOPE_V1"), chainId,
 ///   escrowAddress, requester, token, plannedAmount, deliveryDeadline, metadataHash, salt))
 /// - termsHash: keccak256(abi.encode(keccak256("BOUNTY_TERMS_V1"), chainId,
-///   escrowAddress, scopeHash, proposalHash, salt))
+///   escrowAddress, scopeHash, proposalHash, provider))
 /// - evidenceHash: keccak256(abi.encode(keccak256("BOUNTY_EVIDENCE_V1"), chainId,
 ///   escrowAddress, bountyId, scopeHash, termsHash, provider, contentHash, uriHash, salt))
 /// - approvalHash: keccak256(abi.encode(keccak256("BOUNTY_APPROVAL_V1"), chainId,
@@ -28,6 +28,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     bytes32 public constant override TERMS_DOMAIN = keccak256("BOUNTY_TERMS_V1");
     bytes32 public constant override EVIDENCE_DOMAIN = keccak256("BOUNTY_EVIDENCE_V1");
     bytes32 public constant override APPROVAL_DOMAIN = keccak256("BOUNTY_APPROVAL_V1");
+    uint64 public constant override REVIEW_PERIOD = 7 days;
 
     uint256 public override nextBountyId = 1;
     mapping(address token => uint256 liability) public override totalLiability;
@@ -35,6 +36,8 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     /// @notice Creates a bounty and optionally funds it atomically.
     /// @param requestedAmount Exact ERC20 amount to pull, or zero for a record funded later.
+    /// @param provider Selected provider wallet committed at creation time.
+    /// @param proposalHash Proposal commitment that is bound to the selected provider.
     /// @param deliveryDeadline Zero for no timeout, otherwise the first timestamp at which an
     ///        accepted-but-undelivered bounty is refundable. Acceptance and delivery require
     ///        `block.timestamp < deliveryDeadline`; refund requires `>=`.
@@ -44,20 +47,33 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         uint256 requestedAmount,
         uint64 deliveryDeadline,
         bytes32 scopeHash,
-        bytes32 termsHash
+        address provider,
+        bytes32 proposalHash
     ) external override nonReentrant returns (uint256 bountyId) {
-        _validateCreation(token, deliveryDeadline, scopeHash, termsHash);
+        _validateCreation(token, deliveryDeadline, scopeHash, provider, proposalHash);
 
         bountyId = nextBountyId++;
         Bounty storage bounty = _bounties[bountyId];
         bounty.requester = msg.sender;
+        bounty.provider = provider;
         bounty.token = IERC20(token);
         bounty.deliveryDeadline = deliveryDeadline;
         bounty.scopeHash = scopeHash;
-        bounty.termsHash = termsHash;
+        bounty.proposalHash = proposalHash;
+        bounty.termsHash = _termsHash(scopeHash, proposalHash, provider);
         bounty.state = State.Created;
 
-        emit BountyCreated(bountyId, msg.sender, token, requestedAmount, scopeHash, termsHash, deliveryDeadline);
+        emit BountyCreated(
+            bountyId,
+            msg.sender,
+            token,
+            provider,
+            requestedAmount,
+            scopeHash,
+            proposalHash,
+            bounty.termsHash,
+            deliveryDeadline
+        );
 
         if (requestedAmount != 0) {
             _pullExact(bounty.token, msg.sender, requestedAmount);
@@ -86,20 +102,20 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         emit BountyFunded(bountyId, msg.sender, address(bounty.token), amount);
     }
 
-    /// @notice Permissionlessly opts the caller into the committed bounty terms as provider.
+    /// @notice Records acceptance from the provider committed at bounty creation.
     /// @dev Passing the expected hash prevents a provider from accepting stale or substituted terms.
     function acceptBounty(uint256 bountyId, bytes32 acceptedTermsHash) external override nonReentrant {
         Bounty storage bounty = _getBounty(bountyId);
         _onlyState(bountyId, bounty, State.Funded);
         _requireBeforeDeadline(bountyId, bounty.deliveryDeadline);
-        if (msg.sender == bounty.requester || msg.sender == address(this)) revert InvalidProvider(msg.sender);
+        if (msg.sender != bounty.provider) revert InvalidProvider(msg.sender);
         if (acceptedTermsHash != bounty.termsHash) {
             revert TermsHashMismatch(bounty.termsHash, acceptedTermsHash);
         }
         _requireSolvent(bounty.token);
 
-        bounty.provider = msg.sender;
         bounty.acceptedTermsHash = acceptedTermsHash;
+        _clearSettlement(bounty);
         bounty.state = State.ProviderAccepted;
 
         emit ProviderAccepted(bountyId, msg.sender, acceptedTermsHash);
@@ -115,9 +131,11 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         _requireSolvent(bounty.token);
 
         bounty.evidenceHash = evidenceHash;
+        bounty.reviewDeadline = uint64(block.timestamp) + REVIEW_PERIOD;
+        _clearSettlement(bounty);
         bounty.state = State.Delivered;
 
-        emit DeliverySubmitted(bountyId, msg.sender, evidenceHash);
+        emit DeliverySubmitted(bountyId, msg.sender, evidenceHash, bounty.reviewDeadline);
     }
 
     /// @notice Records the requester's immutable approval commitment.
@@ -134,10 +152,17 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         emit BuyerApproved(bountyId, msg.sender, approvalHash);
     }
 
-    /// @notice Pays an approved bounty to its provider. Anyone may trigger the owed payment.
+    /// @notice Pays a bounty to its provider after buyer approval or expiry of its delivery review period.
+    /// @dev Anyone may trigger the owed full payment. The review boundary is inclusive.
     function release(uint256 bountyId) external override nonReentrant {
         Bounty storage bounty = _getBounty(bountyId);
-        _onlyState(bountyId, bounty, State.BuyerApproved);
+        State current = bounty.state;
+        if (current == State.Delivered) {
+            uint64 reviewDeadline = bounty.reviewDeadline;
+            if (block.timestamp < reviewDeadline) revert ReviewPeriodActive(bountyId, reviewDeadline);
+        } else if (current != State.BuyerApproved) {
+            revert InvalidState(bountyId, current, State.BuyerApproved);
+        }
 
         IERC20 token = bounty.token;
         address provider = bounty.provider;
@@ -151,6 +176,68 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
         emit BountyReleased(bountyId, provider, address(token), amount);
         _pushExact(token, provider, amount, remainingLiability);
+    }
+
+    /// @notice Records an exact provider payout proposed by the requester or provider.
+    /// @dev A newer proposal from either party replaces the prior one. Zero is a valid provider payout.
+    function proposeSettlement(uint256 bountyId, uint256 providerPayout) external override nonReentrant {
+        Bounty storage bounty = _getBounty(bountyId);
+        _onlySettlementState(bountyId, bounty);
+        _onlyParty(bountyId, bounty);
+        uint256 principal = bounty.amount;
+        if (providerPayout > principal) {
+            revert SettlementAmountExceedsPrincipal(bountyId, providerPayout, principal);
+        }
+        _requireSolvent(bounty.token);
+
+        bounty.settlementProposer = msg.sender;
+        bounty.proposedProviderPayout = providerPayout;
+
+        emit SettlementProposed(bountyId, msg.sender, providerPayout);
+    }
+
+    /// @notice Accepts the counterparty's exact proposal and atomically splits the escrow principal.
+    /// @dev The supplied amount protects the acceptor against a proposal replacement before execution.
+    function acceptSettlement(uint256 bountyId, uint256 providerPayout) external override nonReentrant {
+        Bounty storage bounty = _getBounty(bountyId);
+        _onlySettlementState(bountyId, bounty);
+        _onlyParty(bountyId, bounty);
+
+        address proposer = bounty.settlementProposer;
+        if (proposer == address(0) || proposer == msg.sender) {
+            revert SettlementAcceptanceUnavailable(bountyId, msg.sender, proposer);
+        }
+        uint256 proposedProviderPayout = bounty.proposedProviderPayout;
+        if (providerPayout != proposedProviderPayout) {
+            revert SettlementProposalMismatch(bountyId, proposedProviderPayout, providerPayout);
+        }
+
+        IERC20 token = bounty.token;
+        uint256 principal = bounty.amount;
+        uint256 requesterRefund = principal - providerPayout;
+        _requireSolvent(token);
+
+        bounty.amount = 0;
+        bounty.state = State.Settled;
+        uint256 remainingLiability = totalLiability[address(token)] - principal;
+        totalLiability[address(token)] = remainingLiability;
+
+        emit BountySettled(
+            bountyId,
+            bounty.provider,
+            bounty.requester,
+            address(token),
+            proposer,
+            msg.sender,
+            providerPayout,
+            requesterRefund
+        );
+        if (providerPayout != 0) {
+            _pushExact(token, bounty.provider, providerPayout, remainingLiability + requesterRefund);
+        }
+        if (requesterRefund != 0) {
+            _pushExact(token, bounty.requester, requesterRefund, remainingLiability);
+        }
     }
 
     /// @notice Cancels a bounty before any provider has accepted it.
@@ -205,25 +292,44 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         return _getBounty(bountyId);
     }
 
-    function _validateCreation(address token, uint64 deliveryDeadline, bytes32 scopeHash, bytes32 termsHash)
-        private
-        view
-    {
+    function _validateCreation(
+        address token,
+        uint64 deliveryDeadline,
+        bytes32 scopeHash,
+        address provider,
+        bytes32 proposalHash
+    ) private view {
         if (token == address(0)) revert ZeroAddress();
         if (token.code.length == 0) revert InvalidToken(token);
         if (deliveryDeadline != 0 && deliveryDeadline <= block.timestamp) {
             revert InvalidDeadline(deliveryDeadline);
         }
         if (scopeHash == bytes32(0)) revert ZeroScopeHash();
-        if (termsHash == bytes32(0)) revert ZeroTermsHash();
+        if (proposalHash == bytes32(0)) revert ZeroProposalHash();
+        if (provider == address(0) || provider == msg.sender || provider == address(this)) {
+            revert InvalidProvider(provider);
+        }
+    }
+
+    function _termsHash(bytes32 scopeHash, bytes32 proposalHash, address provider) private view returns (bytes32) {
+        return keccak256(abi.encode(TERMS_DOMAIN, block.chainid, address(this), scopeHash, proposalHash, provider));
     }
 
     function _pullExact(IERC20 token, address from, uint256 amount) private {
         uint256 balanceBefore = token.balanceOf(address(this));
+        uint256 senderBalanceBefore = token.balanceOf(from);
         token.safeTransferFrom(from, address(this), amount);
         uint256 balanceAfter = token.balanceOf(address(this));
+        uint256 senderBalanceAfter = token.balanceOf(from);
         uint256 received = balanceAfter >= balanceBefore ? balanceAfter - balanceBefore : 0;
+        uint256 debited = senderBalanceBefore >= senderBalanceAfter ? senderBalanceBefore - senderBalanceAfter : 0;
         if (received != amount) revert FundingAmountMismatch(address(token), amount, received);
+        if (debited != amount) revert FundingDebitMismatch(address(token), amount, debited);
+    }
+
+    function _clearSettlement(Bounty storage bounty) private {
+        bounty.settlementProposer = address(0);
+        bounty.proposedProviderPayout = 0;
     }
 
     function _pushExact(IERC20 token, address recipient, uint256 amount, uint256 remainingLiability) private {
@@ -270,6 +376,19 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     function _onlyProvider(uint256 bountyId, Bounty storage bounty) private view {
         if (msg.sender != bounty.provider) revert UnauthorizedActor(bountyId, msg.sender);
+    }
+
+    function _onlyParty(uint256 bountyId, Bounty storage bounty) private view {
+        if (msg.sender != bounty.requester && msg.sender != bounty.provider) {
+            revert UnauthorizedActor(bountyId, msg.sender);
+        }
+    }
+
+    function _onlySettlementState(uint256 bountyId, Bounty storage bounty) private view {
+        State current = bounty.state;
+        if (current != State.Funded && current != State.ProviderAccepted && current != State.Delivered) {
+            revert SettlementUnavailable(bountyId, current);
+        }
     }
 
     function _onlyState(uint256 bountyId, Bounty storage bounty, State required) private view {

@@ -1,7 +1,7 @@
 {
   "name": "Bounties",
   "short_name": "Bounties",
-  "description": "Wallet-first service marketplace preview for scoped bounties, proposals, milestones, and ERC20 escrow readiness.",
+  "description": "Wallet-first tokenized bounties with proposals, delivery evidence, and ERC20 escrow.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

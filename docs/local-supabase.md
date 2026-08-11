@@ -17,7 +17,7 @@ This project is wallet-first. Do not enable email/password login or commit servi
    supabase start
    ```
 
-3. Copy the local API URL and anon key from the `supabase start` output into `.env.local`.
+3. Copy `.env.local.example` to `.env.local` and set `SUPABASE_FUNCTIONS_ORIGIN` for the same-origin proxy. Do not add a Supabase anon key to frontend configuration; the browser uses wallet session cookies against `wallet-auth` and `bounties-api`.
 4. Run migrations:
 
    ```bash

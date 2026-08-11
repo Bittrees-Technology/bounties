@@ -28,3 +28,9 @@ enable_confirmations = false
 
 [storage]
 enabled = false
+
+[functions.wallet-auth]
+verify_jwt = false
+
+[functions.bounties-api]
+verify_jwt = false
