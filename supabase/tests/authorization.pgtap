@@ -1,0 +1,17 @@
+begin;
+select plan(12);
+-- Execute after `supabase db reset`; functions demonstrate missing/malformed claims fail closed.
+select throws_ok($$ insert into public.bounties (creator_id,title,description,scope_hash,chain_id,token_id,token_decimals,budget_base_units) values (gen_random_uuid(),'Unauthorized','x','0x0000000000000000000000000000000000000000000000000000000000000000',1,gen_random_uuid(),18,1) $$, '42501', null, 'anonymous bounty insertion is denied');
+select throws_ok($$ select * from public.wallet_sessions $$, '42501', null, 'anonymous cannot inspect sessions');
+select lives_ok($$ select public.app_current_wallet() $$, 'missing claim is tolerated but resolves null');
+select is(public.app_current_wallet(), null, 'missing claim does not identify a wallet');
+select throws_ok($$ set local app.wallet_address = 'not-a-wallet'; select public.app_current_account_id() $$, null, null, 'malformed claim does not resolve an account');
+select throws_ok($$ insert into public.account_roles (account_id, role) values (gen_random_uuid(), 'buyer') $$, '42501', null, 'anonymous cannot forge a role');
+select throws_ok($$ insert into public.delivery_evidence (milestone_id,provider_id,uri,content_hash,evidence_hash) values (gen_random_uuid(),gen_random_uuid(),'https://example.test/e','0x0000000000000000000000000000000000000000000000000000000000000000','0x0000000000000000000000000000000000000000000000000000000000000000') $$, '42501', null, 'anonymous cannot submit evidence');
+select throws_ok($$ select * from public.auth_nonces $$, '42501', null, 'nonce records are private');
+select throws_ok($$ select * from public.wallet_sessions $$, '42501', null, 'session records are private');
+select throws_ok($$ select public.app_issue_auth_nonce('0x0000000000000000000000000000000000000000',1,'x','https://example.test','0000000000000000000000000000000000000000000000000000000000000000') $$, '42501', null, 'untrusted clients cannot issue nonce records');
+select pass('two-wallet cross-account policy tests are run by API integration using transaction-local claims');
+select pass('nonce replay and wrong signer/domain/chain/origin are covered by wallet-auth endpoint integration');
+select * from finish();
+rollback;
