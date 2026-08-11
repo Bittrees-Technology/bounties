@@ -419,6 +419,123 @@ li {
   margin-top: 16px;
 }
 
+.account-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  position: relative;
+}
+
+.notification-button {
+  background: rgba(255, 255, 255, 0.84);
+  border: 1px solid rgba(24, 33, 29, 0.12);
+  color: #24463c;
+  box-shadow: none;
+}
+
+.notification-count {
+  align-items: center;
+  background: #e7f3ef;
+  border-radius: 999px;
+  color: #0f6b57;
+  display: inline-flex;
+  font-size: 0.76rem;
+  height: 20px;
+  justify-content: center;
+  min-width: 20px;
+}
+
+.notification-popover {
+  background: #fff;
+  border: 1px solid rgba(24, 33, 29, 0.14);
+  border-radius: 12px;
+  box-shadow: 0 16px 35px rgba(18, 30, 25, 0.14);
+  padding: 14px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 210px;
+  z-index: 5;
+}
+
+.session-alert,
+.form-error {
+  align-items: center;
+  background: #fff1cc;
+  border: 1px solid #e7bd48;
+  border-radius: 14px;
+  color: #503d08;
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  padding: 12px 14px;
+}
+
+.session-alert button {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 8px 11px;
+}
+
+.form-error {
+  background: #fdecea;
+  border-color: #f2b8b0;
+  color: #7a271a;
+  margin: 0;
+}
+
+.form-hint {
+  color: #5a6861;
+  font-size: 0.82rem;
+  margin: 0;
+}
+
+.secondary-button {
+  background: #e7f3ef;
+  border: 1px solid rgba(15, 107, 87, 0.2);
+  box-shadow: none;
+  color: #0f6b57;
+  min-height: 38px;
+}
+
+.empty-state-panel {
+  align-items: center;
+  border: 1px dashed rgba(15, 107, 87, 0.3);
+  border-radius: 16px;
+  color: #5a6861;
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  padding: 34px 18px;
+  text-align: center;
+}
+
+.empty-state-panel svg {
+  color: #0f6b57;
+}
+
+@media (max-width: 900px) {
+  .workspace { grid-template-columns: 1fr; }
+  .sidebar { min-height: auto; position: static; }
+  .sidebar nav { grid-template-columns: repeat(3, 1fr); }
+  .topbar { align-items: start; grid-template-columns: 1fr; }
+  .account-actions { justify-content: flex-start; }
+}
+
+@media (max-width: 560px) {
+  .content { padding: 14px; }
+  .sidebar { padding: 20px; }
+  .sidebar nav { grid-template-columns: 1fr 1fr; }
+  .columns, .form-grid, .proposal-form { grid-template-columns: 1fr; }
+  .proposal-form .wide-field, .proposal-form button { grid-column: auto; }
+  .bounty-card-header, .milestone-row, .proposal-row { display: grid; }
+  .milestone-meta { justify-items: start; }
+  .session-alert { align-items: flex-start; flex-wrap: wrap; }
+  .session-alert button { margin-left: 0; }
+}
+
 .proposal-row button {
   flex: 0 0 auto;
 }

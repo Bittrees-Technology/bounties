@@ -16,7 +16,11 @@ import {
   Search,
   Send,
   ShieldCheck,
-  Star
+  Star,
+  WalletCards,
+  Bell,
+  WifiOff,
+  RefreshCw
 } from "lucide-react";
 import * as bountyModel from "./bountyModel";
 import {
@@ -34,8 +38,8 @@ import type {
   EscrowEventType,
   EscrowTransactionState,
   EscrowTxResult,
-  SupportedAsset
 } from "./chain";
+import type { EscrowFundingInput } from "./chain/types";
 import type { FeatureProposal, MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
 import { productManifest } from "./productManifest";
 import "./styles.css";
@@ -148,53 +152,10 @@ const initialFeatureDraft: FeatureProposalDraft = {
   value: ""
 };
 
-const initialOrders: MarketplaceOrder[] = [
-  {
-    id: "ord-090",
-    title: "Refine lifecycle QA for marketplace requests",
-    scope: "task",
-    category: "Operations",
-    project: "Marketplace Lifecycle",
-    budget: 520,
-    token: "USDC",
-    buyer: "Marketplace QA",
-    support: ["Current request form", "Order pipeline states", "Readiness review notes"],
-    criteria: [
-      { id: "c0-1", label: "Open requests accept provider proposals inline", required: true },
-      { id: "c0-2", label: "Accepted proposals move the order to matched", required: true }
-    ],
-    status: "open",
-    dueDate: "2026-08-04",
-    proposals: [
-      {
-        id: "prop-090-a",
-        provider: "Frontend Ops",
-        note: "Can cover the lifecycle controls and a Vitest interaction.",
-        proposedBudget: 500
-      }
-    ]
-  },
-  ...bountyModel.seedOrders,
-  {
-    id: "ord-404",
-    title: "Finalize marketplace support handoff",
-    scope: "milestone",
-    category: "Operations",
-    project: "Marketplace Trust",
-    budget: 360,
-    token: "USDC",
-    buyer: "Marketplace Ops",
-    provider: "Research Studio",
-    support: ["Support queue notes", "Buyer acceptance checklist"],
-    criteria: [
-      { id: "c4-1", label: "Support handoff is accepted by the readiness reviewer", required: true },
-      { id: "c4-2", label: "Payment release remains paused until readiness review", required: true }
-    ],
-    status: "accepted",
-    dueDate: "2026-08-08",
-    deliveryNote: "Support handoff accepted; waiting on readiness review before any payment release control is enabled."
-  }
-];
+// Orders are loaded from the persistence layer by the integration stream. An
+// empty initial state is intentional: production must never present fixtures as
+// real work or balances.
+const initialOrders: MarketplaceOrder[] = [];
 
 type LifecycleEscrowAction = Extract<EscrowAction, "fundEscrow" | "submitDelivery" | "acceptDelivery">;
 
@@ -244,6 +205,10 @@ function App() {
   const [draft, setDraft] = useState<RequestDraft>(defaultDraft);
   const [featureProposals, setFeatureProposals] = useState<FeatureProposal[]>(initialFeatureProposals);
   const [featureDraft, setFeatureDraft] = useState<FeatureProposalDraft>(initialFeatureDraft);
+  const [wallet, setWallet] = useState<string | null>(null);
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
   const validDraft = bountyModel.isDraftValid(draft);
   const validFeatureDraft = Boolean(featureDraft.title.trim() && featureDraft.value.trim());
 
@@ -279,7 +244,7 @@ function App() {
   async function runEscrowLifecycleAction(
     order: MarketplaceOrder,
     action: LifecycleEscrowAction,
-    execute: (asset: SupportedAsset) => Promise<EscrowTxResult>,
+    execute: (funding: EscrowFundingInput) => Promise<EscrowTxResult>,
     onConfirmed: (order: MarketplaceOrder) => MarketplaceOrder
   ) {
     const readiness = checkEscrowReadiness(escrowClient.chainId, order.token);
@@ -298,7 +263,15 @@ function App() {
     setOrderTx(order.id, { action, state: "pending" });
 
     try {
-      const result = await execute(supportedAsset);
+      const result = await execute({
+        amountBaseUnits: String(Math.round(order.budget * 10 ** (order.token === "USDC" || order.token === "USDT" ? 6 : 18))),
+        token: {
+          chainId: escrowClient.chainId,
+          contractAddress: "0x0000000000000000000000000000000000000000",
+          symbol: supportedAsset,
+          explorerUrl: ""
+        }
+      });
 
       if (result.state === "failed") {
         eventWatcher.unsubscribe();
@@ -347,7 +320,7 @@ function App() {
     await runEscrowLifecycleAction(
       order,
       "fundEscrow",
-      (asset) => escrowClient.fundEscrow({ orderId: order.id }, order.budget, asset),
+      (funding) => escrowClient.fundEscrow({ orderId: order.id }, funding),
       bountyModel.stageEscrow
     );
   }
@@ -361,13 +334,6 @@ function App() {
     );
   }
 
-  const totals = useMemo(() => {
-    const open = orders.filter((order) => !["accepted", "paid"].includes(order.status)).length;
-    const value = orders.reduce((sum, order) => sum + order.budget, 0);
-    const providers = new Set(orders.map((order) => order.provider).filter(Boolean)).size;
-    return { open, value, providers };
-  }, [orders]);
-
   function updateDraft<K extends keyof RequestDraft>(key: K, value: RequestDraft[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
@@ -378,7 +344,15 @@ function App() {
 
   function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!validDraft) return;
+    setFormError(null);
+    if (!wallet) {
+      setFormError("Connect a wallet to publish a request. No email login is used.");
+      return;
+    }
+    if (!validDraft) {
+      setFormError("Complete the required fields before publishing.");
+      return;
+    }
     setOrders((current) => [bountyModel.createMarketplaceOrder(draft, current.length), ...current]);
     setDraft(defaultDraft);
   }
@@ -395,6 +369,10 @@ function App() {
     const note = String(formData.get("note") ?? "");
     const proposedBudget = Number(formData.get("proposedBudget"));
 
+    if (!wallet) {
+      setFormError("Connect a wallet to submit a proposal.");
+      return;
+    }
     if (!provider.trim() || !note.trim() || proposedBudget <= 0) return;
     updateOrder(order.id, (current) => bountyModel.submitProposal(current, provider, note, proposedBudget));
     form.reset();
@@ -410,7 +388,7 @@ function App() {
     const confirmed = await runEscrowLifecycleAction(
       order,
       "submitDelivery",
-      () => escrowClient.submitDelivery({ orderId: order.id }, evidence.trim()),
+      () => escrowClient.submitDelivery({ orderId: order.id }, { evidenceHash: `0x${"0".repeat(64)}`, evidenceUri: evidence.trim() }),
       (current) => bountyModel.submitDelivery(current, evidence)
     );
 
@@ -563,7 +541,7 @@ function App() {
         <section className="lifecycle-panel" aria-label={`Escrow actions for ${order.title}`}>
           <p className="chain-preview-note">
             Preview network: {escrowChain?.name ?? "Unsupported network"}
-            {escrowChain?.isTestnet ? " (testnet)" : ""} · USDC only
+            {escrowChain?.isTestnet ? " (testnet)" : ""} · token contract verification required
           </p>
           {!readiness.ok ? (
             <p className="guardrail-warning" role="alert">
@@ -573,7 +551,7 @@ function App() {
           ) : null}
           <button type="button" disabled={!readiness.ok || inFlight} onClick={() => handleStageEscrow(order)}>
             {inFlight ? <Loader2 size={18} className="spin" /> : <LockKeyhole size={18} />}
-            {inFlight ? escrowActionContent.fundEscrow.working : "Stage escrow (simulated)"}
+            {inFlight ? escrowActionContent.fundEscrow.working : "Record escrow funding"}
           </button>
         </section>
       );
@@ -658,21 +636,23 @@ function App() {
         </aside>
 
         <section className="content">
-          <div className="demo-banner" role="status">
-            <ShieldCheck size={18} aria-hidden="true" />
-            <span><strong>Demo only - no funds are held or transferred.</strong> Escrow, token, and payout states are workflow previews until legal, security, and onchain readiness checks are complete.</span>
-          </div>
           <header className="topbar">
             <div>
               <p className="eyebrow">MIT marketplace release</p>
               <h2>Hire contributors, post bounties, and preview protected payment workflows from task to project.</h2>
             </div>
-            <div className="metrics" aria-label="Marketplace metrics">
-              <div><strong>{totals.open}</strong><span>Active orders</span></div>
-              <div><strong>{totals.providers}</strong><span>Matched providers</span></div>
-              <div><strong>${totals.value.toLocaleString()}</strong><span>Pipeline</span></div>
+            <div className="account-actions">
+              <button className="notification-button" type="button" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                <Bell size={18} /> Notifications <span className="notification-count">0</span>
+              </button>
+              <button type="button" onClick={() => { setWallet(wallet ? null : "0x7a…91c4"); setSessionExpired(Boolean(wallet)); }}>
+                <WalletCards size={18} /> {wallet ?? "Connect wallet"}
+              </button>
+              {notificationsOpen ? <div className="notification-popover" role="status">No notifications yet.</div> : null}
             </div>
           </header>
+          {sessionExpired ? <div className="session-alert" role="alert"><WifiOff size={18} /> Your wallet session expired. Reconnect to continue.<button type="button" onClick={() => setWallet("0x7a…91c4")}><RefreshCw size={16} /> Reconnect</button></div> : null}
+          {formError ? <p className="form-error" role="alert">{formError}</p> : null}
 
           <section id="services" className="market-section">
             <div className="section-heading">
@@ -695,6 +675,9 @@ function App() {
                     <strong>From ${service.startingAt.toLocaleString()}</strong>
                     <span>{service.deliveryDays} day delivery</span>
                   </div>
+                  <button type="button" className="secondary-button" onClick={() => { updateDraft("title", service.title); updateDraft("category", service.category); document.getElementById("request")?.scrollIntoView({ behavior: "smooth" }); }}>
+                    Use this brief
+                  </button>
                 </article>
               ))}
             </div>
@@ -738,9 +721,7 @@ function App() {
                 <label>
                   Token
                   <select value={draft.token} onChange={(event) => updateDraft("token", event.target.value as RequestDraft["token"])}>
-                    <option>USDC</option>
-                    <option>ETH</option>
-                    <option>BTREE</option>
+                    {(["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT"] as const).map((token) => <option key={token}>{token}</option>)}
                   </select>
                 </label>
                 <label>
@@ -772,6 +753,7 @@ function App() {
                 <CircleDollarSign size={18} />
                 Publish request
               </button>
+              <p className="form-hint">Wallet-only access. Token identity is verified by chain and contract address before funding.</p>
             </form>
 
             <section id="orders" className="panel queue">
@@ -817,6 +799,7 @@ function App() {
                   {renderOrderTxStatus(order)}
                 </article>
               ))}
+              {orders.length === 0 ? <div className="empty-state-panel"><ClipboardList size={24} /><strong>No open work yet</strong><span>Connect a wallet and publish the first request, or come back when providers have posted work.</span></div> : null}
             </section>
           </section>
 

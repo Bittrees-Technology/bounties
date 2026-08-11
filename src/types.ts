@@ -1,6 +1,7 @@
 export type WorkScope = "task" | "milestone" | "project" | "retainer";
 export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid";
 export type ServiceCategory = "Engineering" | "Design" | "Research" | "Operations" | "Onchain" | "Growth";
+export type EscrowToken = "WETH" | "BTREE" | "BIT" | "WBTC" | "USDC" | "USDT";
 
 export interface AcceptanceCriterion {
   id: string;
@@ -55,7 +56,7 @@ export interface MarketplaceOrder {
   scope: WorkScope;
   category: ServiceCategory;
   budget: number;
-  token: "USDC" | "ETH" | "BTREE";
+  token: EscrowToken;
   buyer: string;
   provider?: string;
   project: string;
