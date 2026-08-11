@@ -1,17 +1,202 @@
 begin;
-select plan(12);
--- Execute after `supabase db reset`; functions demonstrate missing/malformed claims fail closed.
-select throws_ok($$ insert into public.bounties (creator_id,title,description,scope_hash,chain_id,token_id,token_decimals,budget_base_units) values (gen_random_uuid(),'Unauthorized','x','0x0000000000000000000000000000000000000000000000000000000000000000',1,gen_random_uuid(),18,1) $$, '42501', null, 'anonymous bounty insertion is denied');
-select throws_ok($$ select * from public.wallet_sessions $$, '42501', null, 'anonymous cannot inspect sessions');
-select lives_ok($$ select public.app_current_wallet() $$, 'missing claim is tolerated but resolves null');
-select is(public.app_current_wallet(), null, 'missing claim does not identify a wallet');
-select throws_ok($$ set local app.wallet_address = 'not-a-wallet'; select public.app_current_account_id() $$, null, null, 'malformed claim does not resolve an account');
-select throws_ok($$ insert into public.account_roles (account_id, role) values (gen_random_uuid(), 'buyer') $$, '42501', null, 'anonymous cannot forge a role');
-select throws_ok($$ insert into public.delivery_evidence (milestone_id,provider_id,uri,content_hash,evidence_hash) values (gen_random_uuid(),gen_random_uuid(),'https://example.test/e','0x0000000000000000000000000000000000000000000000000000000000000000','0x0000000000000000000000000000000000000000000000000000000000000000') $$, '42501', null, 'anonymous cannot submit evidence');
-select throws_ok($$ select * from public.auth_nonces $$, '42501', null, 'nonce records are private');
-select throws_ok($$ select * from public.wallet_sessions $$, '42501', null, 'session records are private');
-select throws_ok($$ select public.app_issue_auth_nonce('0x0000000000000000000000000000000000000000',1,'x','https://example.test','0000000000000000000000000000000000000000000000000000000000000000') $$, '42501', null, 'untrusted clients cannot issue nonce records');
-select pass('two-wallet cross-account policy tests are run by API integration using transaction-local claims');
-select pass('nonce replay and wrong signer/domain/chain/origin are covered by wallet-auth endpoint integration');
+select plan(33);
+
+-- Test through the same transaction-local wallet claim used by the application API.
+-- Grants are transaction-scoped test harness setup; production grants remain migration-owned.
+grant select, insert, update, delete on
+  public.wallet_accounts, public.account_roles, public.auth_nonces, public.wallet_sessions,
+  public.tokens, public.bounties, public.proposals, public.milestones,
+  public.delivery_evidence, public.escrow_records, public.notifications to authenticated;
+
+create temporary table qa_ids (
+  buyer uuid, provider uuid, stranger uuid, token uuid, bounty uuid,
+  proposal uuid, milestone_one uuid, milestone_two uuid, notification uuid
+);
+
+insert into public.wallet_accounts (wallet_address) values
+  ('0x1111111111111111111111111111111111111111'),
+  ('0x2222222222222222222222222222222222222222'),
+  ('0x3333333333333333333333333333333333333333');
+insert into public.tokens (
+  chain_id, contract_address, checksum_address, name, symbol, decimals,
+  total_supply, bytecode_present, explorer_url, source_verification_status, risk_flags
+) values (
+  8453, '0x4444444444444444444444444444444444444444',
+  '0x4444444444444444444444444444444444444444', 'Collision token', 'USDC', 6,
+  1000000000, true, 'https://basescan.org/address/0x4444444444444444444444444444444444444444',
+  'unverified', '["symbol_collision","unverified_source"]'
+);
+insert into qa_ids (buyer, provider, stranger, token, bounty, proposal, milestone_one, milestone_two, notification)
+select
+  (select id from public.wallet_accounts where wallet_address = '0x1111111111111111111111111111111111111111'),
+  (select id from public.wallet_accounts where wallet_address = '0x2222222222222222222222222222222222222222'),
+  (select id from public.wallet_accounts where wallet_address = '0x3333333333333333333333333333333333333333'),
+  (select id from public.tokens where chain_id = 8453 and contract_address = '0x4444444444444444444444444444444444444444'),
+  gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), gen_random_uuid();
+
+set local role authenticated;
+select throws_ok(
+  $$ insert into public.bounties (creator_id,title,description,scope_hash,chain_id,token_id,token_decimals,budget_base_units)
+     values (gen_random_uuid(),'Unauthorized','x','0x' || repeat('0',64),1,gen_random_uuid(),18,1) $$,
+  '42501', null, 'anonymous/missing-claim bounty insertion is denied'
+);
+select is(public.app_current_wallet(), null, 'missing claim resolves to no wallet');
+select set_config('app.wallet_address', 'not-a-wallet', true);
+select is(public.app_current_account_id(), null, 'malformed claim resolves to no account');
+select throws_ok(
+  $$ insert into public.account_roles (account_id, role) values ((select buyer from qa_ids), 'buyer') $$,
+  '42501', null, 'malformed claim cannot forge a role'
+);
+
+select set_config('app.wallet_address', '0x1111111111111111111111111111111111111111', true);
+select lives_ok(
+  $$ insert into public.account_roles (account_id, role) values ((select buyer from qa_ids), 'buyer') $$,
+  'wallet may self-select the buyer capability'
+);
+select lives_ok(
+  $$ insert into public.bounties
+       (id,creator_id,title,description,scope_source,scope_hash,chain_id,token_id,token_decimals,budget_base_units,status)
+     values ((select bounty from qa_ids),(select buyer from qa_ids),'Exact 250 bounty','Persistent scope',
+       '{"acceptance":"evidence"}', '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+       8453,(select token from qa_ids),6,250,'open');
+     insert into public.milestones
+       (id,bounty_id,ordinal,title,amount_base_units,assigned_provider_id)
+     values
+       ((select milestone_one from qa_ids),(select bounty from qa_ids),0,'First',125,null),
+       ((select milestone_two from qa_ids),(select bounty from qa_ids),1,'Second',125,null);
+     set constraints all immediate $$,
+  'any authenticated wallet can persist an exactly reconciled bounty'
+);
+select is((select sum(amount_base_units)::text from public.milestones where bounty_id = (select bounty from qa_ids)), '250', 'milestone base units persist exactly');
+select throws_ok(
+  $$ insert into public.milestones (bounty_id,ordinal,title,amount_base_units)
+     values ((select bounty from qa_ids),2,'Rounding loss',1); set constraints all immediate $$,
+  '23514', null, 'custom milestone sum mismatch is rejected'
+);
+
+select set_config('app.wallet_address', '0x2222222222222222222222222222222222222222', true);
+select lives_ok(
+  $$ insert into public.account_roles (account_id, role) values ((select provider from qa_ids), 'provider') $$,
+  'wallet may self-select the provider capability'
+);
+select throws_ok(
+  $$ insert into public.proposals (bounty_id,provider_id,note,proposed_total_base_units,proposed_milestones)
+     values ((select bounty from qa_ids),(select buyer from qa_ids),'forged provider',250,'[]') $$,
+  '42501', null, 'provider identity cannot be forged'
+);
+select lives_ok(
+  $$ insert into public.proposals (id,bounty_id,provider_id,note,proposed_total_base_units,proposed_milestones)
+     values ((select proposal from qa_ids),(select bounty from qa_ids),(select provider from qa_ids),
+       'Delivery with evidence',250,'[{"amount":"125"},{"amount":"125"}]') $$,
+  'another authenticated wallet can propose without an allowlist'
+);
+select is_empty(
+  $$ update public.bounties set title = 'Provider takeover' where id = (select bounty from qa_ids) returning id $$,
+  'non-owner cannot edit a bounty'
+);
+select is_empty(
+  $$ update public.bounties set accepted_proposal_id = (select proposal from qa_ids), status = 'accepted'
+     where id = (select bounty from qa_ids) returning id $$,
+  'non-owner cannot accept a proposal'
+);
+select throws_ok(
+  $$ insert into public.delivery_evidence (milestone_id,provider_id,uri,content_hash,evidence_hash)
+     values ((select milestone_one from qa_ids),(select provider from qa_ids),'https://example.test/early',
+       '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+       '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc') $$,
+  '42501', null, 'unassigned provider cannot submit delivery'
+);
+
+select set_config('app.wallet_address', '0x1111111111111111111111111111111111111111', true);
+select lives_ok(
+  $$ update public.bounties set accepted_proposal_id = (select proposal from qa_ids), status = 'accepted'
+     where id = (select bounty from qa_ids);
+     update public.milestones set assigned_provider_id = (select provider from qa_ids), status = 'funded'
+     where bounty_id = (select bounty from qa_ids); set constraints all immediate $$,
+  'creator accepts the matching proposal and assigns funded milestones'
+);
+select throws_ok(
+  $$ update public.proposals set proposed_total_base_units = 249 where id = (select proposal from qa_ids);
+     set constraints all immediate $$,
+  '23514', null, 'accepted proposal budget drift is rejected'
+);
+select throws_ok(
+  $$ insert into public.proposals (bounty_id,provider_id,note,proposed_total_base_units,proposed_milestones)
+     values ((select bounty from qa_ids),(select buyer from qa_ids),'self proposal',250,'[]') $$,
+  '42501', null, 'creator cannot propose to own bounty'
+);
+
+select set_config('app.wallet_address', '0x2222222222222222222222222222222222222222', true);
+select lives_ok(
+  $$ insert into public.delivery_evidence (milestone_id,provider_id,uri,content_hash,evidence_hash)
+     values ((select milestone_one from qa_ids),(select provider from qa_ids),'https://example.test/evidence',
+       '0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
+       '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') $$,
+  'assigned provider persists delivery evidence'
+);
+select is((select count(*)::integer from public.delivery_evidence where milestone_id = (select milestone_one from qa_ids)), 1, 'delivery evidence survives a subsequent query');
+select is_empty(
+  $$ update public.milestones set status = 'accepted' where id = (select milestone_one from qa_ids) returning id $$,
+  'provider cannot accept its own delivery'
+);
+
+reset role;
+insert into public.notifications (id,recipient_id,type,entity_type,entity_id,body,dedupe_key)
+values ((select notification from qa_ids),(select buyer from qa_ids),'proposal','bounty',(select bounty from qa_ids),'Proposal received','qa-proposal');
+set local role authenticated;
+select set_config('app.wallet_address', '0x2222222222222222222222222222222222222222', true);
+select is((select count(*)::integer from public.notifications), 0, 'cross-account notifications are hidden');
+select is_empty(
+  $$ update public.notifications set read_at = now() where id = (select notification from qa_ids) returning id $$,
+  'cross-account notification update is denied'
+);
+select throws_ok(
+  $$ insert into public.tokens (chain_id,contract_address,checksum_address,explorer_url)
+     values (8453,'0x5555555555555555555555555555555555555555','0x5555555555555555555555555555555555555555','https://basescan.org/address/0x5555555555555555555555555555555555555555') $$,
+  '42501', null, 'wallet cannot bypass server-side token inspection/finalization'
+);
+select is((select jsonb_array_length(risk_flags) from public.tokens where id = (select token from qa_ids)), 2, 'token collision and verification risk flags persist');
+select like((select explorer_url from public.tokens where id = (select token from qa_ids)), 'https://basescan.org/address/%', 'token record retains a direct explorer contract link');
+
+reset role;
+select lives_ok(
+  $$ select public.app_issue_auth_nonce(
+       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',repeat('a',64),
+       date_trunc('milliseconds',now()),date_trunc('milliseconds',now()) + interval '5 minutes') $$,
+  'service auth path can issue a bound five-minute nonce'
+);
+select lives_ok(
+  $$ select public.app_consume_auth_nonce(
+       (select id from public.auth_nonces where nonce_digest = repeat('a',64)),repeat('a',64),
+       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',
+       (select issued_at from public.auth_nonces where nonce_digest = repeat('a',64)),
+       (select expires_at from public.auth_nonces where nonce_digest = repeat('a',64))) $$,
+  'matching nonce is consumed once and creates the wallet account identity'
+);
+select throws_ok(
+  $$ select public.app_consume_auth_nonce(
+       (select id from public.auth_nonces where nonce_digest = repeat('a',64)),repeat('a',64),
+       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',
+       (select issued_at from public.auth_nonces where nonce_digest = repeat('a',64)),
+       (select expires_at from public.auth_nonces where nonce_digest = repeat('a',64))) $$,
+  '28000', null, 'nonce replay is rejected'
+);
+select lives_ok(
+  $$ select public.app_create_wallet_session((select stranger from qa_ids),repeat('b',64),repeat('c',64)) $$,
+  'service auth path persists only session and CSRF digests'
+);
+set local role authenticated;
+select set_config('app.wallet_address', '0x2222222222222222222222222222222222222222', true);
+select is((select count(*)::integer from public.wallet_sessions), 0, 'cross-account sessions are hidden');
+select set_config('app.wallet_address', '0x3333333333333333333333333333333333333333', true);
+select is((select count(*)::integer from public.wallet_sessions), 1, 'session owner can resolve its persisted session');
+
+select set_config('app.wallet_address', '0x1111111111111111111111111111111111111111', true);
+select lives_ok(
+  $$ update public.milestones set status = 'accepted' where id = (select milestone_one from qa_ids) $$,
+  'creator accepts delivered milestone state'
+);
+select is((select status::text from public.milestones where id = (select milestone_one from qa_ids)), 'accepted', 'create/propose/accept/deliver lifecycle remains persisted');
+
 select * from finish();
 rollback;
