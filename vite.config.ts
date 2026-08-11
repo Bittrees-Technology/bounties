@@ -1,7 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-const localFunctionsOrigin = globalThis.process?.env.SUPABASE_FUNCTIONS_ORIGIN ?? "http://127.0.0.1:54321/functions/v1";
+const localFunctionsOrigin = process.env.SUPABASE_FUNCTIONS_ORIGIN ?? "http://127.0.0.1:54321/functions/v1";
 
 const securityHeaders = {
   "Content-Security-Policy": [
