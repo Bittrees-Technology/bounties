@@ -5,7 +5,7 @@ import {
   buildUpstreamUrl,
   getFunctionsOrigin,
   readValidatedBody
-} from "../src/server/vercelProxy";
+} from "../src/server/vercelProxy.js";
 
 export const config = {
   runtime: "edge"

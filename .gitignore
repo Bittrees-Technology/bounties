@@ -9,3 +9,4 @@ vite.config.d.ts
 .env.*
 !.env.example
 !.env.local.example
+.vercel

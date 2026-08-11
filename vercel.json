@@ -1,4 +1,5 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
       "source": "/(.*)",
@@ -38,17 +39,22 @@
       ]
     }
   ],
-  "routes": [
+  "rewrites": [
     {
-      "src": "^/api/(wallet-auth|bounties(?:/.*)?)$",
-      "dest": "/api/proxy"
+      "source": "/api/wallet-auth",
+      "destination": "/api/proxy"
     },
     {
-      "handle": "filesystem"
+      "source": "/api/bounties",
+      "destination": "/api/proxy"
     },
     {
-      "src": "^(?!/api(?:/|$)).*$",
-      "dest": "/index.html"
+      "source": "/api/bounties/:path*",
+      "destination": "/api/proxy"
+    },
+    {
+      "source": "/:path((?!api(?:/|$)).*)",
+      "destination": "/index.html"
     }
   ]
 }

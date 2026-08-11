@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import vercelConfig from "../../vercel.json";
+
 import {
   ProxyRequestError,
   buildResponseHeaders,
@@ -101,5 +103,23 @@ describe("proxy session and CSRF headers", () => {
     expect(headers.get("x-content-type-options")).toBe("nosniff");
     expect(headers.has("connection")).toBe(false);
     expect(headers.has("content-length")).toBe(false);
+  });
+});
+
+describe("Vercel deployment boundary", () => {
+  it("uses supported rewrites while applying security headers to every route", () => {
+    expect(vercelConfig).not.toHaveProperty("routes");
+    expect(vercelConfig.rewrites).toEqual(
+      expect.arrayContaining([
+        { source: "/api/wallet-auth", destination: "/api/proxy" },
+        { source: "/api/bounties/:path*", destination: "/api/proxy" },
+        { source: "/:path((?!api(?:/|$)).*)", destination: "/index.html" }
+      ])
+    );
+
+    const headers = Object.fromEntries(vercelConfig.headers[0].headers.map(({ key, value }) => [key, value]));
+    expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
+    expect(headers["X-Content-Type-Options"]).toBe("nosniff");
+    expect(headers["X-Frame-Options"]).toBe("DENY");
   });
 });
