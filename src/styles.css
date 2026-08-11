@@ -566,14 +566,16 @@ li {
 }
 
 .readiness-grid,
-.feature-grid {
+.feature-grid,
+.policy-grid {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .readiness-card,
-.feature-card {
+.feature-card,
+.policy-card {
   background: #fbfcfb;
   border: 1px solid #dfe5e1;
   border-radius: 12px;
@@ -865,7 +867,8 @@ button:disabled {
 
 .service-grid,
 .readiness-grid,
-.feature-grid {
+.feature-grid,
+.policy-grid {
   gap: 14px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
@@ -873,7 +876,8 @@ button:disabled {
 .service-card,
 .order-card,
 .readiness-card,
-.feature-card {
+.feature-card,
+.policy-card {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 248, 0.98));
   border: 1px solid rgba(24, 33, 29, 0.12);
   border-radius: 18px;
@@ -888,7 +892,8 @@ button:disabled {
 .service-card:hover,
 .order-card:hover,
 .readiness-card:hover,
-.feature-card:hover {
+.feature-card:hover,
+.policy-card:hover {
   border-color: rgba(15, 107, 87, 0.2);
   box-shadow: 0 18px 34px rgba(18, 30, 25, 0.09);
   transform: translateY(-2px);
@@ -904,7 +909,8 @@ button:disabled {
 .service-card h4,
 .order-card h4,
 .readiness-card h4,
-.feature-card h4 {
+.feature-card h4,
+.policy-card h4 {
   font-size: 1.16rem;
   letter-spacing: -0.03em;
   margin-top: 0;
@@ -1021,7 +1027,8 @@ li {
 }
 
 .readiness-grid,
-.feature-grid {
+.feature-grid,
+.policy-grid {
   align-items: stretch;
 }
 
@@ -1147,6 +1154,42 @@ li {
   line-height: 1.55;
 }
 
+.policy-panel {
+  margin-top: 20px;
+}
+
+.policy-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.policy-card {
+  align-content: start;
+}
+
+.policy-card p {
+  color: #5a6861;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.support-note {
+  align-items: flex-start;
+  background: #fff4cf;
+  border: 1px solid #e7bd48;
+  border-radius: 16px;
+  color: #503d08;
+  display: flex;
+  gap: 10px;
+  line-height: 1.45;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.support-note svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
 .wide-field {
   grid-column: 1 / -1;
 }
@@ -1216,7 +1259,8 @@ textarea {
   .proposal-form,
   .service-grid,
   .readiness-grid,
-  .feature-grid {
+  .feature-grid,
+  .policy-grid {
     grid-template-columns: 1fr;
   }
 

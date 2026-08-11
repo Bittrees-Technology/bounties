@@ -20,7 +20,10 @@ export const productManifest = {
   trustAndSupport: {
     owner: "Bounties product team (assignment pending)",
     supportChannel: "TBD before any public launch",
-    incidentEscalation: "TBD before any public launch"
+    incidentEscalation: "TBD before any public launch",
+    terms: "Placeholder only; final terms require legal approval before publication.",
+    privacy: "Placeholder only; final privacy notice requires legal and data-flow review before publication.",
+    support: "Placeholder only; final support channel and response targets require operations approval before publication."
   },
   integrations: {
     siblingProducts: "None required at runtime.",

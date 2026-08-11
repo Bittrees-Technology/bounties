@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Bounties">
+  <rect width="64" height="64" rx="12" fill="#173c35"/>
+  <path d="M18 18h21c6 0 10 4 10 9 0 3-2 6-5 7 4 1 7 5 7 10 0 6-5 10-12 10H18V18zm10 8v7h10c2 0 4-1 4-4 0-2-2-3-4-3H28zm0 15v5h11c3 0 4-1 4-3s-1-2-4-2H28z" fill="#f7fbf6"/>
+  <path d="M14 13h18v8H14z" fill="#e7bd48"/>
+</svg>

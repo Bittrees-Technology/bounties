@@ -127,6 +127,18 @@ describe("App", () => {
     expect(within(proposals).getByText("Proposal comparison board")).toBeInTheDocument();
   });
 
+  it("shows terms, privacy, and support placeholders without final policy claims", () => {
+    render(<App />);
+
+    const policies = screen.getByRole("region", { name: /terms, privacy, and support/i });
+    expect(within(policies).getAllByText("Terms").length).toBeGreaterThan(0);
+    expect(within(policies).getAllByText("Privacy").length).toBeGreaterThan(0);
+    expect(within(policies).getAllByText("Support").length).toBeGreaterThan(0);
+    expect(within(policies).getAllByText("Pending")).toHaveLength(3);
+    expect(within(policies).getByText(/final legal or operations commitments/i)).toBeInTheDocument();
+    expect(within(policies).getByText(/public support channel/i)).toBeInTheDocument();
+  });
+
   it("adds a feature proposal through the intake form", async () => {
     const user = userEvent.setup();
     render(<App />);

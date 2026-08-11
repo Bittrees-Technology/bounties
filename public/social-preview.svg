@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630" role="img" aria-label="Bounties marketplace preview">
+  <rect width="1200" height="630" fill="#f4efe6"/>
+  <rect x="88" y="72" width="1024" height="486" rx="32" fill="#173c35"/>
+  <text x="140" y="226" fill="#f7fbf6" font-family="Georgia, serif" font-size="92" font-weight="700">Bounties</text>
+  <text x="144" y="308" fill="#d8eee6" font-family="Arial, sans-serif" font-size="34">Wallet-first service marketplace preview</text>
+  <rect x="144" y="380" width="228" height="66" rx="16" fill="#e7bd48"/>
+  <text x="178" y="423" fill="#173c35" font-family="Arial, sans-serif" font-size="26" font-weight="700">ERC20 escrow</text>
+  <rect x="400" y="380" width="214" height="66" rx="16" fill="#f7fbf6"/>
+  <text x="436" y="423" fill="#173c35" font-family="Arial, sans-serif" font-size="26" font-weight="700">Milestones</text>
+  <rect x="642" y="380" width="222" height="66" rx="16" fill="#f7fbf6"/>
+  <text x="676" y="423" fill="#173c35" font-family="Arial, sans-serif" font-size="26" font-weight="700">Proposals</text>
+</svg>

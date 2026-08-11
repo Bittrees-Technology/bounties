@@ -32,10 +32,27 @@ See [escrow production readiness](docs/escrow-production-readiness.md) and the
 
 ```bash
 npm install
+npm run audit
+npm run lint
 npm test
 npm run build
 npm run dev
 ```
+
+Copy `.env.example` to `.env.local` before running against local services. Keep
+real Supabase URLs, anon keys, service-role keys, RPC secrets, wallet mnemonics,
+and private keys out of git.
+
+Local Supabase setup and migration rules are documented in
+[docs/local-supabase.md](docs/local-supabase.md). The local configuration keeps
+email signup disabled; production authentication must remain wallet-only with
+nonce plus signed-wallet sessions.
+
+The Vite dev and preview servers attach baseline security headers from
+`vite.config.ts`. Static launch-surface files live in `public/`:
+`robots.txt`, `sitemap.xml`, `site.webmanifest`, `favicon.svg`, and
+`social-preview.svg`. The current robots and sitemap values use placeholder
+hosts and `noindex` metadata until operations assigns the production domain.
 
 ## Suggested board columns
 

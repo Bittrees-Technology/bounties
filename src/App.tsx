@@ -7,6 +7,8 @@ import {
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
+  FileText,
+  LifeBuoy,
   Loader2,
   LockKeyhole,
   Lightbulb,
@@ -91,6 +93,24 @@ const readinessCards = [
     title: "Complete release readiness checks",
     detail: "Deployment, monitoring, and incident response must pass before go-live.",
     owner: "Operations"
+  }
+] as const;
+
+const policyPlaceholders = [
+  {
+    id: "terms",
+    title: "Terms",
+    detail: productManifest.trustAndSupport.terms
+  },
+  {
+    id: "privacy",
+    title: "Privacy",
+    detail: productManifest.trustAndSupport.privacy
+  },
+  {
+    id: "support",
+    title: "Support",
+    detail: productManifest.trustAndSupport.support
   }
 ] as const;
 
@@ -629,6 +649,7 @@ function App() {
             <a href="#request">Post request</a>
             <a href="#orders">Orders</a>
             <a href="#readiness">Readiness</a>
+            <a href="#policies">Policies</a>
           </nav>
           <div className="gate-callout">
             <ShieldCheck size={18} />
@@ -820,6 +841,35 @@ function App() {
                   <p className="card-owner">Owner: {control.owner}</p>
                 </article>
               ))}
+            </div>
+          </section>
+
+          <section id="policies" className="panel policy-panel" aria-labelledby="policy-title">
+            <div className="section-heading">
+              <FileText size={20} />
+              <div>
+                <p className="eyebrow">Launch placeholders</p>
+                <h3 id="policy-title">Terms, privacy, and support</h3>
+              </div>
+            </div>
+            <p className="section-intro">
+              These placeholders make the required launch surface visible without publishing final legal or operations commitments.
+            </p>
+            <div className="policy-grid">
+              {policyPlaceholders.map((policy) => (
+                <article className="policy-card" key={policy.id} id={policy.id}>
+                  <div className="card-topline">
+                    <span className="card-category">{policy.title}</span>
+                    <span className="readiness-status status-planned">Pending</span>
+                  </div>
+                  <h4>{policy.title}</h4>
+                  <p>{policy.detail}</p>
+                </article>
+              ))}
+            </div>
+            <div className="support-note">
+              <LifeBuoy size={18} />
+              <span>Public support channel, response targets, incident routing, and policy owner approvals remain required before launch.</span>
             </div>
           </section>
 

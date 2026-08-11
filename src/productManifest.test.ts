@@ -12,6 +12,9 @@ describe("product manifest", () => {
   it("keeps trust/support ownership and integrations as product-owned placeholders", () => {
     expect(productManifest.trustAndSupport.owner).toMatch(/Bounties product team/i);
     expect(productManifest.trustAndSupport.supportChannel).toMatch(/^TBD/i);
+    expect(productManifest.trustAndSupport.terms).toMatch(/Placeholder only/i);
+    expect(productManifest.trustAndSupport.privacy).toMatch(/Placeholder only/i);
+    expect(productManifest.trustAndSupport.support).toMatch(/Placeholder only/i);
     expect(productManifest.integrations.siblingProducts).toMatch(/None required/i);
     expect(productManifest.integrations.externalBranding).toMatch(/Optional-only/i);
   });
