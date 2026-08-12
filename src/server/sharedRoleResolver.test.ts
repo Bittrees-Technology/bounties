@@ -50,7 +50,19 @@ describe("resolveSharedModerator", () => {
     expect(result.walletAddress).toBe(walletLower);
   });
 
-  it.each(["admin", "partner", "operations", "moderator ", "site-moderator"])("does not infer moderation from %s", async (label) => {
+  it("authorizes the exact shared admin role with admin capability", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(registryResponse({
+      [walletLower]: [{ label: "admin" }]
+    }));
+
+    await expect(resolveSharedModerator(wallet, { env: readOnlyEnv, fetch: fetchMock })).resolves.toMatchObject({
+      status: "authorized",
+      role: "admin",
+      walletAddress: walletLower
+    });
+  });
+
+  it.each(["partner", "operations", "moderator ", "site-moderator"])("does not infer moderation from %s", async (label) => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(registryResponse({
       [walletLower]: [{ label }]
     }));

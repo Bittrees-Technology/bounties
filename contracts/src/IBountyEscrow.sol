@@ -8,6 +8,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 /// @dev Native ETH is unsupported. A UI may represent WETH as ETH, but the escrow only
 ///      accepts ERC20 contract addresses and never inspects token metadata or prices.
 interface IBountyEscrow {
+    enum MilestoneState {
+        Pending,
+        Submitted,
+        Approved,
+        Released
+    }
+
     enum State {
         Created,
         Funded,
@@ -36,6 +43,20 @@ interface IBountyEscrow {
         bytes32 approvalHash;
         address settlementProposer;
         uint256 proposedProviderPayout;
+        uint256 allocatedAmount;
+        uint256 releasedAmount;
+        uint32 milestoneCount;
+        uint32 currentMilestone;
+        bytes32 scheduleHash;
+    }
+
+    struct Milestone {
+        uint256 amount;
+        uint64 deliveryDeadline;
+        uint64 reviewDeadline;
+        MilestoneState state;
+        bytes32 evidenceHash;
+        bytes32 approvalHash;
     }
 
     error ZeroAddress();
@@ -61,6 +82,12 @@ interface IBountyEscrow {
     error TermsHashMismatch(bytes32 expected, bytes32 supplied);
     error FundingAmountMismatch(address token, uint256 expected, uint256 received);
     error FundingDebitMismatch(address token, uint256 expected, uint256 debited);
+    error InvalidMilestoneCount(uint256 count);
+    error MilestoneArrayLengthMismatch(uint256 amountCount, uint256 deadlineCount);
+    error InvalidMilestoneAmount(uint256 index, uint256 amount);
+    error InvalidMilestoneDeadline(uint256 index, uint64 previousDeadline, uint64 suppliedDeadline);
+    error MilestoneFundingMismatch(uint256 expected, uint256 supplied);
+    error MilestoneNotFound(uint256 bountyId, uint256 milestoneIndex);
     error SettlementAmountMismatch(
         address token,
         uint256 expected,
@@ -100,6 +127,30 @@ interface IBountyEscrow {
         uint64 deliveryDeadline
     );
     event SettlementProposed(uint256 indexed bountyId, address indexed proposer, uint256 providerPayout);
+    event MilestoneScheduleCreated(
+        uint256 indexed bountyId, bytes32 indexed scheduleHash, uint256 milestoneCount, uint256 allocatedAmount
+    );
+    event MilestoneConfigured(
+        uint256 indexed bountyId, uint256 indexed milestoneIndex, uint256 amount, uint64 deliveryDeadline
+    );
+    event MilestoneSubmitted(
+        uint256 indexed bountyId,
+        uint256 indexed milestoneIndex,
+        address indexed provider,
+        bytes32 evidenceHash,
+        uint64 reviewDeadline
+    );
+    event MilestoneApproved(
+        uint256 indexed bountyId, uint256 indexed milestoneIndex, address indexed requester, bytes32 approvalHash
+    );
+    event MilestoneReleased(
+        uint256 indexed bountyId,
+        uint256 indexed milestoneIndex,
+        address indexed provider,
+        address token,
+        uint256 amount,
+        uint256 remainingPrincipal
+    );
     event BountySettled(
         uint256 indexed bountyId,
         address indexed provider,
@@ -118,11 +169,24 @@ interface IBountyEscrow {
     function EVIDENCE_DOMAIN() external view returns (bytes32);
     function APPROVAL_DOMAIN() external view returns (bytes32);
     function REVIEW_PERIOD() external view returns (uint64);
+    function MAX_MILESTONES() external view returns (uint32);
+    function MILESTONE_SCHEDULE_DOMAIN() external view returns (bytes32);
+    function MILESTONE_TERMS_DOMAIN() external view returns (bytes32);
 
     function createBounty(
         address token,
         uint256 requestedAmount,
         uint64 deliveryDeadline,
+        bytes32 scopeHash,
+        address provider,
+        bytes32 proposalHash
+    ) external returns (uint256 bountyId);
+
+    function createMilestoneBounty(
+        address token,
+        uint256 requestedAmount,
+        uint256[] calldata milestoneAmounts,
+        uint64[] calldata milestoneDeadlines,
         bytes32 scopeHash,
         address provider,
         bytes32 proposalHash
@@ -138,4 +202,5 @@ interface IBountyEscrow {
     function cancelBounty(uint256 bountyId) external;
     function refundBounty(uint256 bountyId) external;
     function getBounty(uint256 bountyId) external view returns (Bounty memory);
+    function getMilestone(uint256 bountyId, uint256 milestoneIndex) external view returns (Milestone memory);
 }

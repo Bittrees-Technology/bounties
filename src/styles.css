@@ -92,6 +92,31 @@ nav a:hover {
   background: rgba(255, 255, 255, 0.09);
 }
 
+.primary-nav button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  box-shadow: none;
+  color: #e2f1ec;
+  justify-content: flex-start;
+  min-height: 42px;
+  padding: 10px 12px;
+}
+
+.primary-nav button:hover:not(:disabled),
+.primary-nav button.active {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+  transform: none;
+}
+
+.primary-nav .moderator-nav {
+  border-color: rgba(255, 226, 139, 0.3);
+  color: #ffe7a3;
+  margin-top: 12px;
+}
+
 .gate-callout {
   align-items: flex-start;
   background: rgba(255, 255, 255, 0.1);
@@ -417,6 +442,22 @@ li {
   margin-top: 10px;
 }
 
+.milestone-row.active-milestone {
+  border-color: #0f6b57;
+  box-shadow: 0 0 0 2px rgba(15, 107, 87, 0.1);
+}
+
+.active-milestone-badge {
+  background: #dcebe3;
+  border-radius: 999px;
+  color: #0f6b57;
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-top: 5px;
+  padding: 4px 8px;
+}
+
 .milestone-row p,
 .proposal-row p,
 .delivery-note,
@@ -462,6 +503,13 @@ li {
   gap: 10px;
   justify-content: flex-end;
   position: relative;
+}
+
+.compact-account-button {
+  box-shadow: 0 7px 16px rgba(15, 107, 87, 0.16);
+  font-size: 0.84rem;
+  min-height: 38px;
+  padding: 7px 10px;
 }
 
 .notification-button {
@@ -551,6 +599,256 @@ li {
 .empty-state-panel svg {
   color: #0f6b57;
 }
+
+.page-stack {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+
+.create-card {
+  justify-self: center;
+  max-width: 880px;
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.create-card label,
+.create-card input,
+.create-card select,
+.create-card textarea,
+.token-inspector label,
+.token-inspector input,
+.token-inspector select {
+  min-width: 0;
+  width: 100%;
+}
+
+.token-inspector {
+  justify-self: center;
+  max-width: 880px;
+  min-width: 0;
+  width: 100%;
+}
+
+.token-inspector > summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 12px;
+  list-style: none;
+}
+
+.token-inspector > summary::-webkit-details-marker { display: none; }
+.token-inspector > summary span { display: grid; gap: 3px; }
+.token-inspector > summary small { color: #617069; font-weight: 500; }
+
+.token-inspector-form {
+  align-items: end;
+  border-top: 1px solid #dce5df;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(170px, .65fr) minmax(260px, 1fr) auto;
+  margin-top: 16px;
+  padding-top: 16px;
+}
+
+.selected-token-card,
+.inspected-token-card,
+.token-identity-card {
+  background: #f3f8f5;
+  border: 1px solid #cfe0d6;
+  border-radius: 14px;
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 13px;
+}
+
+.selected-token-card div,
+.token-identity-card div { display: grid; gap: 2px; }
+.selected-token-card span,
+.token-identity-card span { color: #617069; font-size: .75rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.selected-token-card code,
+.inspected-token-card code,
+.token-identity-card code,
+.profile-hero code { overflow-wrap: anywhere; white-space: normal; }
+.selected-token-card a,
+.inspected-token-card a,
+.token-identity-card a { color: #0f6b57; font-weight: 700; justify-self: start; }
+
+.payment-token-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.payment-token-actions > span { color: #617069; font-size: .82rem; }
+
+.milestone-builder {
+  border: 1px solid #cfe0d6;
+  border-radius: 16px;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  min-width: 0;
+  padding: 15px;
+}
+
+.milestone-builder legend {
+  color: #253d35;
+  font-weight: 750;
+  padding: 0 7px;
+}
+
+.milestone-input-row {
+  align-items: end;
+  background: #f8faf8;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(180px, 1.25fr) minmax(120px, .55fr) minmax(150px, .7fr) auto;
+  min-width: 0;
+  padding: 12px;
+}
+
+.milestone-number {
+  align-items: center;
+  align-self: center;
+  background: #dcebe3;
+  border-radius: 999px;
+  color: #0f6b57;
+  display: flex;
+  font-weight: 800;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.remove-milestone {
+  background: #72564f;
+  box-shadow: none;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.add-milestone { justify-self: start; }
+.schedule-error { color: #8a2c1e; font-size: .82rem; margin: 0; }
+.commitment-warning { background: #fff5f3; border: 1px solid #d7978d; border-radius: 12px; color: #7b2f24; font-size: 0.86rem; margin: 0; padding: 10px 12px; }
+
+.wallet-link {
+  background: none;
+  border: 0;
+  box-shadow: none;
+  color: #0f6b57;
+  display: inline;
+  font-size: inherit;
+  font-weight: 750;
+  min-height: 0;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.wallet-link:hover:not(:disabled) { box-shadow: none; transform: none; }
+
+.workflow-guide,
+.card-progress {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.workflow-guide {
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.workflow-guide li {
+  background: #f3f8f5;
+  border: 1px solid #d7e5dc;
+  border-radius: 14px;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.workflow-guide li > span,
+.card-progress li > span {
+  align-items: center;
+  background: #dcebe3;
+  border-radius: 999px;
+  color: #0f6b57;
+  display: inline-flex;
+  font-weight: 800;
+  height: 25px;
+  justify-content: center;
+  width: 25px;
+}
+
+.workflow-guide small { color: #617069; line-height: 1.4; }
+
+.marketplace-page { min-width: 0; }
+.order-card { overflow: hidden; }
+.bounty-budget { text-align: right; }
+.participant-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+
+.card-progress {
+  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.card-progress li {
+  align-items: center;
+  color: #7b8781;
+  display: flex;
+  font-size: .74rem;
+  gap: 6px;
+  min-width: 0;
+}
+
+.card-progress li.complete,
+.card-progress li.current { color: #173c35; font-weight: 750; }
+.card-progress li.complete > span { background: #0f6b57; color: #fff; }
+.card-progress li.current > span { box-shadow: 0 0 0 3px rgba(15, 107, 87, .16); }
+
+.profile-hero {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  min-width: 0;
+}
+
+.profile-hero > div { min-width: 0; }
+.profile-report-action { margin-left: auto; }
+.profile-hero h3 { font-size: 1.5rem; margin: 0 0 5px; }
+
+.profile-role-grid {
+  display: grid;
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.profile-role-card { align-content: start; display: grid; gap: 13px; min-width: 0; }
+.profile-rating { display: grid; gap: 4px; }
+.profile-rating > strong { font-family: "Fraunces", Georgia, serif; font-size: 1.45rem; }
+.profile-rating > span,
+.profile-review > span,
+.empty-profile-copy { color: #617069; font-size: .85rem; }
+.profile-review { border-top: 1px solid #dce5df; display: grid; gap: 5px; padding-top: 12px; }
+.profile-review p { margin: 0; }
+
+.profile-editor > summary { color: #0f6b57; cursor: pointer; font-weight: 750; }
+.profile-editor form { display: grid; gap: 12px; margin-top: 16px; }
+.profile-editor form button { justify-self: start; }
+
+.authorized-panel { border: 2px solid #0f6b57; }
+.moderator-badge { align-items: center; background: #173c35; border-radius: 999px; color: #fff; display: inline-flex; font-size: .78rem; font-weight: 750; gap: 6px; justify-self: start; padding: 7px 11px; text-transform: capitalize; }
 
 .compact-empty-state {
   align-self: start;
@@ -1621,9 +1919,26 @@ textarea {
   .service-grid,
   .readiness-grid,
   .feature-grid,
-  .policy-grid {
+  .policy-grid,
+  .workflow-guide,
+  .card-progress,
+  .profile-role-grid,
+  .token-inspector-form {
     grid-template-columns: 1fr;
   }
+
+  .milestone-input-row {
+    align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .milestone-input-row label,
+  .milestone-input-row button { grid-column: 1 / -1; }
+
+  .card-progress li { min-height: 30px; }
+  .account-actions { width: 100%; }
+  .account-actions .compact-account-button { flex: 1 1 auto; }
+  .notification-popover { left: 0; right: auto; width: min(100%, 320px); }
 
   .proposal-form .wide-field,
   .proposal-form button,

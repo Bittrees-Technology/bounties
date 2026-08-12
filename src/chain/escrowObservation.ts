@@ -9,6 +9,8 @@ export interface ExpectedEscrowObservation {
   providerAddress: HexAddress;
   proposalHash: Bytes32Hex;
   amountBaseUnits: string;
+  milestoneCount?: number;
+  scheduleHash?: Bytes32Hex;
 }
 
 export interface ReceiptEscrowObservation {
@@ -21,6 +23,18 @@ export interface ReceiptEscrowObservation {
   amountBaseUnits: string;
   txHash: string;
   receiptStatus: "success" | "failed";
+  milestoneCount?: number;
+  currentMilestone?: number;
+  scheduleHash?: Bytes32Hex;
+  currentMilestoneDetail?: {
+    milestoneIndex: number;
+    amountBaseUnits: string;
+    deliveryDeadline: bigint;
+    reviewDeadline: bigint;
+    state: "Pending" | "Submitted" | "Approved" | "Released";
+    evidenceHash: Bytes32Hex;
+    approvalHash: Bytes32Hex;
+  };
 }
 
 export class EscrowObservationError extends Error {
@@ -48,5 +62,19 @@ export function verifyCanonicalEscrowObservation(
   if (!sameHex(observed.providerAddress, expected.providerAddress)) throw new EscrowObservationError("ESCROW_PROVIDER_MISMATCH");
   if (!sameHex(observed.proposalHash, expected.proposalHash)) throw new EscrowObservationError("ESCROW_PROPOSAL_MISMATCH");
   if (observed.amountBaseUnits !== expected.amountBaseUnits) throw new EscrowObservationError("ESCROW_AMOUNT_MISMATCH");
+  if (expected.milestoneCount !== undefined && observed.milestoneCount !== expected.milestoneCount) {
+    throw new EscrowObservationError("ESCROW_MILESTONE_COUNT_MISMATCH");
+  }
+  if (expected.scheduleHash !== undefined && (!observed.scheduleHash || !sameHex(observed.scheduleHash, expected.scheduleHash))) {
+    throw new EscrowObservationError("ESCROW_SCHEDULE_MISMATCH");
+  }
+  if (observed.currentMilestone !== undefined) {
+    if (observed.milestoneCount === undefined || observed.currentMilestone < 0 || observed.currentMilestone >= observed.milestoneCount) {
+      throw new EscrowObservationError("ESCROW_CURRENT_MILESTONE_INVALID");
+    }
+    if (observed.currentMilestoneDetail && observed.currentMilestoneDetail.milestoneIndex !== observed.currentMilestone) {
+      throw new EscrowObservationError("ESCROW_CURRENT_MILESTONE_DETAIL_MISMATCH");
+    }
+  }
   return observed;
 }

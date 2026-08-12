@@ -100,6 +100,8 @@ export interface EscrowOrderRef {
   approvalHash?: `0x${string}`;
   providerAddress?: ChecksumAddress;
   deliveryDeadline?: bigint;
+  /** Ordered deliverables. When present, funding must equal the exact allocation sum. */
+  milestones?: readonly EscrowMilestoneInput[];
 }
 
 export interface EscrowTxResult {
@@ -138,6 +140,27 @@ export interface EscrowOnchainRecord {
   approvalHash: `0x${string}`;
   settlementProposer: ChecksumAddress;
   proposedProviderPayoutBaseUnits: string;
+  allocatedAmountBaseUnits: string;
+  releasedAmountBaseUnits: string;
+  milestoneCount: number;
+  currentMilestone: number;
+  scheduleHash: `0x${string}`;
+}
+
+export type EscrowMilestoneState = "Pending" | "Submitted" | "Approved" | "Released";
+
+export interface EscrowMilestoneInput {
+  amountBaseUnits: string;
+  /** Zero disables timeout for this milestone and requires every later deadline to be zero. */
+  deliveryDeadline: bigint;
+}
+
+export interface EscrowMilestoneRecord extends EscrowMilestoneInput {
+  milestoneIndex: number;
+  reviewDeadline: bigint;
+  state: EscrowMilestoneState;
+  evidenceHash: `0x${string}`;
+  approvalHash: `0x${string}`;
 }
 
 export type EscrowEventType =
@@ -196,5 +219,6 @@ export interface EscrowClient {
   cancelEscrow(order: EscrowOrderRef): Promise<EscrowTxResult>;
   claimTimeoutRefund(order: EscrowOrderRef): Promise<EscrowTxResult>;
   readEscrow(order: EscrowOrderRef): Promise<EscrowOnchainRecord>;
+  readMilestone(order: EscrowOrderRef, milestoneIndex: number): Promise<EscrowMilestoneRecord>;
   onEvent(listener: (event: EscrowEvent) => void): () => void;
 }

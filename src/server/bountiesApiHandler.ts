@@ -1,5 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
-import { Contract, Interface, JsonRpcProvider, getAddress, keccak256, toUtf8Bytes } from "ethers";
+import { AbiCoder, Contract, Interface, JsonRpcProvider, getAddress, keccak256, toUtf8Bytes } from "ethers";
+import {
+  buildCanonicalApprovalCommitment,
+  buildCanonicalEvidenceCommitment,
+  type Bytes32Hex
+} from "../chain/hashCodec.js";
 import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } from "./vercelProxy.js";
 import { requiredServerEnv, serverEnv } from "./serverEnv.js";
 import { resolveSharedModerator } from "./sharedRoleResolver.js";
@@ -12,7 +17,8 @@ const erc20Abi = [
   "function totalSupply() view returns (uint256)"
 ];
 const bountyEscrowInterface = new Interface([
-  "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout) bounty)",
+  "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout,uint256 allocatedAmount,uint256 releasedAmount,uint32 milestoneCount,uint32 currentMilestone,bytes32 scheduleHash) bounty)",
+  "function getMilestone(uint256 bountyId,uint256 milestoneIndex) view returns ((uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 evidenceHash,bytes32 approvalHash) milestone)",
   "event BountyCreated(uint256 indexed bountyId,address indexed requester,address indexed token,address provider,uint256 requestedAmount,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,uint64 deliveryDeadline)",
   "event BountyFunded(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 amount)"
 ]);
@@ -38,6 +44,8 @@ type ExpectedEscrow = {
   proposal_id: string;
   proposal_hash: string | null;
   provider_wallet: string;
+  escrow_schedule_status: "structured" | "requires_recreation";
+  milestones: Array<{ ordinal: number; amount_base_units: string; delivery_deadline: string | null }>;
 };
 type EscrowStateSource = {
   bountyId: string;
@@ -45,6 +53,19 @@ type EscrowStateSource = {
   contractAddress: string;
   onchainBountyId: string;
 };
+type CanonicalMilestoneContext = {
+  milestoneId: string;
+  bountyId: string;
+  ordinal: number;
+  chainId: number;
+  contractAddress: `0x${string}`;
+  onchainBountyId: string;
+  scopeHash: Bytes32Hex;
+  termsHash: Bytes32Hex;
+  providerWallet: `0x${string}`;
+  requesterWallet: `0x${string}`;
+};
+export type CanonicalEvidenceCommitments = ReturnType<typeof deriveCanonicalEvidenceCommitments>;
 
 const jsonHeaders = { "content-type": "application/json" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -224,9 +245,9 @@ function transactionHash(body: Record<string, unknown>, field: string): string {
   return value;
 }
 
-function contentType(body: Record<string, unknown>, field = "entityType"): "bounty" | "review" {
+function contentType(body: Record<string, unknown>, field = "entityType"): "bounty" | "review" | "profile" {
   const value = requiredString(body, field);
-  if (value !== "bounty" && value !== "review") throw new ApiError("INVALID_CONTENT_TYPE", 400);
+  if (value !== "bounty" && value !== "review" && value !== "profile") throw new ApiError("INVALID_CONTENT_TYPE", 400);
   return value;
 }
 
@@ -238,21 +259,29 @@ function moderationDecision(body: Record<string, unknown>): "hide" | "restore" |
   return value;
 }
 
-async function refreshSharedModeratorGrant(session: Session, required: boolean): Promise<"moderator" | null> {
+async function refreshSharedModeratorGrant(session: Session, required: boolean): Promise<"moderator" | "admin" | null> {
   const resolution = await resolveSharedModerator(session.wallet_address);
-  const authorized = resolution.status === "authorized";
-  await callRpc("app_sync_shared_moderation_role", {
-    p_actor_id: session.account_id,
-    p_wallet_address: session.wallet_address,
-    p_authorized: authorized,
-    p_source: "upstash:bittrees:roles"
-  });
   if (resolution.status === "unavailable" || resolution.status === "malformed") {
     if (required) throw new ApiError("MODERATION_ROLE_UNAVAILABLE", 503);
     return null;
   }
+  const authorized = resolution.status === "authorized";
+  try {
+    await callRpc("app_sync_shared_moderation_role", {
+      p_actor_id: session.account_id,
+      p_wallet_address: session.wallet_address,
+      p_authorized: authorized,
+      p_source: "upstash:bittrees:roles"
+    });
+  } catch (error) {
+    // Shared moderation is optional for ordinary marketplace reads. A registry
+    // projection failure must never prevent a signed-in wallet from loading its
+    // account and public bounties. Moderator-only mutations still fail closed.
+    if (required) throw error;
+    return null;
+  }
   if (required && !authorized) throw new ApiError("MODERATOR_REQUIRED", 403);
-  return authorized ? "moderator" : null;
+  return authorized ? resolution.role : null;
 }
 
 function checkedAddress(value: string, code: string): string {
@@ -394,7 +423,7 @@ function proposalHash(expected: ExpectedEscrow): string {
 async function expectedEscrow(session: Session, bountyId: string): Promise<ExpectedEscrow> {
   const { data, error } = await rpcClient()
     .from("bounties")
-    .select("id,chain_id,budget_base_units,scope_hash,creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
+    .select("id,chain_id,budget_base_units,scope_hash,escrow_schedule_status,milestones(ordinal,amount_base_units,delivery_deadline),creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
     .eq("id", bountyId)
     .eq("creator_id", session.account_id)
     .single();
@@ -404,12 +433,19 @@ async function expectedEscrow(session: Session, bountyId: string): Promise<Expec
     chain_id: number;
     budget_base_units: string;
     scope_hash: string;
+    escrow_schedule_status: "structured" | "requires_recreation";
+    milestones: Array<{ ordinal: number; amount_base_units: string; delivery_deadline: string | null }>;
     creator: { wallet_address: string } | null;
     token: { contract_address: string } | null;
     proposal: { id: string; proposal_hash: string | null; provider: { wallet_address: string } | null } | null;
   };
   if (!row.proposal?.provider) throw new ApiError("ACCEPTED_PROPOSAL_REQUIRED", 400);
   if (!row.token || !row.creator) throw new ApiError("ESCROW_EXPECTATION_INCOMPLETE", 400);
+  if (row.escrow_schedule_status !== "structured") throw new ApiError("BOUNTY_RECREATION_REQUIRED", 409);
+  const milestones = [...(row.milestones ?? [])].sort((left, right) => left.ordinal - right.ordinal);
+  if (milestones.length < 1 || milestones.length > 32 || milestones.some((milestone, ordinal) => milestone.ordinal !== ordinal)) {
+    throw new ApiError("ESCROW_SCHEDULE_INVALID", 409);
+  }
   return {
     bounty_id: row.id,
     chain_id: Number(row.chain_id),
@@ -419,12 +455,115 @@ async function expectedEscrow(session: Session, bountyId: string): Promise<Expec
     token_address: getAddress(row.token.contract_address),
     proposal_id: row.proposal.id,
     proposal_hash: row.proposal.proposal_hash,
-    provider_wallet: getAddress(row.proposal.provider.wallet_address)
+    provider_wallet: getAddress(row.proposal.provider.wallet_address),
+    escrow_schedule_status: row.escrow_schedule_status,
+    milestones
   };
 }
 
 function requireSameAddress(actual: string, expected: string, code: string) {
   if (getAddress(actual) !== getAddress(expected)) throw new ApiError(code, 400);
+}
+
+const milestoneScheduleDomain = keccak256(toUtf8Bytes("BOUNTY_MILESTONE_SCHEDULE_V1"));
+const milestoneTermsDomain = keccak256(toUtf8Bytes("BOUNTY_MILESTONE_TERMS_V1"));
+const abiCoder = AbiCoder.defaultAbiCoder();
+const milestoneStates = ["Pending", "Submitted", "Approved", "Released"] as const;
+
+function deadlineSeconds(value: string | null): bigint {
+  if (value === null) return 0n;
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) throw new ApiError("ESCROW_SCHEDULE_INVALID", 409);
+  return BigInt(Math.floor(milliseconds / 1000));
+}
+
+function milestoneDetail(record: {
+  amount: bigint;
+  deliveryDeadline: bigint;
+  reviewDeadline: bigint;
+  state: bigint;
+  evidenceHash: string;
+  approvalHash: string;
+}, milestoneIndex: number) {
+  const state = milestoneStates[Number(record.state)];
+  if (!state) throw new ApiError("ESCROW_MILESTONE_STATE_INVALID", 400);
+  const iso = (seconds: bigint, code: string) => {
+    if (seconds === 0n) return null;
+    if (seconds > BigInt(Math.floor(Number.MAX_SAFE_INTEGER / 1000))) throw new ApiError(code, 400);
+    return new Date(Number(seconds) * 1000).toISOString();
+  };
+  return {
+    milestone_index: milestoneIndex,
+    amount_base_units: record.amount.toString(),
+    delivery_deadline: iso(record.deliveryDeadline, "ESCROW_DELIVERY_DEADLINE_INVALID"),
+    review_deadline: iso(record.reviewDeadline, "ESCROW_REVIEW_DEADLINE_INVALID"),
+    state,
+    evidence_hash: String(record.evidenceHash).toLowerCase(),
+    approval_hash: String(record.approvalHash).toLowerCase()
+  };
+}
+
+async function canonicalReceiptSchedule(
+  provider: JsonRpcProvider,
+  expected: ExpectedEscrow,
+  contractAddress: string,
+  onchainBountyId: string,
+  blockNumber: number
+) {
+  const contract = new Contract(contractAddress, bountyEscrowInterface, provider);
+  const amounts = expected.milestones.map((milestone) => BigInt(milestone.amount_base_units));
+  const deadlines = expected.milestones.map((milestone) => deadlineSeconds(milestone.delivery_deadline));
+  const scheduleHash = keccak256(abiCoder.encode(
+    ["bytes32", "uint256", "address", "bytes32", "uint256[]", "uint64[]"],
+    [milestoneScheduleDomain, BigInt(expected.chain_id), contractAddress, expected.scope_hash, amounts, deadlines]
+  ));
+  const expectedProposalHash = proposalHash(expected);
+  const termsHash = keccak256(abiCoder.encode(
+    ["bytes32", "uint256", "address", "bytes32", "bytes32", "address", "bytes32"],
+    [milestoneTermsDomain, BigInt(expected.chain_id), contractAddress, expected.scope_hash, expectedProposalHash, expected.provider_wallet, scheduleHash]
+  ));
+  const record = await withTimeout(contract.getBounty(BigInt(onchainBountyId), { blockTag: blockNumber }), "ESCROW_STATE_TIMEOUT") as {
+    requester: string; provider: string; token: string; amount: bigint; state: bigint; scopeHash: string; proposalHash: string;
+    termsHash: string; reviewDeadline: bigint; settlementProposer: string; proposedProviderPayout: bigint;
+    allocatedAmount: bigint; releasedAmount: bigint; milestoneCount: bigint; currentMilestone: bigint; scheduleHash: string;
+  };
+  requireSameAddress(record.requester, expected.creator_wallet, "ESCROW_BUYER_MISMATCH");
+  requireSameAddress(record.provider, expected.provider_wallet, "ESCROW_PROVIDER_MISMATCH");
+  requireSameAddress(record.token, expected.token_address, "ESCROW_TOKEN_MISMATCH");
+  if (String(record.scopeHash).toLowerCase() !== expected.scope_hash.toLowerCase()) throw new ApiError("ESCROW_SCOPE_MISMATCH", 400);
+  if (String(record.proposalHash).toLowerCase() !== expectedProposalHash.toLowerCase()) throw new ApiError("ESCROW_PROPOSAL_MISMATCH", 400);
+  if (Number(record.milestoneCount) !== expected.milestones.length) throw new ApiError("ESCROW_MILESTONE_COUNT_MISMATCH", 400);
+  if (record.allocatedAmount.toString() !== expected.budget_base_units) throw new ApiError("ESCROW_ALLOCATION_MISMATCH", 400);
+  if (String(record.scheduleHash).toLowerCase() !== scheduleHash.toLowerCase()) throw new ApiError("ESCROW_SCHEDULE_HASH_MISMATCH", 400);
+  if (String(record.termsHash).toLowerCase() !== termsHash.toLowerCase()) throw new ApiError("ESCROW_TERMS_HASH_MISMATCH", 400);
+  const currentMilestone = Number(record.currentMilestone);
+  if (!Number.isSafeInteger(currentMilestone) || currentMilestone < 0 || currentMilestone >= expected.milestones.length) {
+    throw new ApiError("ESCROW_CURRENT_MILESTONE_INVALID", 400);
+  }
+  let currentDetail: ReturnType<typeof milestoneDetail> | undefined;
+  for (const [index, expectedMilestone] of expected.milestones.entries()) {
+    const observed = await withTimeout(contract.getMilestone(BigInt(onchainBountyId), BigInt(index), { blockTag: blockNumber }), "ESCROW_STATE_TIMEOUT") as {
+      amount: bigint; deliveryDeadline: bigint; reviewDeadline: bigint; state: bigint; evidenceHash: string; approvalHash: string;
+    };
+    if (observed.amount.toString() !== expectedMilestone.amount_base_units) throw new ApiError("ESCROW_MILESTONE_AMOUNT_MISMATCH", 400);
+    if (observed.deliveryDeadline !== deadlines[index]) throw new ApiError("ESCROW_MILESTONE_DEADLINE_MISMATCH", 400);
+    if (index === currentMilestone) currentDetail = milestoneDetail(observed, index);
+  }
+  if (!currentDetail) throw new ApiError("ESCROW_CURRENT_MILESTONE_INVALID", 400);
+  const states = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"] as const;
+  const onchainState = states[Number(record.state)];
+  if (!onchainState) throw new ApiError("ESCROW_STATE_INVALID", 400);
+  return {
+    onchainState,
+    remainingBaseUnits: record.amount.toString(),
+    allocatedAmountBaseUnits: record.allocatedAmount.toString(),
+    releasedAmountBaseUnits: record.releasedAmount.toString(),
+    milestoneCount: Number(record.milestoneCount),
+    currentMilestone,
+    scheduleHash: String(record.scheduleHash).toLowerCase(),
+    termsHash: String(record.termsHash).toLowerCase(),
+    currentMilestoneDetail: currentDetail
+  };
 }
 
 async function verifyEscrowReceipt(session: Session, body: Record<string, unknown>) {
@@ -494,6 +633,13 @@ async function verifyEscrowReceipt(session: Session, body: Record<string, unknow
   if (create.requestedAmount.toString() !== expected.budget_base_units || fund.amount.toString() !== expected.budget_base_units) {
     throw new ApiError("ESCROW_AMOUNT_MISMATCH", 400);
   }
+  const canonical = await canonicalReceiptSchedule(
+    provider,
+    expected,
+    contractAddress,
+    create.bountyId.toString(),
+    receipt.blockNumber
+  );
 
   const { data: existing } = await rpcClient()
     .from("escrow_records")
@@ -510,7 +656,8 @@ async function verifyEscrowReceipt(session: Session, body: Record<string, unknow
     receivedBaseUnits: fund.amount.toString(),
     txHash: txHash.toLowerCase(),
     blockHash: receipt.blockHash,
-    logIndex: funded[0].logIndex
+    logIndex: funded[0].logIndex,
+    ...canonical
   };
 }
 
@@ -555,6 +702,11 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
     state: bigint;
     settlementProposer: string;
     proposedProviderPayout: bigint;
+    allocatedAmount: bigint;
+    releasedAmount: bigint;
+    milestoneCount: bigint;
+    currentMilestone: bigint;
+    scheduleHash: string;
   };
   try {
     record = await withTimeout(contract.getBounty(BigInt(source.onchainBountyId)), "ESCROW_STATE_TIMEOUT");
@@ -566,6 +718,16 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
   const stateIndex = Number(record.state);
   const onchainState = states[stateIndex];
   if (!onchainState) throw new ApiError("ESCROW_STATE_INVALID", 400);
+  const milestoneCount = Number(record.milestoneCount);
+  const currentMilestone = Number(record.currentMilestone);
+  if (!Number.isSafeInteger(milestoneCount) || milestoneCount < 1 || milestoneCount > 32
+    || !Number.isSafeInteger(currentMilestone) || currentMilestone < 0 || currentMilestone >= milestoneCount) {
+    throw new ApiError("ESCROW_CURRENT_MILESTONE_INVALID", 400);
+  }
+  const currentRecord = await withTimeout(
+    contract.getMilestone(BigInt(source.onchainBountyId), BigInt(currentMilestone)),
+    "ESCROW_STATE_TIMEOUT"
+  ) as { amount: bigint; deliveryDeadline: bigint; reviewDeadline: bigint; state: bigint; evidenceHash: string; approvalHash: string };
   const reviewSeconds = record.reviewDeadline;
   if (reviewSeconds > BigInt(Math.floor(Number.MAX_SAFE_INTEGER / 1000))) throw new ApiError("ESCROW_REVIEW_DEADLINE_INVALID", 400);
   return {
@@ -574,7 +736,13 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
     remainingBaseUnits: record.amount.toString(),
     reviewDeadline: reviewSeconds === 0n ? null : new Date(Number(reviewSeconds) * 1000).toISOString(),
     settlementProposer: getAddress(record.settlementProposer),
-    proposedProviderPayoutBaseUnits: record.proposedProviderPayout.toString()
+    proposedProviderPayoutBaseUnits: record.proposedProviderPayout.toString(),
+    allocatedAmountBaseUnits: record.allocatedAmount.toString(),
+    releasedAmountBaseUnits: record.releasedAmount.toString(),
+    milestoneCount,
+    currentMilestone,
+    scheduleHash: String(record.scheduleHash).toLowerCase(),
+    currentMilestoneDetail: milestoneDetail(currentRecord, currentMilestone)
   };
 }
 
@@ -587,9 +755,93 @@ async function persistCanonicalEscrowState(session: Session, bountyId: string) {
     p_remaining_base_units: observed.remainingBaseUnits,
     p_review_deadline: observed.reviewDeadline,
     p_settlement_proposer: observed.settlementProposer,
-    p_proposed_provider_payout_base_units: observed.proposedProviderPayoutBaseUnits
+    p_proposed_provider_payout_base_units: observed.proposedProviderPayoutBaseUnits,
+    p_allocated_amount_base_units: observed.allocatedAmountBaseUnits,
+    p_released_amount_base_units: observed.releasedAmountBaseUnits,
+    p_milestone_count: observed.milestoneCount,
+    p_current_milestone: observed.currentMilestone,
+    p_schedule_hash: observed.scheduleHash,
+    p_current_milestone_detail: observed.currentMilestoneDetail
   });
-  return { ...record, onchain_state: observed.onchainState };
+  return { ...record, onchain_state: observed.onchainState, current_milestone: observed.currentMilestone };
+}
+
+export function deriveCanonicalEvidenceCommitments(
+  context: CanonicalMilestoneContext,
+  uri: string
+) {
+  const evidence = buildCanonicalEvidenceCommitment({
+    chainId: BigInt(context.chainId),
+    escrowAddress: context.contractAddress,
+    bountyId: BigInt(context.onchainBountyId),
+    scopeHash: context.scopeHash,
+    termsHash: context.termsHash,
+    provider: context.providerWallet,
+    milestoneId: context.milestoneId,
+    ordinal: context.ordinal,
+    uri
+  });
+  const approval = buildCanonicalApprovalCommitment({
+    chainId: BigInt(context.chainId),
+    escrowAddress: context.contractAddress,
+    bountyId: BigInt(context.onchainBountyId),
+    evidenceHash: evidence.evidenceHash,
+    requester: context.requesterWallet,
+    milestoneId: context.milestoneId,
+    ordinal: context.ordinal
+  });
+  return { evidence, approval };
+}
+
+async function reconcileMilestone(session: Session, milestoneId: string): Promise<CanonicalMilestoneContext> {
+  const db = rpcClient();
+  const { data: milestone, error: milestoneError } = await db.from("milestones")
+    .select("id,bounty_id,ordinal,assigned_provider_id").eq("id", milestoneId).single();
+  if (milestoneError || !milestone) throw new ApiError("MILESTONE_NOT_FOUND", 400);
+  const bountyId = String(milestone.bounty_id);
+  const observed = await persistCanonicalEscrowState(session, bountyId);
+  const ordinal = Number(milestone.ordinal);
+  if (ordinal !== observed.current_milestone) throw new ApiError("CURRENT_MILESTONE_REQUIRED", 409);
+
+  const [{ data: bounty, error: bountyError }, { data: escrow, error: escrowError }] = await Promise.all([
+    db.from("bounties").select("id,chain_id,scope_hash,creator_id,accepted_proposal_id").eq("id", bountyId).single(),
+    db.from("escrow_records").select("chain_id,contract_address,onchain_bounty_id,terms_hash").eq("bounty_id", bountyId).single()
+  ]);
+  if (bountyError || !bounty || escrowError || !escrow) throw new ApiError("EVIDENCE_CONTEXT_INCOMPLETE", 409);
+  const { data: proposal, error: proposalError } = await db.from("proposals")
+    .select("provider_id").eq("id", String(bounty.accepted_proposal_id ?? "")).single();
+  if (proposalError || !proposal || proposal.provider_id !== milestone.assigned_provider_id) {
+    throw new ApiError("EVIDENCE_PROVIDER_MISMATCH", 409);
+  }
+  const [{ data: provider, error: providerError }, { data: requester, error: requesterError }] = await Promise.all([
+    db.from("wallet_accounts").select("wallet_address").eq("id", String(proposal.provider_id)).single(),
+    db.from("wallet_accounts").select("wallet_address").eq("id", String(bounty.creator_id)).single()
+  ]);
+  if (providerError || !provider || requesterError || !requester) throw new ApiError("EVIDENCE_PARTICIPANTS_INCOMPLETE", 409);
+
+  const chainId = Number(bounty.chain_id);
+  if (!supportedChainIds.has(chainId) || Number(escrow.chain_id) !== chainId) throw new ApiError("EVIDENCE_CHAIN_MISMATCH", 409);
+  const contractAddress = checkedAddress(String(escrow.contract_address ?? ""), "EVIDENCE_ESCROW_INVALID") as `0x${string}`;
+  if (contractAddress !== escrowContractAddress(chainId)) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 409);
+  const onchainBountyId = String(escrow.onchain_bounty_id ?? "");
+  if (!/^[1-9][0-9]*$/.test(onchainBountyId)) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 409);
+  const scopeHash = String(bounty.scope_hash ?? "").toLowerCase();
+  const termsHash = String(escrow.terms_hash ?? "").toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(scopeHash) || !/^0x[0-9a-f]{64}$/.test(termsHash)) {
+    throw new ApiError("EVIDENCE_CONTEXT_HASH_INVALID", 409);
+  }
+  return {
+    milestoneId: milestoneId.toLowerCase(),
+    bountyId,
+    ordinal,
+    chainId,
+    contractAddress,
+    onchainBountyId,
+    scopeHash: scopeHash as Bytes32Hex,
+    termsHash: termsHash as Bytes32Hex,
+    providerWallet: getAddress(String(provider.wallet_address)) as `0x${string}`,
+    requesterWallet: getAddress(String(requester.wallet_address)) as `0x${string}`
+  };
 }
 
 async function handle(request: Request, action: string): Promise<Response> {
@@ -598,6 +850,15 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers });
 
   const method = request.method.toUpperCase();
+  const publicProfileMatch = action.match(/^profiles\/(0x[0-9a-fA-F]{40})$/);
+  if (publicProfileMatch && method === "GET") {
+    const profile = await callRpc<Record<string, unknown> | null>("app_public_wallet_profile", {
+      p_wallet_address: checkedAddress(publicProfileMatch[1], "INVALID_WALLET")
+    });
+    if (!profile) throw new ApiError("PROFILE_NOT_FOUND", 404);
+    return Response.json(profile, { headers });
+  }
+
   const requiresCsrf = mutationMethods.has(method);
   const session = await resolveSession(request, requiresCsrf);
   const body = await readBody(request);
@@ -630,6 +891,16 @@ async function handle(request: Request, action: string): Promise<Response> {
     const data = await callRpc("app_set_account_role", {
       p_actor_id: session.account_id,
       p_role: requiredString(body, "role")
+    });
+    return Response.json(data, { headers });
+  }
+
+  if (action === "profiles/me" && method === "POST") {
+    const data = await callRpc("app_update_public_profile", {
+      p_actor_id: session.account_id,
+      p_display_name: optionalString(body, "displayName"),
+      p_profile_bio: optionalString(body, "profileBio"),
+      p_profile_url: optionalString(body, "profileUrl")
     });
     return Response.json(data, { headers });
   }
@@ -674,21 +945,41 @@ async function handle(request: Request, action: string): Promise<Response> {
   }
 
   if (action === "evidence" && method === "POST") {
-    const data = await callRpc("app_submit_delivery_evidence", {
+    const milestoneId = requiredUuid(body, "milestoneId");
+    const context = await reconcileMilestone(session, milestoneId);
+    const uri = requiredString(body, "uri").trim();
+    const canonical = deriveCanonicalEvidenceCommitments(context, uri);
+    const data = await callRpc("app_submit_canonical_delivery_evidence", {
       p_actor_id: session.account_id,
-      p_milestone_id: requiredUuid(body, "milestoneId"),
-      p_uri: requiredString(body, "uri"),
-      p_content_hash: requiredString(body, "contentHash"),
-      p_evidence_hash: requiredString(body, "evidenceHash"),
-      p_hash_version: optionalString(body, "hashVersion")
+      p_milestone_id: milestoneId,
+      p_uri: canonical.evidence.normalizedUri,
+      p_content_hash: canonical.evidence.contentHash,
+      p_uri_hash: canonical.evidence.uriHash,
+      p_evidence_salt: canonical.evidence.salt,
+      p_evidence_hash: canonical.evidence.evidenceHash,
+      p_hash_version: canonical.evidence.version,
+      p_approval_decision_hash: canonical.approval.decisionHash,
+      p_approval_salt: canonical.approval.salt,
+      p_canonical_approval_hash: canonical.approval.approvalHash,
+      p_expected_current_milestone: context.ordinal,
+      p_chain_id: context.chainId,
+      p_escrow_contract_address: context.contractAddress,
+      p_onchain_bounty_id: context.onchainBountyId,
+      p_scope_hash: context.scopeHash,
+      p_terms_hash: context.termsHash,
+      p_provider_wallet: context.providerWallet,
+      p_requester_wallet: context.requesterWallet
     });
     return Response.json(data, { headers });
   }
 
   if (action === "evidence/accept" && method === "POST") {
+    const milestoneId = requiredUuid(body, "milestoneId");
+    const context = await reconcileMilestone(session, milestoneId);
     const data = await callRpc("app_accept_delivery", {
       p_actor_id: session.account_id,
-      p_milestone_id: requiredUuid(body, "milestoneId")
+      p_milestone_id: milestoneId,
+      p_expected_current_milestone: context.ordinal
     });
     return Response.json(data, { headers });
   }
@@ -706,7 +997,16 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_status: "confirmed",
       p_transaction_hash: verified.txHash,
       p_block_hash: verified.blockHash,
-      p_log_index: verified.logIndex
+      p_log_index: verified.logIndex,
+      p_onchain_state: verified.onchainState,
+      p_remaining_base_units: verified.remainingBaseUnits,
+      p_allocated_amount_base_units: verified.allocatedAmountBaseUnits,
+      p_released_amount_base_units: verified.releasedAmountBaseUnits,
+      p_milestone_count: verified.milestoneCount,
+      p_current_milestone: verified.currentMilestone,
+      p_schedule_hash: verified.scheduleHash,
+      p_terms_hash: verified.termsHash,
+      p_current_milestone_detail: verified.currentMilestoneDetail
     });
     return Response.json(data, { headers });
   }
@@ -755,22 +1055,6 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_public_response: requiredString(body, "publicResponse"),
       p_internal_note: optionalString(body, "internalNote"),
       p_expected_version: zeroBasedIntegerField(body, "expectedVersion")
-    });
-    return Response.json(data, { headers });
-  }
-
-  if (action === "admin/reports/decision" && method === "POST") {
-    const decision = requiredString(body, "decision");
-    if (decision !== "hide" && decision !== "restore" && decision !== "no_action") {
-      throw new ApiError("INVALID_MODERATION_DECISION", 400);
-    }
-    const data = await callRpc("app_decide_content_report", {
-      p_actor_id: session.account_id,
-      p_report_id: requiredUuid(body, "reportId"),
-      p_decision: decision,
-      p_public_response: requiredString(body, "publicResponse"),
-      p_internal_note: optionalString(body, "internalNote"),
-      p_expected_version: numberField(body, "expectedVersion")
     });
     return Response.json(data, { headers });
   }

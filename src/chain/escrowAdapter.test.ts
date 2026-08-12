@@ -2,6 +2,7 @@ import { decodeFunctionData, encodeFunctionResult, parseAbi } from "viem";
 import { describe, expect, it } from "vitest";
 import { BOUNTY_ESCROW_ABI } from "./abi";
 import { createViemEscrowAdapter, selectEscrowProvider, type Eip1193Provider } from "./escrowAdapter";
+import { hashMilestoneSchedule, hashMilestoneTerms } from "./hashCodec";
 import type { ChainConfig, EscrowFundingInput } from "./types";
 
 const account = "0x1111111111111111111111111111111111111111" as const;
@@ -109,6 +110,29 @@ function createOrder(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function createMilestoneOrder(overrides: Record<string, unknown> = {}) {
+  const milestones = [
+    { amountBaseUnits: "1000000", deliveryDeadline: 1786465600n },
+    { amountBaseUnits: "1500000", deliveryDeadline: 1789057600n }
+  ] as const;
+  const scheduleHash = hashMilestoneSchedule({
+    chainId: BigInt(chain.chainId),
+    escrowAddress: contract,
+    scopeHash: hash,
+    milestoneAmounts: milestones.map((milestone) => BigInt(milestone.amountBaseUnits)),
+    milestoneDeadlines: milestones.map((milestone) => milestone.deliveryDeadline)
+  }).value;
+  const termsHash = hashMilestoneTerms({
+    chainId: BigInt(chain.chainId),
+    escrowAddress: contract,
+    scopeHash: hash,
+    proposalHash: hash,
+    provider: providerAddress,
+    scheduleHash
+  }).value;
+  return createOrder({ milestones, termsHash, ...overrides });
+}
+
 describe("escrow adapter provider support", () => {
   it("selects an account-scoped atomic smart wallet", async () => {
     const smartWalletProvider = new RecordingProvider({ smart: true });
@@ -166,6 +190,74 @@ describe("escrow adapter provider support", () => {
       functionName: "createBounty"
     });
     expect(smartWalletProvider.calls.some((call) => call.method === "wallet_getCallsStatus")).toBe(true);
+  });
+
+  it("encodes an ordered milestone schedule whose allocations equal funding", async () => {
+    const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 2500000n });
+    const adapter = createViemEscrowAdapter({ chain, smartWalletProvider, integrationEnabled: true, statusPollIntervalMs: 0 });
+
+    await adapter.createEscrow(createMilestoneOrder(), funding);
+
+    const sendCalls = smartWalletProvider.calls.find((call) => call.method === "wallet_sendCalls");
+    const params = sendCalls?.params as Array<{ calls: Array<{ data: `0x${string}` }> }>;
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: params[0].calls[0].data })).toMatchObject({
+      functionName: "createMilestoneBounty",
+      args: [token, 2500000n, [1000000n, 1500000n], [1786465600n, 1789057600n], hash, providerAddress, hash]
+    });
+  });
+
+  it("derives the identical milestone terms hash for provider acceptance", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+    const order = createMilestoneOrder();
+
+    await adapter.acceptBounty(order);
+
+    const send = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
+    const transaction = (send?.params as Array<{ data: `0x${string}` }>)[0];
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
+      functionName: "acceptBounty",
+      args: [7n, order.termsHash]
+    });
+  });
+
+  it("rejects a stale legacy terms hash for a milestone schedule before wallet access", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.acceptBounty(createMilestoneOrder({ termsHash: approvalHash }))).rejects.toMatchObject({
+      code: "CONTRACT_REVERTED"
+    });
+    expect(eoaProvider.calls).toHaveLength(0);
+  });
+
+  it("rejects milestone sum and ordering mismatches before any wallet call", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(
+      adapter.createEscrow(
+        createOrder({
+          milestones: [
+            { amountBaseUnits: "1000000", deliveryDeadline: 1786465600n },
+            { amountBaseUnits: "1000000", deliveryDeadline: 1789057600n }
+          ]
+        }),
+        funding
+      )
+    ).rejects.toMatchObject({ code: "AMOUNT_INVALID" });
+    await expect(
+      adapter.createEscrow(
+        createOrder({
+          milestones: [
+            { amountBaseUnits: "1000000", deliveryDeadline: 1789057600n },
+            { amountBaseUnits: "1500000", deliveryDeadline: 1786465600n }
+          ]
+        }),
+        funding
+      )
+    ).rejects.toMatchObject({ code: "CONTRACT_REVERTED" });
+    expect(eoaProvider.calls).toHaveLength(0);
   });
 
   it("uses reset-to-zero approval for a nonzero insufficient allowance", async () => {
@@ -305,7 +397,12 @@ describe("escrow adapter provider support", () => {
         evidenceHash: `0x${"00".repeat(32)}`,
         approvalHash: `0x${"00".repeat(32)}`,
         settlementProposer: zeroAddress,
-        proposedProviderPayout: 0n
+        proposedProviderPayout: 0n,
+        allocatedAmount: 2500000n,
+        releasedAmount: 0n,
+        milestoneCount: 2,
+        currentMilestone: 0,
+        scheduleHash: hash
       } as never
     });
     const eoaProvider = new RecordingProvider({ ethCallResult: recordResult });
@@ -321,9 +418,47 @@ describe("escrow adapter provider support", () => {
       state: "Funded",
       scopeHash: hash,
       settlementProposer: zeroAddress,
-      proposedProviderPayoutBaseUnits: "0"
+      proposedProviderPayoutBaseUnits: "0",
+      allocatedAmountBaseUnits: "2500000",
+      releasedAmountBaseUnits: "0",
+      milestoneCount: 2,
+      currentMilestone: 0,
+      scheduleHash: hash
     });
     expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_chainId", "eth_call"]);
+  });
+
+  it("reads a milestone record by its ordered index", async () => {
+    const milestoneResult = encodeFunctionResult({
+      abi: BOUNTY_ESCROW_ABI,
+      functionName: "getMilestone",
+      result: {
+        amount: 1000000n,
+        deliveryDeadline: 1786465600n,
+        reviewDeadline: 1787070400n,
+        state: 1,
+        evidenceHash: hash,
+        approvalHash: `0x${"00".repeat(32)}`
+      } as never
+    });
+    const eoaProvider = new RecordingProvider({ ethCallResult: milestoneResult });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.readMilestone(createOrder(), 1)).resolves.toEqual({
+      milestoneIndex: 1,
+      amountBaseUnits: "1000000",
+      deliveryDeadline: 1786465600n,
+      reviewDeadline: 1787070400n,
+      state: "Submitted",
+      evidenceHash: hash,
+      approvalHash: `0x${"00".repeat(32)}`
+    });
+    const call = eoaProvider.calls.find((entry) => entry.method === "eth_call");
+    const transaction = (call?.params as Array<{ data: `0x${string}` }>)[0];
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
+      functionName: "getMilestone",
+      args: [7n, 1n]
+    });
   });
 
   it("rejects missing approval commitments and wrong-chain tokens before broadcast", async () => {

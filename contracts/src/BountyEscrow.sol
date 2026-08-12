@@ -28,11 +28,15 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     bytes32 public constant override TERMS_DOMAIN = keccak256("BOUNTY_TERMS_V1");
     bytes32 public constant override EVIDENCE_DOMAIN = keccak256("BOUNTY_EVIDENCE_V1");
     bytes32 public constant override APPROVAL_DOMAIN = keccak256("BOUNTY_APPROVAL_V1");
+    bytes32 public constant override MILESTONE_SCHEDULE_DOMAIN = keccak256("BOUNTY_MILESTONE_SCHEDULE_V1");
+    bytes32 public constant override MILESTONE_TERMS_DOMAIN = keccak256("BOUNTY_MILESTONE_TERMS_V1");
     uint64 public constant override REVIEW_PERIOD = 7 days;
+    uint32 public constant override MAX_MILESTONES = 32;
 
     uint256 public override nextBountyId = 1;
     mapping(address token => uint256 liability) public override totalLiability;
     mapping(uint256 bountyId => Bounty bounty) private _bounties;
+    mapping(uint256 bountyId => mapping(uint256 milestoneIndex => Milestone milestone)) private _milestones;
 
     /// @notice Creates a bounty and optionally funds it atomically.
     /// @param requestedAmount Exact ERC20 amount to pull, or zero for a record funded later.
@@ -61,7 +65,14 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         bounty.scopeHash = scopeHash;
         bounty.proposalHash = proposalHash;
         bounty.termsHash = _termsHash(scopeHash, proposalHash, provider);
+        bounty.allocatedAmount = requestedAmount;
+        bounty.milestoneCount = 1;
+        bounty.scheduleHash = _singleMilestoneScheduleHash(scopeHash, requestedAmount, deliveryDeadline);
         bounty.state = State.Created;
+
+        Milestone storage milestone = _milestones[bountyId][0];
+        milestone.amount = requestedAmount;
+        milestone.deliveryDeadline = deliveryDeadline;
 
         emit BountyCreated(
             bountyId,
@@ -83,6 +94,75 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
             _requireSolvent(bounty.token);
             emit BountyFunded(bountyId, msg.sender, token, requestedAmount);
         }
+
+        emit MilestoneScheduleCreated(bountyId, bounty.scheduleHash, 1, requestedAmount);
+        emit MilestoneConfigured(bountyId, 0, requestedAmount, deliveryDeadline);
+    }
+
+    /// @notice Creates a sequential bounty with one positive allocation per deliverable.
+    /// @dev `requestedAmount` is either zero for later exact funding or the exact sum of allocations.
+    ///      Nonzero deadlines must increase strictly; a zero deadline disables timeout for that
+    ///      milestone and all later milestones must also use zero.
+    function createMilestoneBounty(
+        address token,
+        uint256 requestedAmount,
+        uint256[] calldata milestoneAmounts,
+        uint64[] calldata milestoneDeadlines,
+        bytes32 scopeHash,
+        address provider,
+        bytes32 proposalHash
+    ) external override nonReentrant returns (uint256 bountyId) {
+        _validateCreation(token, 0, scopeHash, provider, proposalHash);
+        uint256 allocatedAmount = _validateMilestoneSchedule(milestoneAmounts, milestoneDeadlines);
+        if (requestedAmount != 0 && requestedAmount != allocatedAmount) {
+            revert MilestoneFundingMismatch(allocatedAmount, requestedAmount);
+        }
+
+        bountyId = nextBountyId++;
+        Bounty storage bounty = _bounties[bountyId];
+        bounty.requester = msg.sender;
+        bounty.provider = provider;
+        bounty.token = IERC20(token);
+        bounty.deliveryDeadline = milestoneDeadlines[0];
+        bounty.scopeHash = scopeHash;
+        bounty.proposalHash = proposalHash;
+        bounty.allocatedAmount = allocatedAmount;
+        bounty.milestoneCount = uint32(milestoneAmounts.length);
+        bounty.scheduleHash = keccak256(
+            abi.encode(
+                MILESTONE_SCHEDULE_DOMAIN, block.chainid, address(this), scopeHash, milestoneAmounts, milestoneDeadlines
+            )
+        );
+        bounty.termsHash = keccak256(
+            abi.encode(
+                MILESTONE_TERMS_DOMAIN,
+                block.chainid,
+                address(this),
+                scopeHash,
+                proposalHash,
+                provider,
+                bounty.scheduleHash
+            )
+        );
+        bounty.state = State.Created;
+
+        _emitBountyCreated(bountyId, bounty, requestedAmount);
+        emit MilestoneScheduleCreated(bountyId, bounty.scheduleHash, milestoneAmounts.length, allocatedAmount);
+        for (uint256 i; i < milestoneAmounts.length; ++i) {
+            Milestone storage milestone = _milestones[bountyId][i];
+            milestone.amount = milestoneAmounts[i];
+            milestone.deliveryDeadline = milestoneDeadlines[i];
+            emit MilestoneConfigured(bountyId, i, milestoneAmounts[i], milestoneDeadlines[i]);
+        }
+
+        if (requestedAmount != 0) {
+            _pullExact(bounty.token, msg.sender, requestedAmount);
+            bounty.amount = requestedAmount;
+            bounty.state = State.Funded;
+            totalLiability[token] += requestedAmount;
+            _requireSolvent(bounty.token);
+            emit BountyFunded(bountyId, msg.sender, token, requestedAmount);
+        }
     }
 
     /// @notice Funds a previously created record with one exact, positive principal.
@@ -92,6 +172,16 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         _onlyState(bountyId, bounty, State.Created);
         _requireBeforeDeadline(bountyId, bounty.deliveryDeadline);
         if (amount == 0) revert InvalidAmount(amount);
+        uint256 allocatedAmount = bounty.allocatedAmount;
+        if (allocatedAmount == 0) {
+            bounty.allocatedAmount = amount;
+            _milestones[bountyId][0].amount = amount;
+            bounty.scheduleHash = _singleMilestoneScheduleHash(bounty.scopeHash, amount, bounty.deliveryDeadline);
+            emit MilestoneScheduleCreated(bountyId, bounty.scheduleHash, 1, amount);
+            emit MilestoneConfigured(bountyId, 0, amount, bounty.deliveryDeadline);
+        } else if (amount != allocatedAmount) {
+            revert MilestoneFundingMismatch(allocatedAmount, amount);
+        }
 
         _pullExact(bounty.token, msg.sender, amount);
         bounty.amount = amount;
@@ -130,12 +220,18 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         if (evidenceHash == bytes32(0)) revert ZeroEvidenceHash();
         _requireSolvent(bounty.token);
 
+        uint256 milestoneIndex = bounty.currentMilestone;
+        Milestone storage milestone = _milestones[bountyId][milestoneIndex];
         bounty.evidenceHash = evidenceHash;
         bounty.reviewDeadline = uint64(block.timestamp) + REVIEW_PERIOD;
+        milestone.evidenceHash = evidenceHash;
+        milestone.reviewDeadline = bounty.reviewDeadline;
+        milestone.state = MilestoneState.Submitted;
         _clearSettlement(bounty);
         bounty.state = State.Delivered;
 
         emit DeliverySubmitted(bountyId, msg.sender, evidenceHash, bounty.reviewDeadline);
+        emit MilestoneSubmitted(bountyId, milestoneIndex, msg.sender, evidenceHash, bounty.reviewDeadline);
     }
 
     /// @notice Records the requester's immutable approval commitment.
@@ -146,10 +242,16 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         if (approvalHash == bytes32(0)) revert ZeroApprovalHash();
         _requireSolvent(bounty.token);
 
+        uint256 milestoneIndex = bounty.currentMilestone;
+        Milestone storage milestone = _milestones[bountyId][milestoneIndex];
         bounty.approvalHash = approvalHash;
+        milestone.approvalHash = approvalHash;
+        milestone.state = MilestoneState.Approved;
+        _clearSettlement(bounty);
         bounty.state = State.BuyerApproved;
 
         emit BuyerApproved(bountyId, msg.sender, approvalHash);
+        emit MilestoneApproved(bountyId, milestoneIndex, msg.sender, approvalHash);
     }
 
     /// @notice Pays a bounty to its provider after buyer approval or expiry of its delivery review period.
@@ -166,15 +268,30 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
         IERC20 token = bounty.token;
         address provider = bounty.provider;
-        uint256 amount = bounty.amount;
+        uint256 milestoneIndex = bounty.currentMilestone;
+        Milestone storage milestone = _milestones[bountyId][milestoneIndex];
+        uint256 amount = milestone.amount;
         _requireSolvent(token);
 
-        bounty.amount = 0;
-        bounty.state = State.Released;
+        bounty.amount -= amount;
+        bounty.releasedAmount += amount;
+        milestone.state = MilestoneState.Released;
         uint256 remainingLiability = totalLiability[address(token)] - amount;
         totalLiability[address(token)] = remainingLiability;
 
-        emit BountyReleased(bountyId, provider, address(token), amount);
+        emit MilestoneReleased(bountyId, milestoneIndex, provider, address(token), amount, bounty.amount);
+        if (milestoneIndex + 1 == bounty.milestoneCount) {
+            bounty.state = State.Released;
+            emit BountyReleased(bountyId, provider, address(token), bounty.releasedAmount);
+        } else {
+            bounty.currentMilestone = uint32(milestoneIndex + 1);
+            bounty.deliveryDeadline = _milestones[bountyId][milestoneIndex + 1].deliveryDeadline;
+            bounty.reviewDeadline = 0;
+            bounty.evidenceHash = bytes32(0);
+            bounty.approvalHash = bytes32(0);
+            _clearSettlement(bounty);
+            bounty.state = State.ProviderAccepted;
+        }
         _pushExact(token, provider, amount, remainingLiability);
     }
 
@@ -292,6 +409,12 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         return _getBounty(bountyId);
     }
 
+    function getMilestone(uint256 bountyId, uint256 milestoneIndex) external view override returns (Milestone memory) {
+        Bounty storage bounty = _getBounty(bountyId);
+        if (milestoneIndex >= bounty.milestoneCount) revert MilestoneNotFound(bountyId, milestoneIndex);
+        return _milestones[bountyId][milestoneIndex];
+    }
+
     function _validateCreation(
         address token,
         uint64 deliveryDeadline,
@@ -313,6 +436,61 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     function _termsHash(bytes32 scopeHash, bytes32 proposalHash, address provider) private view returns (bytes32) {
         return keccak256(abi.encode(TERMS_DOMAIN, block.chainid, address(this), scopeHash, proposalHash, provider));
+    }
+
+    function _singleMilestoneScheduleHash(bytes32 scopeHash, uint256 amount, uint64 deliveryDeadline)
+        private
+        view
+        returns (bytes32)
+    {
+        return keccak256(
+            abi.encode(MILESTONE_SCHEDULE_DOMAIN, block.chainid, address(this), scopeHash, amount, deliveryDeadline)
+        );
+    }
+
+    function _emitBountyCreated(uint256 bountyId, Bounty storage bounty, uint256 requestedAmount) private {
+        emit BountyCreated(
+            bountyId,
+            bounty.requester,
+            address(bounty.token),
+            bounty.provider,
+            requestedAmount,
+            bounty.scopeHash,
+            bounty.proposalHash,
+            bounty.termsHash,
+            bounty.deliveryDeadline
+        );
+    }
+
+    function _validateMilestoneSchedule(uint256[] calldata amounts, uint64[] calldata deadlines)
+        private
+        view
+        returns (uint256 allocatedAmount)
+    {
+        uint256 count = amounts.length;
+        if (count == 0 || count > MAX_MILESTONES) revert InvalidMilestoneCount(count);
+        if (count != deadlines.length) revert MilestoneArrayLengthMismatch(count, deadlines.length);
+
+        uint64 previousDeadline;
+        bool noDeadlineSeen;
+        for (uint256 i; i < count; ++i) {
+            uint256 amount = amounts[i];
+            if (amount == 0) revert InvalidMilestoneAmount(i, amount);
+            allocatedAmount += amount;
+
+            uint64 deadline = deadlines[i];
+            if (deadline == 0) {
+                noDeadlineSeen = true;
+            } else {
+                if (
+                    noDeadlineSeen || deadline <= block.timestamp
+                        || (previousDeadline != 0 && deadline <= previousDeadline)
+                ) {
+                    revert InvalidMilestoneDeadline(i, previousDeadline, deadline);
+                }
+                previousDeadline = deadline;
+            }
+        }
     }
 
     function _pullExact(IERC20 token, address from, uint256 amount) private {

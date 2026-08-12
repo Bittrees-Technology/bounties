@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadMarketplace, mapBounty, toBase, type BountyRow, type TokenRecord } from "./supabase";
+import { createBounty, loadMarketplace, loadPublicProfile, mapBounty, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
   id: "00000000-0000-4000-8000-000000000010",
@@ -86,7 +87,14 @@ describe("Supabase marketplace mapping", () => {
       created_at: "2026-08-11T00:00:00.000Z",
       accepted_proposal_id: "00000000-0000-4000-8000-000000000032",
       token,
-      milestones: [],
+      milestones: [{
+        id: "00000000-0000-4000-8000-000000000035",
+        ordinal: 0,
+        title: "Final delivery",
+        amount_base_units: "1234567",
+        delivery_deadline: "2099-01-31T23:59:59.999Z",
+        status: "accepted"
+      }],
       proposals: [{
         id: "00000000-0000-4000-8000-000000000032",
         provider_id: "00000000-0000-4000-8000-000000000033",
@@ -127,5 +135,59 @@ describe("Supabase marketplace mapping", () => {
     expect(order.moderationStatus).toBe("hidden");
     expect(order.escrowObservation?.onchain_state).toBe("Released");
     expect(order.reviews?.[0]).toMatchObject({ rating: 5, direction: "service_received" });
+    expect(order.milestones?.[0].deliveryDeadline).toBe("2099-01-31T23:59:59.999Z");
+    expect(order.milestones?.[0].amountBaseUnits).toBe("1234567");
+  });
+
+  it("uses the public profile routes and preserves separate rating summaries", async () => {
+    const profile: PublicWalletProfile = {
+      account_id: "00000000-0000-4000-8000-000000000040",
+      wallet_address: "0x1111111111111111111111111111111111111111",
+      display_name: "Dual participant",
+      profile_bio: "Builds and funds useful work.",
+      profile_url: "https://example.test/profile",
+      profile_moderation_status: "visible",
+      profile_updated_at: "2026-08-12T00:00:00.000Z",
+      member_since: "2026-08-11T00:00:00.000Z",
+      roles: ["buyer", "provider"],
+      rating_summaries: {
+        capital_provider: { average_rating: 4, review_count: 2, rating_counts: { "1": 0, "2": 0, "3": 1, "4": 0, "5": 1 } },
+        labor_provider: { average_rating: 5, review_count: 1, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 1 } }
+      },
+      reviews_received: []
+    };
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(profile));
+    await expect(loadPublicProfile(profile.wallet_address)).resolves.toEqual(profile);
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/0x1111111111111111111111111111111111111111");
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(profile));
+    await expect(updateMyProfile({ displayName: "Dual participant", profileBio: "Builds and funds useful work.", profileUrl: profile.profile_url })).resolves.toEqual(profile);
+    const updateRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
+    expect(updateRequest?.method).toBe("POST");
+    expect(JSON.parse(String(updateRequest?.body))).toEqual({
+      displayName: "Dual participant",
+      profileBio: "Builds and funds useful work.",
+      profileUrl: "https://example.test/profile"
+    });
+  });
+
+  it("requires legacy multi-milestone drafts to be recreated with explicit schedule terms", async () => {
+    const draft: RequestDraft = {
+      title: "Scheduled work",
+      scope: "project",
+      category: "Engineering",
+      project: "Project",
+      budget: "3",
+      token: "USDC",
+      buyer: "Capital provider",
+      deliveryDeadline: "2099-12-31",
+      providerPreference: "",
+      milestones: "First | 1\nSecond | 2",
+      support: "Repository access",
+      criteria: "Accepted output"
+    };
+
+    await expect(createBounty(draft, token)).rejects.toThrow(/recreate.*structured milestone editor/i);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 });

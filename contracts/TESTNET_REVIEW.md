@@ -1,6 +1,6 @@
 # Multi-network testnet review packet
 
-Status: source and deterministic local tests prepared; deployment template unexecuted.
+Status: source and deterministic milestone tests prepared; deployment template unexecuted.
 
 ## Intended review configuration
 
@@ -22,11 +22,11 @@ Status: source and deterministic local tests prepared; deployment template unexe
 
 Foundry: `forge 1.7.1` (`4072e48705af9d93e3c0f6e29e93b5e9a40caed8`).
 
-The current release gate reruns `forge fmt --check`, `forge build`, and `forge test`
-from the contract package rather than relying on checked-in generated logs. The
-verified suite contains 22 deterministic unit regressions, five 256-run fuzz
-properties, and three 64-run stateful invariants with 8,192 handler calls per
-invariant under the checked-in Foundry profile.
+The Operations/GitHub release gate must rerun `forge fmt --check`, `forge build`,
+and `forge test` from the contract package rather than relying on checked-in
+generated logs. It must include milestone unit, fuzz, and stateful invariant
+suites. No current pass count is asserted because manual contract test execution
+is intentionally held for Operations/CI.
 
 Timestamp comparisons cover both boundaries: timeout refund is available at
 `deliveryDeadline`, while permissionless full release is available at the stored
@@ -34,5 +34,11 @@ Timestamp comparisons cover both boundaries: timeout refund is available at
 meaningful margins rather than exact block-second assumptions. The suite also
 exercises requester/provider settlement proposals, counterparty-only acceptance,
 exact split conservation, and atomic failure/reentrancy behavior.
+
+Milestone review must reconcile every emitted `MilestoneConfigured` allocation
+and deadline against the offchain schedule, prove their sum equals funding, then
+exercise at least two sequential tranche releases, one review-expiry release,
+one active-deadline refund after partial completion, and one bilateral split of
+remaining principal. A later milestone must never submit before its predecessor releases.
 
 No RPC, fork, broadcast, funded transaction, or deployment command was run.

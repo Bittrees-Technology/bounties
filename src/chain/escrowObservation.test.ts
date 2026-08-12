@@ -8,13 +8,25 @@ const expected: ExpectedEscrowObservation = {
   requesterAddress: "0x3333333333333333333333333333333333333333",
   providerAddress: "0x4444444444444444444444444444444444444444",
   proposalHash: `0x${"55".repeat(32)}`,
-  amountBaseUnits: "250000000"
+  amountBaseUnits: "250000000",
+  milestoneCount: 2,
+  scheduleHash: `0x${"77".repeat(32)}`
 };
 
 const observed: ReceiptEscrowObservation = {
   ...expected,
   txHash: `0x${"aa".repeat(32)}`,
-  receiptStatus: "success"
+  receiptStatus: "success",
+  currentMilestone: 0,
+  currentMilestoneDetail: {
+    milestoneIndex: 0,
+    amountBaseUnits: "100000000",
+    deliveryDeadline: 1786465600n,
+    reviewDeadline: 0n,
+    state: "Pending",
+    evidenceHash: `0x${"00".repeat(32)}`,
+    approvalHash: `0x${"00".repeat(32)}`
+  }
 };
 
 function expectRejection(mutated: Partial<ReceiptEscrowObservation>, code: string, seen: string[] = []) {
@@ -62,5 +74,15 @@ describe("canonical escrow observation verification", () => {
 
   it("rejects wrong-amount observations", () => {
     expectRejection({ amountBaseUnits: "249999999" }, "ESCROW_AMOUNT_MISMATCH");
+  });
+
+  it("rejects a different milestone count or schedule commitment", () => {
+    expectRejection({ milestoneCount: 1 }, "ESCROW_MILESTONE_COUNT_MISMATCH");
+    expectRejection({ scheduleHash: `0x${"88".repeat(32)}` }, "ESCROW_SCHEDULE_MISMATCH");
+  });
+
+  it("rejects an invalid active milestone or mismatched active detail", () => {
+    expectRejection({ currentMilestone: 2 }, "ESCROW_CURRENT_MILESTONE_INVALID");
+    expectRejection({ currentMilestoneDetail: { ...observed.currentMilestoneDetail!, milestoneIndex: 1 } }, "ESCROW_CURRENT_MILESTONE_DETAIL_MISMATCH");
   });
 });

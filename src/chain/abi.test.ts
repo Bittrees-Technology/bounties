@@ -21,10 +21,11 @@ describe("escrow boundary ABI descriptor", () => {
 
   it("is pinned to the current compiler artifact and exposes its state-changing methods", () => {
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toBe(
-      "sha256:f2fa7aaa2765186b474f215ff2c56f0b0c4cdda90f4f783c2a76aeba0ef9e300"
+      "sha256:8f3f1aba2071a031feb88abe2813e54989ad42d82eba902ae38cad6fd409cd01"
     );
     expect(BOUNTY_ESCROW_ABI.map((entry) => ("name" in entry ? entry.name : undefined))).toEqual([
       "createBounty",
+      "createMilestoneBounty",
       "fundBounty",
       "acceptBounty",
       "submitDelivery",
@@ -35,7 +36,11 @@ describe("escrow boundary ABI descriptor", () => {
       "cancelBounty",
       "refundBounty",
       "REVIEW_PERIOD",
-      "getBounty"
+      "MAX_MILESTONES",
+      "MILESTONE_SCHEDULE_DOMAIN",
+      "MILESTONE_TERMS_DOMAIN",
+      "getBounty",
+      "getMilestone"
     ]);
   });
 
