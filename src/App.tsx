@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   BadgeCheck,
   Bell,
@@ -106,6 +106,26 @@ type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObserv
 
 const reportEntityLabel = (entityType: ReportableEntity) => entityType === "bounty" ? "Listing" : entityType === "profile" ? "Profile" : "Review";
 const reportEntityNoun = (entityType: ReportableEntity) => reportEntityLabel(entityType).toLowerCase();
+
+const pageRoutes: Record<ProductPage, string> = {
+  marketplace: "/",
+  create: "/create",
+  profile: "/profiles",
+  moderator: "/moderator"
+};
+
+function pageFromPath(pathname: string): ProductPage {
+  if (pathname === "/create") return "create";
+  if (pathname === "/profiles" || pathname.startsWith("/profiles/")) return "profile";
+  if (pathname === "/moderator") return "moderator";
+  return "marketplace";
+}
+
+const marketplacePreviews = [
+  { scope: "Defined task", title: "Review a product onboarding flow", budget: "750 USDC", timeline: "10 days", applications: 4 },
+  { scope: "Milestone project", title: "Build an analytics dashboard", budget: "2.5 WETH", timeline: "3 milestones", applications: 7 },
+  { scope: "Review or audit", title: "Audit a smart-contract integration", budget: "0.35 WBTC", timeline: "14 days", applications: 3 }
+] as const;
 
 function deadlineTimestamp(value?: string | null): number | null {
   if (!value) return null;
@@ -235,7 +255,7 @@ export default function App() {
   const [inspectAddress, setInspectAddress] = useState("");
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
-  const [activePage, setActivePage] = useState<ProductPage>("marketplace");
+  const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
@@ -314,11 +334,28 @@ export default function App() {
     && scheduleDatesValid
     && scheduleTotalsBudget;
 
+  function navigateToPage(page: ProductPage) {
+    const target = pageRoutes[page];
+    if (window.location.pathname !== target) window.history.pushState({}, "", target);
+    setActivePage(page);
+  }
+
+  function handlePageLink(event: MouseEvent<HTMLAnchorElement>, page: ProductPage) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (page === "profile") {
+      setSelectedProfileAddress(null);
+      setPublicProfile(null);
+    }
+    navigateToPage(page);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
   function openProfile(address: string) {
     setSelectedProfileAddress(address);
     setPublicProfile(null);
     setProfileMessage("Loading wallet profile…");
-    setActivePage("profile");
+    navigateToPage("profile");
     window.scrollTo({ top: 0, behavior: "smooth" });
     void loadPublicProfile(address)
       .then((profile) => {
@@ -396,6 +433,16 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setSelectedProfileAddress(null);
+      setPublicProfile(null);
+      setActivePage(pageFromPath(window.location.pathname));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
   async function connect() {
     try {
       setError(null);
@@ -431,7 +478,7 @@ export default function App() {
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
-      setActivePage("marketplace");
+      navigateToPage("marketplace");
     });
   }
 
@@ -458,9 +505,9 @@ export default function App() {
     await act(async () => {
       if (!session?.roles.includes(role)) await selectRole(role);
       if (role === "buyer") {
-        setActivePage("create");
+        navigateToPage("create");
       } else {
-        setActivePage("marketplace");
+        navigateToPage("marketplace");
         setTimeout(() => document.querySelector("#orders")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 0);
       }
     }, role === "buyer" ? "Ready to create a bounty." : "Showing available work.");
@@ -931,13 +978,47 @@ export default function App() {
     <main>
       <section className="workspace">
         <aside className="sidebar">
-          <div><p className="eyebrow">Token-funded work</p><h1>Bounties</h1></div>
+          <header className="sidebar-header" role="banner" aria-label="Bounties account controls">
+            <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "marketplace")} aria-label="Bounties marketplace home">
+              <span className="brand-mark" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
+              <span><span className="eyebrow">Token-funded work</span><span className="brand-wordmark">Bounties</span></span>
+            </a>
+            <div className="sidebar-account" aria-label="Account controls" id="account-controls">
+              <div className="account-actions">
+                {wallet ? (
+                  <button className="compact-account-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                    <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
+                  </button>
+                ) : null}
+                {wallet ? (
+                  <button className="compact-account-button" onClick={() => void disconnect()}><WalletCards size={17} /><span>{short(wallet)}</span><span className="visually-hidden"> · Disconnect</span></button>
+                ) : (
+                  <button className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
+                )}
+                {notificationsOpen ? (
+                  <div className="notification-popover">
+                    {session?.notifications.length
+                      ? session.notifications.map((notification) => (
+                          <button
+                            key={notification.id}
+                            disabled={Boolean(notification.read_at)}
+                            onClick={() => void act(() => markNotificationRead(notification.id))}
+                          >
+                            {notification.body}{notification.read_at ? " · Read" : " · Mark read"}
+                          </button>
+                        ))
+                      : "No notifications."}
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </header>
           <nav className="primary-nav" aria-label="Primary navigation">
-            <button className={visiblePage === "marketplace" ? "active" : ""} type="button" onClick={() => setActivePage("marketplace")}><BriefcaseBusiness size={17} />Marketplace</button>
-            <button className={visiblePage === "create" ? "active" : ""} type="button" onClick={() => setActivePage("create")}><PlusCircle size={17} />Create bounty</button>
-            <button className={visiblePage === "profile" && !selectedProfileAddress ? "active" : ""} type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setActivePage("profile"); }}><Search size={17} />Profiles</button>
-            {wallet ? <button className={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "active" : ""} type="button" onClick={() => openProfile(wallet)}><UserRound size={17} />My profile</button> : null}
-            {session?.staffRole ? <button className={`moderator-nav ${visiblePage === "moderator" ? "active" : ""}`} type="button" onClick={() => setActivePage("moderator")}><EyeOff size={17} />Moderator</button> : null}
+            <a href="/" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
+            <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
+            <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
+            {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
+            {session?.staffRole ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
           </nav>
           <div className="gate-callout">
             <ShieldCheck size={18} />
@@ -946,39 +1027,10 @@ export default function App() {
         </aside>
 
         <section className="content">
-          <header className="site-toolbar" aria-label="Account controls">
-            <div className="account-actions">
-              {wallet ? (
-                <button className="compact-account-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
-                  <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
-                </button>
-              ) : null}
-              {wallet ? (
-                <button className="compact-account-button" onClick={() => void disconnect()}><WalletCards size={17} />{short(wallet)} · Disconnect</button>
-              ) : (
-                <button className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
-              )}
-              {notificationsOpen ? (
-                <div className="notification-popover">
-                  {session?.notifications.length
-                    ? session.notifications.map((notification) => (
-                        <button
-                          key={notification.id}
-                          disabled={Boolean(notification.read_at)}
-                          onClick={() => void act(() => markNotificationRead(notification.id))}
-                        >
-                          {notification.body}{notification.read_at ? " · Read" : " · Mark read"}
-                        </button>
-                      ))
-                    : "No notifications."}
-                </div>
-              ) : null}
-            </div>
-          </header>
           <header className="topbar">
             <div className="topbar-copy">
               <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : visiblePage === "moderator" ? "Authorized workspace" : "Wallet reputation"}</p>
-              <h2>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty people can deliver." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h2>
+              <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty people can deliver." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h1>
               <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Describe the work, choose a token, set a timeline, and define how delivery will be accepted." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Discover a public wallet profile, its verified marketplace activity, and its preferred areas of work."}</p>
             </div>
           </header>
@@ -990,7 +1042,7 @@ export default function App() {
 
           {visiblePage === "marketplace" && wallet ? (
             <section className="panel role-panel" aria-label="Marketplace roles">
-              <div className="section-heading"><BadgeCheck /><h3>How would you like to participate?</h3></div>
+              <div className="section-heading"><BadgeCheck /><h2>How would you like to participate?</h2></div>
               <p>Choose a starting point. This does not lock your wallet into one role; you can hire and work from the same profile.</p>
               <div className="participation-options">
                 <button onClick={() => void chooseRole("buyer")}><span>I want to hire</span><small>Create and fund a bounty</small></button>
@@ -1001,7 +1053,7 @@ export default function App() {
 
               <section className="page-stack">
                 {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
-                  <div className="section-heading"><ClipboardList /><h3>Create a bounty</h3></div>
+                  <div className="section-heading"><ClipboardList /><h2>Create a bounty</h2></div>
                   <p className="section-copy">Describe the work, set the payment terms, and define what success looks like.</p>
                   <label>Bounty title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What do you need completed?" required /></label>
                   <div className="form-grid">
@@ -1083,7 +1135,7 @@ export default function App() {
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
                   <section className="panel workflow-panel">
-                    <div className="section-heading"><FileCheck2 /><h3>How a bounty works</h3></div>
+                    <div className="section-heading"><FileCheck2 /><h2>How a bounty works</h2></div>
                     <ol className="workflow-guide">
                       <li><span>1</span><strong>Create</strong><small>Publish clear work and payment terms.</small></li>
                       <li><span>2</span><strong>Apply</strong><small>A labor provider submits a plan.</small></li>
@@ -1093,13 +1145,28 @@ export default function App() {
                     </ol>
                   </section>
                 <section id="orders" className="panel queue marketplace-page">
-                  <div className="section-heading"><BriefcaseBusiness /><h3>Marketplace</h3></div>
+                  <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace</h2></div>
                   <p className="section-copy">Review the scope, timeline, token contract, and application activity before participating.</p>
                   {!wallet ? (
-                    <div className="empty-state-panel compact-empty-state">
-                      <BriefcaseBusiness />
-                      <strong>Connect your wallet to view live bounties</strong>
-                      <span>Your wallet keeps applications, work history, and payments connected to you.</span>
+                    <div className="marketplace-preview">
+                      <div className="preview-connect-callout">
+                        <div>
+                          <strong>Browse first. Connect when you are ready to apply.</strong>
+                          <span>These examples show the information available on a bounty. Live applications and personalized activity require a wallet.</span>
+                        </div>
+                        <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet to apply</button>
+                      </div>
+                      <div className="preview-bounty-grid" aria-label="Illustrative bounty previews">
+                        {marketplacePreviews.map((preview) => (
+                          <article className="preview-bounty-card" aria-disabled="true" key={preview.title}>
+                            <div className="preview-card-topline"><span className="scope">{preview.scope}</span><span className="preview-label">Preview</span></div>
+                            <h3>{preview.title}</h3>
+                            <strong className="preview-budget">{preview.budget}</strong>
+                            <div className="preview-meta"><span>{preview.timeline}</span><span>{preview.applications} applications</span></div>
+                          </article>
+                        ))}
+                      </div>
+                      <p className="preview-disclaimer">Illustrative examples only. They are not live offers and cannot be opened or applied to.</p>
                     </div>
                   ) : session?.orders.length ? (
                     session.orders.map((order) => (
@@ -1129,7 +1196,7 @@ export default function App() {
 
               {visiblePage === "marketplace" && session?.myReports.length ? (
                 <section id="my-reports" className="panel my-reports-panel">
-                  <div className="section-heading"><Flag /><h3>My reports</h3></div>
+                  <div className="section-heading"><Flag /><h2>My reports</h2></div>
                   <p>Track the reports you submitted and read moderator responses.</p>
                   <div className="my-reports-list">
                     {session.myReports.map((report) => (
@@ -1149,7 +1216,7 @@ export default function App() {
               {visiblePage === "profile" ? (
                 <section className="page-stack profile-page" aria-label="Wallet profile">
                   <section className="panel profile-discovery">
-                    <div className="section-heading"><Search /><h3>Discover profiles</h3></div>
+                    <div className="section-heading"><Search /><h2>Discover profiles</h2></div>
                     <p>Search saved public wallet profiles by custom name, primary ENS name, or wallet address.</p>
                     <p className="ens-integration-note"><BadgeCheck size={16} /> ENS lookup is active for Ethereum names. When a wallet has a primary ENS name, Bounties displays it automatically unless the owner chooses a custom profile name.</p>
                     <form className="profile-search-form" onSubmit={discoverProfiles}>
@@ -1227,7 +1294,7 @@ export default function App() {
               {visiblePage === "moderator" && session?.staffRole ? (
                 <section id="moderation" className="panel moderation-panel authorized-panel">
                   <div className="moderator-badge"><ShieldCheck size={16} />Authorized {session.staffRole}</div>
-                  <div className="section-heading"><EyeOff /><h3>Moderator panel</h3></div>
+                  <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
                   <p>Review reported listings, reviews, and profiles, choose a visibility decision, and respond to the reporter.</p>
                   <p className="moderation-safety-note"><ShieldCheck size={16} /> These actions change visibility on Bounties only. They do not affect escrow, payment, or blockchain records.</p>
                   <p>{session.staffRole} access · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
@@ -1275,7 +1342,10 @@ export default function App() {
                   )}
                 </section>
               ) : null}
-          <footer className="legal-footer"><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable Use</a><a href="/privacy">Privacy</a><span>Built by Bittrees Technology</span></footer>
+          <footer className="legal-footer">
+            <div className="footer-trust"><strong>Token-funded work with verifiable terms.</strong><span>Bounties is owned and managed by <a href="https://bittrees.org/">Bittrees</a> and authored by Bittrees Technology.</span></div>
+            <nav aria-label="Footer navigation"><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable Use</a><a href="/privacy">Privacy</a><a href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md" target="_blank" rel="noreferrer noopener">Escrow docs <ExternalLink size={12} /></a></nav>
+          </footer>
         </section>
       </section>
     </main>

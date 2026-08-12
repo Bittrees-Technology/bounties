@@ -31,7 +31,7 @@ it("enables participant escrow creation only when a deployment is configured", a
   render(<App />);
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
   await screen.findByRole("heading", { name: /how would you like to participate/i });
-  await user.click(screen.getByRole("button", { name: /^create bounty$/i }));
+  await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
   await user.type(screen.getByLabelText(/bounty title/i), "Verify escrow observation");
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");

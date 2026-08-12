@@ -122,6 +122,7 @@ beforeEach(() => {
   snapshotModerationReports = [];
   snapshotMyReports = [];
   if (typeof window === "undefined") return;
+  window.history.replaceState({}, "", "/");
   Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
   Object.defineProperty(window, "ethereum", {
     configurable: true,
