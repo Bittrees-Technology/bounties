@@ -38,4 +38,14 @@ describe("production legal pages", () => {
     expect(terms).toContain("not a nation, sovereign, court, territorial jurisdiction");
     expect(terms).toContain("nonwaivable law prevails");
   });
+
+  it("identifies Bittrees ownership and omits the removed claims and liability language", () => {
+    for (const html of Object.values(pages)) {
+      expect(html).toContain("owned and managed by Bittrees");
+      expect(html).toContain("Authored by Bittrees Technology");
+    }
+    expect(pages.terms).not.toContain("A possible future product at claims.bittrees.org");
+    expect(pages.terms).not.toContain("aggregate liability arising from the hosted service");
+    expect(pages.terms).not.toContain("greater of US$100");
+  });
 });

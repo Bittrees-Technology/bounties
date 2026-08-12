@@ -13,7 +13,7 @@ async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
 }
 
 async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /^create bounty$/i }));
+  await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
   expect(screen.getByRole("heading", { name: /create a bounty people can deliver/i })).toBeInTheDocument();
 }
 
@@ -38,18 +38,27 @@ async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "
 describe("App", () => {
   it("separates marketplace and creation while requiring wallet auth only for actions", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    const { container } = render(<App />);
 
     expect(screen.getAllByRole("button", { name: /^connect wallet$/i })).toHaveLength(1);
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: /work with clear terms and visible progress/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^bounties$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/explore bounties, then sign in when you.re ready/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/won.t send a transaction or give bounties access to your tokens/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^marketplace$/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^create bounty$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("href", "/create");
+    expect(screen.getByLabelText(/illustrative bounty previews/i)).toBeInTheDocument();
+    expect(container.querySelectorAll(".preview-bounty-card")).toHaveLength(3);
+    expect(screen.getByText(/illustrative examples only/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /escrow docs/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md"));
     expect(screen.queryByRole("heading", { name: /check a token/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/bounty title/i)).not.toBeInTheDocument();
 
     await openCreatePage(user);
+    expect(window.location.pathname).toBe("/create");
+    expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByLabelText(/bounty title/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to inspect/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to publish/i })).toBeInTheDocument();
@@ -79,7 +88,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /i want to hire/i }));
     expect(await screen.findByRole("heading", { name: /create a bounty people can deliver/i })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /^marketplace$/i }));
+    await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
     await user.click(screen.getByRole("button", { name: /i want to work/i }));
     expect(await screen.findByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
   });
@@ -147,7 +156,7 @@ describe("App", () => {
   it("discovers public profiles by custom or ENS identity", async () => {
     const user = userEvent.setup();
     render(<App />);
-    await user.click(screen.getByRole("button", { name: /^profiles$/i }));
+    await user.click(screen.getByRole("link", { name: /^profiles$/i }));
     await user.type(screen.getByLabelText(/profile search/i), "testparticipant.eth");
     await user.click(screen.getByRole("button", { name: /search profiles/i }));
 
@@ -162,7 +171,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
-    await user.click(screen.getByRole("button", { name: /^my profile$/i }));
+    await user.click(screen.getByRole("link", { name: /^my profile$/i }));
 
     expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
@@ -196,7 +205,7 @@ describe("App", () => {
       entityType: "profile",
       entityId: "00000000-0000-4000-8000-000000000111"
     });
-    await user.click(screen.getByRole("button", { name: /^marketplace$/i }));
+    await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
     expect(screen.getByText(/^Profile report$/i)).toBeInTheDocument();
   });
 
@@ -262,7 +271,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
-    await user.click(screen.getByRole("button", { name: /^moderator$/i }));
+    await user.click(screen.getByRole("link", { name: /^moderator$/i }));
     expect(screen.getAllByRole("heading", { name: /moderator panel/i })).toHaveLength(2);
     expect(screen.getByText(/^Authorized moderator$/i)).toBeInTheDocument();
     expect(screen.getByText(/do not affect escrow, payment, or blockchain records/i)).toBeInTheDocument();
