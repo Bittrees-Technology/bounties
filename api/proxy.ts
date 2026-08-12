@@ -13,8 +13,9 @@ export const config = {
 
 function errorResponse(error: unknown): Response {
   const status = error instanceof ProxyRequestError ? error.status : 500;
-  const message = error instanceof ProxyRequestError ? error.message : "Proxy request failed.";
-  return Response.json({ code: message }, { status, headers: { "cache-control": "no-store" } });
+  const publicStatus = status >= 500 ? 503 : status;
+  const code = status >= 500 ? "SERVICE_UNAVAILABLE" : error instanceof ProxyRequestError ? error.message : "REQUEST_FAILED";
+  return Response.json({ code }, { status: publicStatus, headers: { "cache-control": "no-store" } });
 }
 
 export default async function handler(request: Request): Promise<Response> {

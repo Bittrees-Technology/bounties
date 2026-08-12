@@ -17,11 +17,11 @@ it("enables participant escrow creation only when a deployment is configured", a
 
   render(<App />);
   await user.click(screen.getByRole("button", { name: /sign in with ethereum/i }));
-  await screen.findByText(/roles are additive/i);
-  await user.type(screen.getByLabelText(/request title/i), "Verify escrow observation");
+  await screen.findByText(/post bounties, provide services, or do both/i);
+  await user.type(screen.getByLabelText(/bounty title/i), "Verify escrow observation");
   await user.type(screen.getByLabelText(/project/i), "Marketplace");
-  await user.type(screen.getByLabelText(/buyer/i), "Marketplace Ops");
-  await user.selectOptions(screen.getByLabelText(/^token$/i), screen.getByRole("option", { name: /USDC/i }));
+  await user.type(screen.getByLabelText(/review contact/i), "Marketplace Ops");
+  await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
   const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));

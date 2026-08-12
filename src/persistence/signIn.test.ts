@@ -34,3 +34,9 @@ it("signs and verifies the exact server-issued EIP-4361 challenge", async () => 
     signature: `0x${"ab".repeat(65)}`
   });
 });
+
+it("replaces internal authentication failures with a consumer-safe message", async () => {
+  vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "Proxy misconfigured." }, { status: 500 }));
+
+  await expect(signInWithEthereum()).rejects.toThrow("Sign-in is temporarily unavailable. Please try again shortly.");
+});

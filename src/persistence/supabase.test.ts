@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { mapBounty, toBase, type BountyRow, type TokenRecord } from "./supabase";
+import { describe, expect, it, vi } from "vitest";
+import { loadMarketplace, mapBounty, toBase, type BountyRow, type TokenRecord } from "./supabase";
 
 const token: TokenRecord = {
   id: "00000000-0000-4000-8000-000000000010",
@@ -18,6 +18,12 @@ const token: TokenRecord = {
 };
 
 describe("Supabase marketplace mapping", () => {
+  it("replaces internal proxy failures with a consumer-safe message", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "Proxy misconfigured." }, { status: 500 }));
+
+    await expect(loadMarketplace()).rejects.toThrow("Bounties is temporarily unavailable. Please try again shortly.");
+  });
+
   it("keeps database account identity separate from the provider wallet address", () => {
     const row: BountyRow = {
       id: "00000000-0000-4000-8000-000000000020",
