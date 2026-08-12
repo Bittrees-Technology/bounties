@@ -837,89 +837,30 @@ li {
 .bounty-budget { text-align: right; }
 .participant-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 
-.marketplace-preview {
-  display: grid;
-  gap: 14px;
-}
-
-.preview-connect-callout {
+.marketplace-access-state {
   align-items: center;
   background: #eef7f2;
   border: 1px solid #c9dfd2;
   border-radius: 16px;
-  display: flex;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 14px;
-}
-
-.preview-connect-callout > div {
   display: grid;
-  gap: 4px;
+  gap: 16px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  padding: 18px;
 }
 
-.preview-connect-callout span {
+.marketplace-access-state > svg {
+  color: #0f6b57;
+}
+
+.marketplace-access-copy {
+  display: grid;
+  gap: 5px;
+}
+
+.marketplace-access-copy span {
   color: #5a6862;
   font-size: .88rem;
   line-height: 1.5;
-}
-
-.preview-bounty-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.preview-bounty-card {
-  background: linear-gradient(180deg, #fff, #f7faf8);
-  border: 1px solid #d7e5dc;
-  border-radius: 16px;
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  opacity: .9;
-  padding: 15px;
-}
-
-.preview-card-topline,
-.preview-meta {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  justify-content: space-between;
-}
-
-.preview-label {
-  color: #5a6862;
-  font-size: .72rem;
-  font-weight: 800;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-.preview-bounty-card h3 {
-  font-size: 1.08rem;
-  line-height: 1.25;
-  margin: 0;
-}
-
-.preview-budget {
-  color: #173c35;
-  font-size: 1.05rem;
-}
-
-.preview-meta {
-  border-top: 1px solid #e2ebe5;
-  color: #5a6862;
-  font-size: .8rem;
-  padding-top: 10px;
-}
-
-.preview-disclaimer {
-  color: #5a6862;
-  font-size: .78rem;
-  margin: 0;
 }
 
 .card-progress {
@@ -2345,17 +2286,16 @@ textarea {
   .participation-options { grid-template-columns: 1fr; }
 
   .sidebar .primary-nav,
-  .preview-bounty-grid,
   .legal-footer {
     grid-template-columns: 1fr;
   }
 
-  .preview-connect-callout {
+  .marketplace-access-state {
     align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
-  .preview-connect-callout button {
+  .marketplace-access-state button {
     width: 100%;
   }
 

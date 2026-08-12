@@ -121,12 +121,6 @@ function pageFromPath(pathname: string): ProductPage {
   return "marketplace";
 }
 
-const marketplacePreviews = [
-  { scope: "Defined task", title: "Review a product onboarding flow", budget: "750 USDC", timeline: "10 days", applications: 4 },
-  { scope: "Milestone project", title: "Build an analytics dashboard", budget: "2.5 WETH", timeline: "3 milestones", applications: 7 },
-  { scope: "Review or audit", title: "Audit a smart-contract integration", budget: "0.35 WBTC", timeline: "14 days", applications: 3 }
-] as const;
-
 function deadlineTimestamp(value?: string | null): number | null {
   if (!value) return null;
   const parsed = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
@@ -1189,25 +1183,13 @@ export default function App() {
                   <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace</h2></div>
                   <p className="section-copy">Review the scope, timeline, token contract, and application activity before participating.</p>
                   {!wallet ? (
-                    <div className="marketplace-preview">
-                      <div className="preview-connect-callout">
-                        <div>
-                          <strong>Browse first. Connect when you are ready to apply.</strong>
-                          <span>These examples show the information available on a bounty. Live applications and personalized activity require a wallet.</span>
-                        </div>
-                        <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet to apply</button>
+                    <div className="marketplace-access-state">
+                      <WalletCards size={28} aria-hidden="true" />
+                      <div className="marketplace-access-copy">
+                        <strong>Connect your wallet to view live bounties.</strong>
+                        <span>Review current opportunities, token contracts, and application activity after signing in. Connecting does not authorize a transaction or token spending.</span>
                       </div>
-                      <div className="preview-bounty-grid" aria-label="Illustrative bounty previews">
-                        {marketplacePreviews.map((preview) => (
-                          <article className="preview-bounty-card" aria-disabled="true" key={preview.title}>
-                            <div className="preview-card-topline"><span className="scope">{preview.scope}</span><span className="preview-label">Preview</span></div>
-                            <h3>{preview.title}</h3>
-                            <strong className="preview-budget">{preview.budget}</strong>
-                            <div className="preview-meta"><span>{preview.timeline}</span><span>{preview.applications} applications</span></div>
-                          </article>
-                        ))}
-                      </div>
-                      <p className="preview-disclaimer">Illustrative examples only. They are not live offers and cannot be opened or applied to.</p>
+                      <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect to marketplace</button>
                     </div>
                   ) : session?.orders.length ? (
                     session.orders.map((order) => (
