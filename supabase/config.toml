@@ -34,3 +34,4 @@ verify_jwt = false
 
 [functions.bounties-api]
 verify_jwt = false
+# Retained only as an explicit HTTP 410 tombstone. It is not an application API.

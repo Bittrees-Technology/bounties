@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   APPROVAL_DOMAIN,
+  APPROVE_DELIVERY_DECISION_HASH,
   EVIDENCE_DOMAIN,
+  MILESTONE_SCHEDULE_DOMAIN,
+  MILESTONE_TERMS_DOMAIN,
   SCOPE_DOMAIN,
   TERMS_DOMAIN,
+  buildCanonicalApprovalCommitment,
+  buildCanonicalEvidenceCommitment,
   hashApproval,
   hashEvidence,
+  hashMilestoneSchedule,
+  hashMilestoneTerms,
   hashScope,
   hashSourceJson,
   hashTerms
@@ -31,6 +38,111 @@ describe("escrow commitment codec", () => {
     expect(TERMS_DOMAIN).toBe("0xea4bde83bf3f2349f43db0df56f2beb420e157097c3ce18e39f8f9770688553f");
     expect(EVIDENCE_DOMAIN).toBe("0x0c9c10c6c13a1002589db59aa808898432eddeb2235916e3b63a4a6be94a6de4");
     expect(APPROVAL_DOMAIN).toBe("0x23489d4e0e4e08827790c19d46a79e6a0fa900ed241eb5f79bda6693c9cab68b");
+    expect(MILESTONE_SCHEDULE_DOMAIN).toBe("0xa1c991bcfc6f547ccd19ee1480a5e68fc074f9dae0fb8064e26f8a98abd44e1c");
+    expect(MILESTONE_TERMS_DOMAIN).toBe("0x476200e55c9d19449eddbf46a65928e291b91f6bcaf3c914f54cb23053c472e6");
+  });
+
+  it("matches the exact Solidity milestone schedule and terms vectors", () => {
+    const scopeHash = hashScope({
+      chainId: base.chainId,
+      escrowAddress: base.escrowAddress,
+      requester: base.requester,
+      token: base.token,
+      plannedAmount: 2500000n,
+      deliveryDeadline: 1786465600n,
+      metadataHash: base.metadataHash,
+      salt: base.salt
+    }).value;
+    const scheduleHash = hashMilestoneSchedule({
+      chainId: base.chainId,
+      escrowAddress: base.escrowAddress,
+      scopeHash,
+      milestoneAmounts: [1000000n, 1500000n],
+      milestoneDeadlines: [1786465600n, 1789057600n]
+    }).value;
+    const termsHash = hashMilestoneTerms({
+      chainId: base.chainId,
+      escrowAddress: base.escrowAddress,
+      scopeHash,
+      proposalHash: base.proposalHash,
+      provider: base.provider,
+      scheduleHash
+    }).value;
+
+    expect(scheduleHash).toBe("0x8f097615fea6c3090622808cbe0c9df8a6adbe1599b98d7bd1c284cd77777d99");
+    expect(termsHash).toBe("0x7bfc4b348a54eecd7b43b3b07584fb5345e66fc9a92e99e9a0a8634cdd8c7170");
+  });
+
+  it("binds milestone order, exact base units, and exact deadlines", () => {
+    const input = {
+      chainId: base.chainId,
+      escrowAddress: base.escrowAddress,
+      scopeHash: base.metadataHash,
+      milestoneAmounts: [1000000n, 1500000n],
+      milestoneDeadlines: [1786465600n, 1789057600n]
+    } as const;
+    const committed = hashMilestoneSchedule(input).value;
+    expect(hashMilestoneSchedule({ ...input, milestoneAmounts: [999999n, 1500001n] }).value).not.toBe(committed);
+    expect(hashMilestoneSchedule({ ...input, milestoneDeadlines: [1786465601n, 1789057600n] }).value).not.toBe(committed);
+    expect(() => hashMilestoneSchedule({ ...input, milestoneDeadlines: [1789057600n, 1786465600n] })).toThrow(
+      /deadlines must increase/i
+    );
+  });
+
+  it("pins the canonical milestone evidence and approval commitments", () => {
+    const evidence = buildCanonicalEvidenceCommitment({
+      chainId: 84532n,
+      escrowAddress: "0x1111111111111111111111111111111111111111",
+      bountyId: 9n,
+      scopeHash: `0x${"22".repeat(32)}`,
+      termsHash: `0x${"33".repeat(32)}`,
+      provider: "0x4444444444444444444444444444444444444444",
+      milestoneId: "00000000-0000-4000-8000-000000000324",
+      ordinal: 1,
+      uri: "  https://example.test/phase-two  "
+    });
+    expect(evidence).toEqual({
+      version: "bounty-evidence-commitment.v1",
+      normalizedUri: "https://example.test/phase-two",
+      contentHash: "0xd6d5962ebf247152b0e1a35a3d3f00dfe8fdbc117e5f54d944bfd6ce38b0ac24",
+      uriHash: "0xfc88667a49812d504539419edcac9a47f5024053ccefbfd12d6edddfeba3b251",
+      salt: "0xe2be643e304edd0e797055dc1e5b4697f58516a4c05b9fdb2ffa2c2fd4000979",
+      evidenceHash: "0x74ead1b326a78229313ae798c180692e9bad6dc3235b50b43d522a0006b148aa"
+    });
+    expect(APPROVE_DELIVERY_DECISION_HASH).toBe("0x056af0fec0aaeac82977994e26b1cf0aff999e99e9f132e038cae81d44bd0b8c");
+    expect(buildCanonicalApprovalCommitment({
+      chainId: 84532n,
+      escrowAddress: "0x1111111111111111111111111111111111111111",
+      bountyId: 9n,
+      evidenceHash: evidence.evidenceHash,
+      requester: "0x5555555555555555555555555555555555555555",
+      milestoneId: "00000000-0000-4000-8000-000000000324",
+      ordinal: 1
+    })).toEqual({
+      version: "bounty-approval-commitment.v1",
+      decisionHash: APPROVE_DELIVERY_DECISION_HASH,
+      salt: "0xa20cdd2dcfe478341b9de072c8d7dacd243b6e168ec01139383583a136435977",
+      approvalHash: "0x4d4d2d7868accc8bfda94cb87d4aaf0f7dc163bf390186291547767f25f00cad"
+    });
+  });
+
+  it("binds canonical commitments to milestone identity, ordinal, and exact evidence", () => {
+    const input = {
+      chainId: 84532n,
+      escrowAddress: "0x1111111111111111111111111111111111111111" as const,
+      bountyId: 9n,
+      scopeHash: `0x${"22".repeat(32)}` as const,
+      termsHash: `0x${"33".repeat(32)}` as const,
+      provider: "0x4444444444444444444444444444444444444444" as const,
+      milestoneId: "00000000-0000-4000-8000-000000000324",
+      ordinal: 1,
+      uri: "https://example.test/phase-two"
+    };
+    const committed = buildCanonicalEvidenceCommitment(input);
+    expect(buildCanonicalEvidenceCommitment({ ...input, ordinal: 0 }).evidenceHash).not.toBe(committed.evidenceHash);
+    expect(buildCanonicalEvidenceCommitment({ ...input, milestoneId: `${input.milestoneId}-other` }).evidenceHash).not.toBe(committed.evidenceHash);
+    expect(buildCanonicalEvidenceCommitment({ ...input, uri: `${input.uri}/revision` }).evidenceHash).not.toBe(committed.evidenceHash);
+    expect(() => buildCanonicalEvidenceCommitment({ ...input, bountyId: 0n })).toThrow(/bounty ID must be positive/i);
   });
 
   it("matches stable Solidity-compatible scope, terms, evidence, and approval vectors", () => {

@@ -1,8 +1,11 @@
-import "@testing-library/jest-dom/vitest";
+import * as matchers from "@testing-library/jest-dom/matchers";
 import { createSiweMessage } from "viem/siwe";
-import { beforeEach, vi } from "vitest";
+import { beforeEach, expect, vi } from "vitest";
 
 import { SIWE_AUTHENTICATION_METHOD, SIWE_STATEMENT, siweResources } from "../auth/siwe";
+import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment } from "../chain/hashCodec";
+
+expect.extend(matchers);
 
 const testWallet = "0x1111111111111111111111111111111111111111";
 const tokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
@@ -24,6 +27,7 @@ let bounties: Array<Record<string, unknown>> = [];
 let authenticated = false;
 let snapshotStaffRole: "moderator" | "admin" | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
+let snapshotMyReports: Array<Record<string, unknown>> = [];
 
 export function configureMockStaff(
   role: "moderator" | "admin" | null,
@@ -33,11 +37,71 @@ export function configureMockStaff(
   snapshotModerationReports = reports;
 }
 
+export function configureMockMilestoneEscrow(
+  onchainState: "ProviderAccepted" | "Delivered" | "BuyerApproved",
+  activeState: "Pending" | "Submitted" | "Approved",
+  activeDeadline = "2099-12-31T23:59:59.999Z",
+  integrity: "match" | "evidence_mismatch" | "approval_mismatch" = "match"
+) {
+  const token = tokens.find((candidate) => candidate.symbol === "USDC")!;
+  const canonicalEvidence = buildCanonicalEvidenceCommitment({
+    chainId: 84532n,
+    escrowAddress: "0x2222222222222222222222222222222222222222",
+    bountyId: 9n,
+    scopeHash: `0x${"11".repeat(32)}`,
+    termsHash: `0x${"12".repeat(32)}`,
+    provider: "0x3333333333333333333333333333333333333333",
+    milestoneId: "00000000-0000-4000-8000-000000000324",
+    ordinal: 1,
+    uri: "https://example.test/phase-two"
+  });
+  const canonicalApprovalHash = buildCanonicalApprovalCommitment({
+    chainId: 84532n,
+    escrowAddress: "0x2222222222222222222222222222222222222222",
+    bountyId: 9n,
+    evidenceHash: canonicalEvidence.evidenceHash,
+    requester: testWallet,
+    milestoneId: "00000000-0000-4000-8000-000000000324",
+    ordinal: 1
+  }).approvalHash;
+  bounties = [{
+    id: "00000000-0000-4000-8000-000000000321",
+    creator_id: "00000000-0000-4000-8000-000000000111",
+    title: "Two-phase active milestone",
+    description: "Exact active milestone controls",
+    scope_source: { project: "Marketplace", buyer: "Marketplace Ops", deliveryDeadline: "2099-12-31", criteria: [] },
+    scope_hash: `0x${"11".repeat(32)}`,
+    chain_id: token.chain_id,
+    token_id: token.id,
+    token_decimals: token.decimals,
+    budget_base_units: "250000000",
+    status: "accepted",
+    accepted_proposal_id: "00000000-0000-4000-8000-000000000322",
+    escrow_schedule_status: "structured",
+    created_at: new Date().toISOString(),
+    token,
+    milestones: [
+      { id: "00000000-0000-4000-8000-000000000323", ordinal: 0, title: "Phase one", amount_base_units: "100000000", delivery_deadline: "2099-11-30T23:59:59.999Z", status: "delivered", evidence: [{ id: "00000000-0000-4000-8000-000000000325", uri: "https://example.test/phase-one", content_hash: `0x${"22".repeat(32)}`, evidence_hash: `0x${"33".repeat(32)}`, revision: 1 }] },
+      { id: "00000000-0000-4000-8000-000000000324", ordinal: 1, title: "Phase two", amount_base_units: "150000000", delivery_deadline: activeDeadline, status: activeState === "Pending" ? "funded" : "delivered", evidence: activeState === "Pending" ? [] : [{ id: "00000000-0000-4000-8000-000000000326", uri: canonicalEvidence.normalizedUri, content_hash: canonicalEvidence.contentHash, evidence_hash: integrity === "evidence_mismatch" ? `0x${"aa".repeat(32)}` : canonicalEvidence.evidenceHash, canonical_approval_hash: integrity === "approval_mismatch" ? `0x${"cc".repeat(32)}` : canonicalApprovalHash, revision: 1 }] }
+    ],
+    proposals: [{ id: "00000000-0000-4000-8000-000000000322", provider_id: "00000000-0000-4000-8000-000000000333", provider_wallet_address: "0x3333333333333333333333333333333333333333", proposal_hash: `0x${"66".repeat(32)}`, note: "Two phases", proposed_total_base_units: "250000000", status: "accepted" }],
+    escrow: {
+      status: "confirmed", transaction_hash: `0x${"77".repeat(32)}`, block_hash: `0x${"88".repeat(32)}`,
+      contract_address: "0x2222222222222222222222222222222222222222", interface_version: "escrow-adapter.v1", onchain_bounty_id: "9",
+      received_base_units: "250000000", requested_base_units: "250000000", remaining_base_units: "150000000", onchain_state: onchainState, terms_hash: `0x${"12".repeat(32)}`,
+      milestone_count: 2, current_milestone: 1, review_deadline: activeState === "Submitted" ? "2000-01-01T00:00:00.000Z" : null,
+      current_milestone_detail: { milestone_index: 1, amount_base_units: "150000000", delivery_deadline: activeDeadline, review_deadline: activeState === "Submitted" ? "2000-01-01T00:00:00.000Z" : null, state: activeState, evidence_hash: canonicalEvidence.evidenceHash, approval_hash: activeState === "Approved" ? integrity === "approval_mismatch" ? `0x${"bb".repeat(32)}` : canonicalApprovalHash : `0x${"00".repeat(32)}` }
+    }
+  }];
+}
+
 beforeEach(() => {
   bounties = [];
   authenticated = false;
   snapshotStaffRole = null;
   snapshotModerationReports = [];
+  snapshotMyReports = [];
+  Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
   Object.defineProperty(window, "ethereum", {
     configurable: true,
     value: {
@@ -96,9 +160,47 @@ beforeEach(() => {
       tokens,
       bounties,
       notifications: [],
-      myReports: [],
+      myReports: snapshotMyReports,
       moderationReports: snapshotModerationReports
     });
+    if (url.endsWith("/api/bounties/profiles/me")) {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      return Response.json({
+        account_id: "00000000-0000-4000-8000-000000000111",
+        wallet_address: testWallet,
+        display_name: body.displayName || null,
+        profile_bio: body.profileBio || null,
+        profile_url: body.profileUrl || null,
+        profile_moderation_status: "visible",
+        profile_updated_at: new Date().toISOString(),
+        member_since: new Date().toISOString(),
+        roles: ["buyer", "provider"],
+        rating_summaries: {
+          capital_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } },
+          labor_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } }
+        },
+        reviews_received: []
+      });
+    }
+    if (url.includes("/api/bounties/profiles/")) {
+      const profileWallet = decodeURIComponent(url.split("/profiles/")[1]);
+      return Response.json({
+        account_id: "00000000-0000-4000-8000-000000000111",
+        wallet_address: profileWallet,
+        display_name: profileWallet.toLowerCase() === testWallet.toLowerCase() ? "Test participant" : null,
+        profile_bio: "Builds and funds verifiable work.",
+        profile_url: "https://example.test/profile",
+        profile_moderation_status: "visible",
+        profile_updated_at: new Date().toISOString(),
+        member_since: new Date().toISOString(),
+        roles: ["buyer", "provider"],
+        rating_summaries: {
+          capital_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } },
+          labor_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } }
+        },
+        reviews_received: []
+      });
+    }
     if (url.endsWith("/api/bounties/logout")) {
       authenticated = false;
       return Response.json({ ok: true });
@@ -119,6 +221,7 @@ beforeEach(() => {
         token_id: token.id,
         token_decimals: token.decimals,
         budget_base_units: body.budgetBaseUnits,
+        escrow_schedule_status: "structured",
         status: liveEscrowFixture ? "accepted" : "open",
         accepted_proposal_id: liveEscrowFixture ? acceptedProposalId : undefined,
         created_at: new Date().toISOString(),
@@ -140,6 +243,20 @@ beforeEach(() => {
       };
       bounties = [row];
       return Response.json(row);
+    }
+    if (url.endsWith("/api/bounties/reports")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string };
+      const report = {
+        id: "00000000-0000-4000-8000-000000000555",
+        entity_type: body.entityType,
+        entity_id: body.entityId,
+        reason: body.reason,
+        status: "open",
+        version: 1,
+        created_at: new Date().toISOString()
+      };
+      snapshotMyReports = [report];
+      return Response.json(report);
     }
     if (url.endsWith("/api/bounties/proposals")) return Response.json({ ok: true });
     if (url.endsWith("/api/bounties/roles")) return Response.json({ ok: true });

@@ -12,7 +12,7 @@ Bounties is a standalone, wallet-only marketplace. It must not depend on `claims
 The application is split into four boundaries:
 
 1. The browser owns wallet connection, message signing, responsive journeys, and reads/writes through the application API.
-2. Server endpoints verify nonce signatures, issue and rotate sessions, validate business transitions, perform chain inspection, and use a narrowly scoped database connection. They never accept a caller wallet address as proof of identity.
+2. Same-origin Vercel server endpoints verify nonce signatures, issue and rotate sessions, validate business transitions, perform chain inspection, and use a narrowly scoped database connection. They never accept a caller wallet address as proof of identity. The former Supabase `bounties-api` function is retired with HTTP 410 so there is no second state-changing implementation to drift.
 3. Supabase Postgres is the source of truth for accounts, roles, bounty workflow data, token identities, escrow observations, and notifications. RLS is defense in depth; the server resolves a signed-wallet session and invokes an allowlisted set of `SECURITY DEFINER` routines with the verified account ID.
 4. A versioned escrow adapter is the only code allowed to know the deployed contract ABI, address, event signatures, or scope/evidence hash encoding. No deployment address is committed until operations supplies a reviewed chain configuration.
 
@@ -60,7 +60,7 @@ Symbols and names are untrusted display data. The UI shows address and chain bes
 
 ## RLS and authorization
 
-RLS is enabled and forced on every application table. Browser clients never receive the Supabase service-role key. The same-origin edge function is the sole application path: it holds the server credential, resolves the opaque wallet session, and can call only hard-coded routines and routes; no request parameter can select a database function or role.
+RLS is enabled and forced on every application table. Browser clients never receive the Supabase service-role key. The same-origin Vercel server function is the sole application path: it holds the server credential, resolves the opaque wallet session, and can call only hard-coded routines and routes; no request parameter can select a database function or role.
 
 Policy helpers validate `current_setting('app.wallet_address', true)` as a canonical address and map it to one account. Reads are public only for open marketplace data intentionally exposed by a view. Private profile/session/auth data is self-only. Notifications are recipient-only. Tokens are readable by all; authenticated users may request inspection, but only the inspector function can finalize metadata fields.
 

@@ -1,6 +1,6 @@
 # Bounty escrow contracts
 
-`BountyEscrow` is a permissionless, ERC20-only escrow. A bounty is a record and
+`BountyEscrow` is a permissionless, ERC20-only sequential milestone escrow. A bounty is a record and
 never an NFT. The contract has no owner, administrator, arbiter, token allowlist,
 cap, pause, dispute, or claims flow.
 
@@ -15,6 +15,48 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
     +----------+-> Cancelled  +-> Refunded   +-> Released (at/after reviewDeadline)
                \______________\______________-> Settled (bilateral exact split)
 ```
+
+## Milestone schedule
+
+- A creator may use the single-deliverable `createBounty` compatibility path or
+  `createMilestoneBounty` with 1–32 ordered deliverables.
+- Every milestone allocation is a positive token base-unit amount. Their exact
+  sum is stored as `allocatedAmount`, and funding must equal that sum. Partial
+  funding and unallocated principal are rejected.
+- Each milestone carries an absolute `uint64` Unix delivery deadline. Nonzero
+  deadlines must strictly increase. Zero disables timeout for that milestone;
+  once zero appears, every later deadline must also be zero.
+- Only `currentMilestone` can be submitted. Its evidence opens its own seven-day
+  review. Buyer approval or review expiry lets anyone release exactly that
+  milestone allocation to the provider. A nonfinal release advances the active
+  index and active `Bounty.deliveryDeadline`; the final release terminates the bounty.
+- The schedule hash commits exact ordered amounts and deadlines. Milestone terms
+  bind that schedule to the provider and proposal, preventing substitution after
+  provider acceptance.
+  `scheduleHash = keccak256(abi.encode(MILESTONE_SCHEDULE_DOMAIN, chainId,
+  escrowAddress, scopeHash, milestoneAmounts, milestoneDeadlines))`, and
+  `termsHash = keccak256(abi.encode(MILESTONE_TERMS_DOMAIN, chainId,
+  escrowAddress, scopeHash, proposalHash, provider, scheduleHash))`.
+- Cancellation before provider acceptance refunds all outstanding principal.
+  After acceptance, missing the active milestone deadline refunds only unreleased
+  principal. Bilateral settlement likewise splits only unreleased principal;
+  completed milestone payments remain final.
+- Settlement offers are cleared whenever provider acceptance, milestone delivery,
+  buyer approval, or milestone advancement changes the lifecycle context.
+
+### Frontend and persistence contract
+
+Creation collects each line as `title | amount | delivery date`. Titles and
+descriptions remain offchain; the adapter sends ordered `amountBaseUnits[]` and
+absolute `deliveryDeadline[]` values. Persistence stores immutable schedule
+snapshots with `position`, `title`, `amount_base_units`, and `delivery_deadline`,
+orders by `position`, and rejects a total different from bounty funding. Token
+decimals are display metadata; persisted and contract amounts are integer base units.
+
+The client reads `getBounty` for allocation totals, released totals, and active
+index, then `getMilestone(bountyId, index)` for each deliverable's amount,
+delivery/review deadlines, state, evidence, and approval commitments. Legacy
+top-level evidence/deadline fields mirror the active milestone.
 
 - Anyone can create a record.
 - The requester alone funds it, approves delivery, cancels before provider

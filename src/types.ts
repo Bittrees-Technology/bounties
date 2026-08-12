@@ -1,6 +1,29 @@
-export type WorkScope = "task" | "milestone" | "project" | "retainer";
+export type WorkScope =
+  | "task"
+  | "deliverable"
+  | "milestone"
+  | "project"
+  | "consultation"
+  | "audit"
+  | "retainer";
 export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid";
-export type ServiceCategory = "Engineering" | "Design" | "Research" | "Operations" | "Onchain" | "Growth";
+export type ServiceCategory =
+  | "Engineering"
+  | "Design"
+  | "Research"
+  | "Operations"
+  | "Onchain"
+  | "Growth"
+  | "Software Engineering"
+  | "Smart Contracts & Web3"
+  | "Product & UX Design"
+  | "Data & Analytics"
+  | "Research & Writing"
+  | "Marketing & Growth"
+  | "Legal & Compliance"
+  | "Finance & Accounting"
+  | "Operations & Support"
+  | "Media & Creative";
 export type EscrowToken = string;
 
 export interface AcceptanceCriterion {
@@ -34,12 +57,15 @@ export interface Milestone {
   id: string;
   label: string;
   amount: number;
+  amountBaseUnits?: string;
   status: OrderStatus;
   criteria: AcceptanceCriterion[];
   deliveryNote?: string;
   deliveryEvidence?: string;
   deliveryEvidenceHash?: `0x${string}`;
   deliveryContentHash?: `0x${string}`;
+  deliveryApprovalHash?: `0x${string}`;
+  deliveryDeadline?: string;
 }
 
 export interface MarketplaceService {
@@ -73,6 +99,7 @@ export interface MarketplaceOrder {
   providerId?: string;
   tokenRecord?: import("./persistence/supabase").TokenRecord;
   escrowObservation?: import("./persistence/supabase").EscrowObservation;
+  escrowScheduleStatus?: "structured" | "requires_recreation";
   moderationStatus?: "visible" | "hidden";
   moderationReason?: string;
   reviews?: import("./persistence/supabase").ParticipantReview[];
@@ -99,6 +126,7 @@ export interface RequestDraft {
   deliveryDeadline: string;
   providerPreference: string;
   milestones: string;
+  milestoneSchedule?: Array<{ title: string; amount: string; deliveryDeadline: string }>;
   support: string;
   criteria: string;
 }

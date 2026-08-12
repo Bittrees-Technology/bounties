@@ -2,6 +2,7 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from "viem";
 import { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 import { EscrowClientError } from "./errors";
 import { assertIntegrationEnabled } from "./guardrails";
+import { hashMilestoneSchedule, hashMilestoneTerms } from "./hashCodec";
 import type {
   ChainConfig,
   ChecksumAddress,
@@ -9,6 +10,7 @@ import type {
   EscrowDeliveryInput,
   EscrowEvent,
   EscrowFundingInput,
+  EscrowMilestoneRecord,
   EscrowOnchainRecord,
   EscrowOrderRef,
   EscrowSettlementInput,
@@ -54,6 +56,7 @@ export interface SelectedEscrowProvider {
 
 type EscrowFunctionName =
   | "createBounty"
+  | "createMilestoneBounty"
   | "fundBounty"
   | "acceptBounty"
   | "submitDelivery"
@@ -86,6 +89,20 @@ interface DecodedEscrowRecord {
   approvalHash: string;
   settlementProposer: string;
   proposedProviderPayout: bigint;
+  allocatedAmount: bigint;
+  releasedAmount: bigint;
+  milestoneCount: number;
+  currentMilestone: number;
+  scheduleHash: string;
+}
+
+interface DecodedMilestoneRecord {
+  amount: bigint;
+  deliveryDeadline: bigint;
+  reviewDeadline: bigint;
+  state: number;
+  evidenceHash: string;
+  approvalHash: string;
 }
 
 const erc20ApprovalAbi = parseAbi([
@@ -109,6 +126,8 @@ const ONCHAIN_STATES = [
   "Refunded",
   "Settled"
 ] as const;
+const MILESTONE_STATES = ["Pending", "Submitted", "Approved", "Released"] as const;
+const MAX_MILESTONES = 32;
 
 export function buildEscrowAdapterConfig(chain: ChainConfig): EscrowAdapterConfig {
   return {
@@ -209,7 +228,52 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       evidenceHash: readBytes32(bounty.evidenceHash, "evidenceHash"),
       approvalHash: readBytes32(bounty.approvalHash, "approvalHash"),
       settlementProposer: readAddress(bounty.settlementProposer, "settlementProposer"),
-      proposedProviderPayoutBaseUnits: bounty.proposedProviderPayout.toString()
+      proposedProviderPayoutBaseUnits: bounty.proposedProviderPayout.toString(),
+      allocatedAmountBaseUnits: bounty.allocatedAmount.toString(),
+      releasedAmountBaseUnits: bounty.releasedAmount.toString(),
+      milestoneCount: bounty.milestoneCount,
+      currentMilestone: bounty.currentMilestone,
+      scheduleHash: readBytes32(bounty.scheduleHash, "scheduleHash")
+    };
+  }
+
+  async function readMilestone(order: EscrowOrderRef, milestoneIndex: number): Promise<EscrowMilestoneRecord> {
+    const provider = options.eoaProvider ?? options.smartWalletProvider;
+    if (!provider) throw new EscrowClientError("WALLET_NOT_CONNECTED", "No escrow wallet provider is available.");
+    await assertProviderChain(provider, chainId);
+    if (!Number.isSafeInteger(milestoneIndex) || milestoneIndex < 0) {
+      throw new EscrowClientError("CONTRACT_REVERTED", "The milestone index is invalid.");
+    }
+    const data = encodeFunctionData({
+      abi: BOUNTY_ESCROW_ABI,
+      functionName: "getMilestone",
+      args: [requiredOnchainId(order), BigInt(milestoneIndex)]
+    });
+    let raw: unknown;
+    try {
+      raw = await provider.request({ method: "eth_call", params: [{ to: contractAddress, data }, "latest"] });
+    } catch (error) {
+      throw mapProviderError(error, "CONTRACT_REVERTED", "The milestone record could not be read.");
+    }
+    if (typeof raw !== "string" || !/^0x[0-9a-fA-F]+$/.test(raw)) {
+      throw new EscrowClientError("CONTRACT_REVERTED", "The escrow contract returned an invalid milestone.");
+    }
+    let milestone: DecodedMilestoneRecord;
+    try {
+      milestone = decodeMilestoneRecord(raw as `0x${string}`);
+    } catch {
+      throw new EscrowClientError("CONTRACT_REVERTED", "The escrow contract returned an invalid milestone.");
+    }
+    const state = MILESTONE_STATES[milestone.state];
+    if (!state) throw new EscrowClientError("CONTRACT_REVERTED", "The escrow contract returned an unknown milestone state.");
+    return {
+      milestoneIndex,
+      amountBaseUnits: milestone.amount.toString(),
+      deliveryDeadline: milestone.deliveryDeadline,
+      reviewDeadline: milestone.reviewDeadline,
+      state,
+      evidenceHash: readBytes32(milestone.evidenceHash, "milestone evidenceHash"),
+      approvalHash: readBytes32(milestone.approvalHash, "milestone approvalHash")
     };
   }
 
@@ -257,6 +321,23 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     mode: "live",
     createEscrow: async (order, funding) => {
       const amount = requiredFunding(chainId, funding);
+      const milestoneSchedule = optionalMilestoneSchedule(order, amount);
+      if (milestoneSchedule) {
+        requiredMilestoneTermsHash(order, milestoneSchedule, BigInt(chainId), contractAddress);
+        return send(
+          "createMilestoneBounty",
+          [
+            requiredAddress(funding.token.contractAddress, "token contract", "ASSET_UNSUPPORTED"),
+            amount,
+            milestoneSchedule.amounts,
+            milestoneSchedule.deadlines,
+            requiredBytes32(order.scopeHash, "scopeHash"),
+            requiredAddress(order.providerAddress, "providerAddress", "CONTRACT_REVERTED"),
+            requiredBytes32(order.proposalHash, "proposalHash")
+          ],
+          funding
+        );
+      }
       return send(
         "createBounty",
         [
@@ -274,7 +355,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       const amount = requiredFunding(chainId, funding);
       return send("fundBounty", [requiredOnchainId(order), amount], funding);
     },
-    acceptBounty: async (order) => send("acceptBounty", [requiredOnchainId(order), requiredBytes32(order.termsHash, "termsHash")]),
+    acceptBounty: async (order) =>
+      send("acceptBounty", [requiredOnchainId(order), requiredAcceptedTermsHash(order, BigInt(chainId), contractAddress)]),
     submitDelivery: async (order, delivery) => send("submitDelivery", [requiredOnchainId(order), requiredDeliveryHash(delivery)]),
     acceptDelivery: async (order) =>
       send("approveDelivery", [requiredOnchainId(order), requiredBytes32(order.approvalHash, "approvalHash")]),
@@ -286,6 +368,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     cancelEscrow: async (order) => send("cancelBounty", [requiredOnchainId(order)]),
     claimTimeoutRefund: async (order) => send("refundBounty", [requiredOnchainId(order)]),
     readEscrow,
+    readMilestone,
     onEvent: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -314,6 +397,7 @@ export function createDisabledLiveEscrowAdapter(chainId: SupportedChainId): Escr
     cancelEscrow: fail,
     claimTimeoutRefund: fail,
     readEscrow: fail,
+    readMilestone: fail,
     onEvent: () => () => undefined
   };
 }
@@ -327,11 +411,106 @@ function decodeEscrowRecord(data: `0x${string}`) {
     typeof (decoded as Record<string, unknown>).deliveryDeadline !== "bigint" ||
     typeof (decoded as Record<string, unknown>).reviewDeadline !== "bigint" ||
     typeof (decoded as Record<string, unknown>).proposedProviderPayout !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).allocatedAmount !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).releasedAmount !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).milestoneCount !== "number" ||
+    typeof (decoded as Record<string, unknown>).currentMilestone !== "number" ||
     typeof (decoded as Record<string, unknown>).state !== "number"
   ) {
     throw new Error("invalid escrow record");
   }
   return decoded as unknown as DecodedEscrowRecord;
+}
+
+function decodeMilestoneRecord(data: `0x${string}`): DecodedMilestoneRecord {
+  const decoded = decodeFunctionResult({ abi: BOUNTY_ESCROW_ABI, functionName: "getMilestone", data });
+  if (
+    !decoded ||
+    typeof decoded !== "object" ||
+    typeof (decoded as Record<string, unknown>).amount !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).deliveryDeadline !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).reviewDeadline !== "bigint" ||
+    typeof (decoded as Record<string, unknown>).state !== "number"
+  ) {
+    throw new Error("invalid milestone record");
+  }
+  return decoded as unknown as DecodedMilestoneRecord;
+}
+
+function optionalMilestoneSchedule(order: EscrowOrderRef, fundingAmount?: bigint) {
+  if (order.milestones === undefined) return undefined;
+  if (order.milestones.length === 0 || order.milestones.length > MAX_MILESTONES) {
+    throw new EscrowClientError("AMOUNT_INVALID", `Milestone schedules require 1-${MAX_MILESTONES} deliverables.`);
+  }
+  const amounts: bigint[] = [];
+  const deadlines: bigint[] = [];
+  let total = 0n;
+  let previousDeadline = 0n;
+  let noDeadlineSeen = false;
+  for (const [index, milestone] of order.milestones.entries()) {
+    const amount = parseUnsignedInteger(milestone.amountBaseUnits, `milestone ${index + 1} allocation`);
+    if (amount === 0n) throw new EscrowClientError("AMOUNT_INVALID", "Every milestone allocation must be positive.");
+    const deadline = milestone.deliveryDeadline;
+    if (deadline < 0n || deadline > UINT64_MAX) {
+      throw new EscrowClientError("CONTRACT_REVERTED", `Milestone ${index + 1} has an invalid deadline.`);
+    }
+    if (deadline === 0n) {
+      noDeadlineSeen = true;
+    } else if (noDeadlineSeen || (previousDeadline !== 0n && deadline <= previousDeadline)) {
+      throw new EscrowClientError("CONTRACT_REVERTED", "Milestone deadlines must increase, with optional zero deadlines only at the end.");
+    } else {
+      previousDeadline = deadline;
+    }
+    amounts.push(amount);
+    deadlines.push(deadline);
+    total += amount;
+    if (total > UINT256_MAX) throw new EscrowClientError("AMOUNT_INVALID", "Milestone allocations exceed uint256.");
+  }
+  if (fundingAmount !== undefined && total !== fundingAmount) {
+    throw new EscrowClientError("AMOUNT_INVALID", "Milestone allocations must exactly equal escrow funding.");
+  }
+  return { amounts, deadlines };
+}
+
+function requiredMilestoneTermsHash(
+  order: EscrowOrderRef,
+  schedule: { amounts: bigint[]; deadlines: bigint[] },
+  chainId: bigint,
+  escrowAddress: ChecksumAddress
+): `0x${string}` {
+  const scopeHash = requiredBytes32(order.scopeHash, "scopeHash");
+  const proposalHash = requiredBytes32(order.proposalHash, "proposalHash");
+  const provider = requiredAddress(order.providerAddress, "providerAddress", "CONTRACT_REVERTED");
+  const scheduleHash = hashMilestoneSchedule({
+    chainId,
+    escrowAddress,
+    scopeHash,
+    milestoneAmounts: schedule.amounts,
+    milestoneDeadlines: schedule.deadlines
+  }).value;
+  const termsHash = hashMilestoneTerms({
+    chainId,
+    escrowAddress,
+    scopeHash,
+    proposalHash,
+    provider,
+    scheduleHash
+  }).value;
+  if (order.termsHash !== undefined && order.termsHash.toLowerCase() !== termsHash.toLowerCase()) {
+    throw new EscrowClientError("CONTRACT_REVERTED", "The milestone terms hash does not match the committed schedule.");
+  }
+  return termsHash;
+}
+
+function requiredAcceptedTermsHash(
+  order: EscrowOrderRef,
+  chainId: bigint,
+  escrowAddress: ChecksumAddress
+): `0x${string}` {
+  const schedule = optionalMilestoneSchedule(order);
+  return schedule
+    ? requiredMilestoneTermsHash(order, schedule, chainId, escrowAddress)
+    : requiredBytes32(order.termsHash, "termsHash");
 }
 
 async function buildApprovalCalls(
@@ -566,6 +745,15 @@ function requiredFunding(chainId: SupportedChainId, funding: EscrowFundingInput)
     throw new EscrowClientError("AMOUNT_INVALID", "Escrow funding must be a positive integer in token base units.");
   }
   return BigInt(funding.amountBaseUnits);
+}
+
+function parseUnsignedInteger(value: string, label: string): bigint {
+  if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new EscrowClientError("AMOUNT_INVALID", `${label} must be an integer in token base units.`);
+  }
+  const parsed = BigInt(value);
+  if (parsed > UINT256_MAX) throw new EscrowClientError("AMOUNT_INVALID", `${label} exceeds uint256.`);
+  return parsed;
 }
 
 function requiredOnchainId(order: EscrowOrderRef): bigint {

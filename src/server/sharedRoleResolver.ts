@@ -6,12 +6,16 @@ const DEFAULT_TIMEOUT_MS = 1_500;
 const DEFAULT_MAX_RESPONSE_BYTES = 256 * 1024;
 const MAX_ROLES_PER_WALLET = 100;
 const MAX_ROLE_LABEL_LENGTH = 32;
-const MODERATOR_LABELS = new Set(["moderator", "mod"]);
+const MODERATION_ROLES = new Map<string, "moderator" | "admin">([
+  ["moderator", "moderator"],
+  ["mod", "moderator"],
+  ["admin", "admin"]
+]);
 
 export type SharedModeratorResolution =
   | {
       status: "authorized";
-      role: "moderator";
+      role: "moderator" | "admin";
       walletAddress: string;
     }
   | {
@@ -231,9 +235,11 @@ export async function resolveSharedModerator(
     if (!response.ok) throw new SharedRoleResolverError("unavailable", "upstream_error");
 
     const roles = parseRelevantRoles(await boundedText(response, maxResponseBytes), walletAddress);
-    const authorized = roles?.some(({ label }) => MODERATOR_LABELS.has(label.toLowerCase())) ?? false;
-    return authorized
-      ? { status: "authorized", role: "moderator", walletAddress }
+    const role = roles?.map(({ label }) => MODERATION_ROLES.get(label.toLowerCase())).find((value) => value === "admin")
+      ?? roles?.map(({ label }) => MODERATION_ROLES.get(label.toLowerCase())).find(Boolean)
+      ?? null;
+    return role
+      ? { status: "authorized", role, walletAddress }
       : { status: "not_authorized", role: null, walletAddress };
   } catch (error) {
     return failure(error, walletAddress, timedOut);

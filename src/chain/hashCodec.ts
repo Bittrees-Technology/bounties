@@ -1,5 +1,5 @@
 import { EscrowClientError } from "./errors";
-import { encodeAbiParameters, keccak256, parseAbiParameters, toHex } from "viem";
+import { encodeAbiParameters, keccak256, parseAbiParameters, sha256, toHex } from "viem";
 
 export const HASH_CODEC_VERSION = "bounty-commitments.v1";
 export type Bytes32Hex = `0x${string}`;
@@ -15,6 +15,7 @@ export type CommitmentLabel =
   | "scope_hash"
   | "proposal_hash"
   | "terms_hash"
+  | "schedule_hash"
   | "evidence_hash"
   | "approval_hash"
   | "metadata_hash"
@@ -53,6 +54,18 @@ export interface TermsCommitmentInput {
   provider: `0x${string}`;
 }
 
+export interface MilestoneScheduleCommitmentInput {
+  chainId: bigint;
+  escrowAddress: `0x${string}`;
+  scopeHash: Bytes32Hex;
+  milestoneAmounts: readonly bigint[];
+  milestoneDeadlines: readonly bigint[];
+}
+
+export interface MilestoneTermsCommitmentInput extends TermsCommitmentInput {
+  scheduleHash: Bytes32Hex;
+}
+
 export interface EvidenceCommitmentInput {
   chainId: bigint;
   escrowAddress: `0x${string}`;
@@ -75,10 +88,53 @@ export interface ApprovalCommitmentInput {
   salt: Bytes32Hex;
 }
 
+export interface CanonicalEvidenceCommitmentInput {
+  chainId: bigint;
+  escrowAddress: `0x${string}`;
+  bountyId: bigint;
+  scopeHash: Bytes32Hex;
+  termsHash: Bytes32Hex;
+  provider: `0x${string}`;
+  milestoneId: string;
+  ordinal: number;
+  uri: string;
+}
+
+export interface CanonicalApprovalCommitmentInput {
+  chainId: bigint;
+  escrowAddress: `0x${string}`;
+  bountyId: bigint;
+  evidenceHash: Bytes32Hex;
+  requester: `0x${string}`;
+  milestoneId: string;
+  ordinal: number;
+}
+
+export interface CanonicalEvidenceCommitment {
+  version: "bounty-evidence-commitment.v1";
+  normalizedUri: string;
+  contentHash: Bytes32Hex;
+  uriHash: Bytes32Hex;
+  salt: Bytes32Hex;
+  evidenceHash: Bytes32Hex;
+}
+
+export interface CanonicalApprovalCommitment {
+  version: "bounty-approval-commitment.v1";
+  decisionHash: Bytes32Hex;
+  salt: Bytes32Hex;
+  approvalHash: Bytes32Hex;
+}
+
 export const SCOPE_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_SCOPE_V1"));
 export const TERMS_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_TERMS_V1"));
 export const EVIDENCE_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_EVIDENCE_V1"));
 export const APPROVAL_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_APPROVAL_V1"));
+export const MILESTONE_SCHEDULE_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_MILESTONE_SCHEDULE_V1"));
+export const MILESTONE_TERMS_DOMAIN = keccak256(new TextEncoder().encode("BOUNTY_MILESTONE_TERMS_V1"));
+export const APPROVE_DELIVERY_DECISION_HASH = keccak256(toHex("accept-delivery"));
+const UINT64_MAX = (1n << 64n) - 1n;
+const MAX_MILESTONES = 32;
 
 /** Mirrors the documented `scopeHash` encoding used by `BountyEscrow`. */
 export function hashScope(input: ScopeCommitmentInput): VersionedHash {
@@ -118,6 +174,74 @@ export function hashTerms(input: TermsCommitmentInput): VersionedHash {
       parseAbiParameters("bytes32, uint256, address, bytes32, bytes32, address"),
       [TERMS_DOMAIN, input.chainId, input.escrowAddress, input.scopeHash, input.proposalHash, input.provider]
     ))
+  };
+}
+
+/** Mirrors `createMilestoneBounty` schedule hashing byte-for-byte, including dynamic-array ABI encoding. */
+export function hashMilestoneSchedule(input: MilestoneScheduleCommitmentInput): VersionedHash {
+  assertBytes32Hash(input.scopeHash, "scope_hash");
+  const count = input.milestoneAmounts.length;
+  if (count < 1 || count > MAX_MILESTONES || input.milestoneDeadlines.length !== count) {
+    throw new EscrowClientError("CONTRACT_REVERTED", "Milestone commitment requires 1-32 matching allocations and deadlines.");
+  }
+  let previousDeadline = 0n;
+  let noDeadlineSeen = false;
+  for (let index = 0; index < count; index += 1) {
+    const amount = input.milestoneAmounts[index];
+    const deadline = input.milestoneDeadlines[index];
+    if (amount === undefined || amount <= 0n) {
+      throw new EscrowClientError("AMOUNT_INVALID", `Milestone ${index + 1} allocation must be positive.`);
+    }
+    if (deadline === undefined || deadline < 0n || deadline > UINT64_MAX) {
+      throw new EscrowClientError("CONTRACT_REVERTED", `Milestone ${index + 1} deadline is outside uint64.`);
+    }
+    if (deadline === 0n) {
+      noDeadlineSeen = true;
+    } else if (noDeadlineSeen || (previousDeadline !== 0n && deadline <= previousDeadline)) {
+      throw new EscrowClientError("CONTRACT_REVERTED", "Milestone deadlines must increase, with zero deadlines only at the end.");
+    } else {
+      previousDeadline = deadline;
+    }
+  }
+  return {
+    version: HASH_CODEC_VERSION,
+    value: keccak256(
+      encodeAbiParameters(
+        parseAbiParameters("bytes32, uint256, address, bytes32, uint256[], uint64[]"),
+        [
+          MILESTONE_SCHEDULE_DOMAIN,
+          input.chainId,
+          input.escrowAddress,
+          input.scopeHash,
+          [...input.milestoneAmounts],
+          [...input.milestoneDeadlines]
+        ]
+      )
+    )
+  };
+}
+
+/** Mirrors milestone `termsHash` derivation in `createMilestoneBounty` byte-for-byte. */
+export function hashMilestoneTerms(input: MilestoneTermsCommitmentInput): VersionedHash {
+  assertBytes32Hash(input.scopeHash, "scope_hash");
+  assertBytes32Hash(input.proposalHash, "proposal_hash");
+  assertBytes32Hash(input.scheduleHash, "schedule_hash");
+  return {
+    version: HASH_CODEC_VERSION,
+    value: keccak256(
+      encodeAbiParameters(
+        parseAbiParameters("bytes32, uint256, address, bytes32, bytes32, address, bytes32"),
+        [
+          MILESTONE_TERMS_DOMAIN,
+          input.chainId,
+          input.escrowAddress,
+          input.scopeHash,
+          input.proposalHash,
+          input.provider,
+          input.scheduleHash
+        ]
+      )
+    )
   };
 }
 
@@ -173,6 +297,70 @@ export function hashApproval(input: ApprovalCommitmentInput): VersionedHash {
       )
     )
   };
+}
+
+/** Canonical delivery commitment shared by persistence, reconciliation, and wallet calldata. */
+export function buildCanonicalEvidenceCommitment(input: CanonicalEvidenceCommitmentInput): CanonicalEvidenceCommitment {
+  const normalizedUri = input.uri.trim();
+  const milestoneId = canonicalMilestoneIdentity(input.milestoneId, input.ordinal);
+  if (!normalizedUri) throw new EscrowClientError("CONTRACT_REVERTED", "Evidence URI is required.");
+  if (input.bountyId <= 0n) throw new EscrowClientError("CONTRACT_REVERTED", "Onchain bounty ID must be positive.");
+  const contentHash = sha256(toHex(normalizedUri));
+  const uriHash = keccak256(toHex(normalizedUri));
+  const salt = hashSourceJson({
+    version: "bounty-evidence-salt.v1",
+    milestoneId,
+    ordinal: input.ordinal
+  }).value;
+  const evidenceHash = hashEvidence({
+    chainId: input.chainId,
+    escrowAddress: input.escrowAddress,
+    bountyId: input.bountyId,
+    scopeHash: input.scopeHash,
+    termsHash: input.termsHash,
+    provider: input.provider,
+    contentHash,
+    uriHash,
+    salt
+  }).value;
+  return { version: "bounty-evidence-commitment.v1", normalizedUri, contentHash, uriHash, salt, evidenceHash };
+}
+
+/** Canonical approval of one exact active milestone evidence commitment. */
+export function buildCanonicalApprovalCommitment(input: CanonicalApprovalCommitmentInput): CanonicalApprovalCommitment {
+  const milestoneId = canonicalMilestoneIdentity(input.milestoneId, input.ordinal);
+  assertBytes32Hash(input.evidenceHash, "evidence_hash");
+  if (input.bountyId <= 0n) throw new EscrowClientError("CONTRACT_REVERTED", "Onchain bounty ID must be positive.");
+  const normalizedEvidenceHash = input.evidenceHash.toLowerCase() as Bytes32Hex;
+  const salt = hashSourceJson({
+    version: "bounty-approval-salt.v1",
+    milestoneId,
+    ordinal: input.ordinal,
+    evidenceHash: normalizedEvidenceHash
+  }).value;
+  const approvalHash = hashApproval({
+    chainId: input.chainId,
+    escrowAddress: input.escrowAddress,
+    bountyId: input.bountyId,
+    evidenceHash: normalizedEvidenceHash,
+    requester: input.requester,
+    decisionHash: APPROVE_DELIVERY_DECISION_HASH,
+    salt
+  }).value;
+  return {
+    version: "bounty-approval-commitment.v1",
+    decisionHash: APPROVE_DELIVERY_DECISION_HASH,
+    salt,
+    approvalHash
+  };
+}
+
+function canonicalMilestoneIdentity(milestoneId: string, ordinal: number): string {
+  const normalized = milestoneId.trim().toLowerCase();
+  if (!normalized || !Number.isSafeInteger(ordinal) || ordinal < 0) {
+    throw new EscrowClientError("CONTRACT_REVERTED", "Milestone ID and zero-based ordinal are required.");
+  }
+  return normalized;
 }
 
 /** Stable key-sorted UTF-8 JSON commitment for scope and evidence source material. */

@@ -7,6 +7,10 @@ The stateful Foundry campaign targets the smallest realistic risk boundary: one 
 1. The escrow contract's token balance is always at least its recorded liability; unsolicited surplus remains inert.
 2. Released, refunded, cancelled, and bilaterally settled bounties always have zero remaining liability.
 3. Combined requester/provider payouts never exceed the original funded amount.
+4. `releasedAmount + outstanding amount` equals the exact allocation total until
+   a refund or bilateral settlement terminates the outstanding balance.
+5. Every milestone before `currentMilestone` is released, every later milestone
+   is pending, and only the current milestone can progress.
 
 ## Deterministic lifecycle properties
 
@@ -18,12 +22,21 @@ The stateful Foundry campaign targets the smallest realistic risk boundary: one 
   accept the current amount, and provider payout plus requester refund equals principal.
 - Accepted or settled funds release once; terminal states cannot be paid twice.
 - Reentrant token callbacks cannot create or fund a bounty twice.
+- Milestone allocations are positive, ordered, and sum exactly to funding.
+- Each milestone has its own seven-day review and releases exactly one tranche.
+- Settlement and timeout refund apply only to outstanding principal after any
+  completed tranche releases.
+- Settlement proposals are invalidated on provider acceptance, delivery, buyer
+  approval, and milestone advancement.
 
 The stateful handler now exercises multiple bounties across two tokens, direct
 transfers, deadlines, review expiry, cancellation, refund, approval, full release,
 bilateral proposal replacement, and settlement. Deterministic
 regressions also cover false-returning tokens, transfer fees, negative rebases,
 reentrant callbacks, and smart-contract providers.
+The milestone campaign additionally covers sequential delivery, buyer approval,
+review-expiry release, partial release followed by settlement or timeout refund,
+ordered state, exact allocation conservation, and token-value conservation.
 
 The checked-in invariant profile runs 64 deterministic sequences of 128 calls
 per invariant. Storage-dictionary collection is disabled because the handler

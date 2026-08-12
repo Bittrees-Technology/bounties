@@ -17,7 +17,7 @@ This project is wallet-first. Do not enable email/password login or commit servi
    supabase start
    ```
 
-3. Copy `.env.local.example` to `.env.local` and set `SUPABASE_FUNCTIONS_ORIGIN` for the same-origin proxy. Do not add a Supabase anon key to frontend configuration; the browser uses wallet session cookies against `wallet-auth` and `bounties-api`.
+3. Copy `.env.local.example` to `.env.local`. Do not add a Supabase anon key to frontend configuration; the browser uses wallet session cookies against the same-origin Vercel-compatible Node handlers.
 4. Run migrations:
 
    ```bash
@@ -31,6 +31,31 @@ This project is wallet-first. Do not enable email/password login or commit servi
    ```
 
 ## Migration Rules
+
+### Migration authority
+
+Vercel production builds are the sole remote migration authority. Preview and
+development Vercel builds always skip migrations. `supabase db reset` is only
+for disposable local databases; do not use Supabase CLI `db push` against the
+hosted production database.
+
+Production migrations use `public.app_schema_migrations` under a transaction
+advisory lock. If the historical Supabase CLI ledger exists, the production
+runner fails if the retired Supabase ledger contains a version the authoritative
+Vercel ledger does not know. Vercel-only history is valid and does not need to be
+copied backward into the retired ledger. For a one-time handoff from an already
+CLI-managed database:
+
+1. Review both ledgers and the repository migration filenames.
+2. Set `POSTGRES_URL_NON_POOLING` only in the authorized operations shell.
+3. Set `CONFIRM_BOUNTIES_MIGRATION_LEDGER_RECONCILIATION=yes` and run
+   `npm run db:reconcile-ledgers` once. The utility imports only repository-known
+   Supabase versions, preserves Vercel-only history, and records the production
+   authority handoff.
+4. Remove the confirmation variable and let only the production Vercel build
+   apply later migrations.
+
+Never run reconciliation during a build, preview, or normal development flow.
 
 - Create migrations with `supabase migration new <name>` from this repository root.
 - Every table that stores account, role, bounty, proposal, milestone, delivery evidence, token registry, notification, nonce, or session data must enable RLS before it is used by the app.

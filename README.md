@@ -10,7 +10,10 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 
 ## Current scope
 
-- Publish buyer requests with task, milestone, project, or retainer scope, plus scoped milestone breakdowns.
+- Publish buyer requests across defined-task, deliverable, milestone, project,
+  consultation, audit, and retainer scopes with one to 32 ordered deliverables.
+- Allocate each deliverable a positive token amount and absolute delivery date;
+  allocations must equal the exact ERC20 budget and dates must move forward.
 - Capture exact ERC20 budget units, buyer/reviewer context, support, and acceptance criteria in Postgres.
 - Allow any wallet to create bounties or proposals without an allowlist or administrator approval.
 - Inspect tokens by chain and contract address, including metadata, bytecode presence, collision risks, and a direct explorer link.
@@ -23,6 +26,8 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
   gaining any authority over escrow or onchain state.
 - Let each participant publish one directional rating and review after the API
   freshly verifies a Released or Settled escrow state.
+- Provide wallet profiles with owner-managed public details and separate reputation
+  summaries for capital-provider payment experience and labor-provider service work.
 - Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported
   test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). Every
   contract address remains unset and fail-closed until separately deployed and verified.
@@ -67,12 +72,14 @@ a transaction or token spend.
 
 Browser code must use same-origin `/api/wallet-auth` and `/api/bounties/*`
 paths only. Local development proxies those requests through the Vite dev
-server using the server-only `SUPABASE_FUNCTIONS_ORIGIN` value, and Vercel
-production uses a narrow allowlisted edge proxy plus `vercel.json` security
+server using the same Node handlers as production, and Vercel production uses a
+narrow allowlisted server function plus `vercel.json` security
 headers and SPA routing. The production server boundary is therefore hosted on
-Vercel, with hosted Supabase/Postgres and Supabase Functions behind it; no local
-server is part of production. Keep direct Supabase function origins, anon keys, and
-service-role keys out of browser-visible `VITE_*` variables.
+Vercel, with hosted Supabase/Postgres behind it; no local server is part of
+production. The old `bounties-api` Supabase Function is a deliberate HTTP 410
+tombstone and must not be restored as an alternate state-changing API. Keep
+direct Supabase origins, anon keys, and service-role keys out of browser-visible
+`VITE_*` variables.
 
 The Vite preview server attaches the production CSP and baseline security
 headers from `vite.config.ts`; the dev server omits only CSP so the React refresh

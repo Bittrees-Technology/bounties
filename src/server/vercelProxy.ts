@@ -101,7 +101,16 @@ export function resolveApplicationOrigin(
     ? validatedOrigin(configured, "ORIGIN_CONFIGURATION_INVALID")
     : requestOrigin;
   const supplied = request.headers.get("origin");
-  if (!supplied) throw new ProxyRequestError("ORIGIN_MISMATCH", 403);
+  // Browsers normally omit Origin on same-origin GET/HEAD reads. The request URL
+  // is still bound to the configured application origin and the same-origin
+  // policy prevents another site from reading the response. Mutations and SIWE
+  // verification continue to require an explicit, matching Origin header.
+  if (!supplied) {
+    if ((request.method === "GET" || request.method === "HEAD") && requestOrigin.origin === expected.origin) {
+      return expected;
+    }
+    throw new ProxyRequestError("ORIGIN_MISMATCH", 403);
+  }
   const actual = validatedOrigin(supplied, "ORIGIN_MISMATCH");
   if (actual.origin !== expected.origin || requestOrigin.origin !== expected.origin) {
     throw new ProxyRequestError("ORIGIN_MISMATCH", 403);

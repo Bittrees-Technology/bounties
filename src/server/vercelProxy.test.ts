@@ -47,6 +47,18 @@ describe("resolveApplicationOrigin", () => {
     expect(resolveApplicationOrigin(request, "https://bounties.bittrees.org", "production").origin).toBe("https://bounties.bittrees.org");
   });
 
+  it("accepts browser safe reads without Origin while keeping mutations origin-bound", () => {
+    const safeRead = new Request("https://bounties.bittrees.org/api/bounties/snapshot");
+    expect(resolveApplicationOrigin(safeRead, "https://bounties.bittrees.org", "production").origin).toBe(
+      "https://bounties.bittrees.org"
+    );
+
+    const mutation = new Request("https://bounties.bittrees.org/api/bounties/roles", { method: "POST" });
+    expect(() => resolveApplicationOrigin(mutation, "https://bounties.bittrees.org", "production")).toThrow(
+      ProxyRequestError
+    );
+  });
+
   it("lets previews bind SIWE to their own deployment host", () => {
     const request = new Request("https://bounties-git-feature-bittrees-tech.vercel.app/api/wallet-auth", {
       method: "POST",
