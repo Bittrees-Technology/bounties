@@ -1,5 +1,8 @@
 import "@testing-library/jest-dom/vitest";
+import { createSiweMessage } from "viem/siwe";
 import { beforeEach, vi } from "vitest";
+
+import { SIWE_AUTHENTICATION_METHOD, SIWE_STATEMENT, siweResources } from "../auth/siwe";
 
 const testWallet = "0x1111111111111111111111111111111111111111";
 const tokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
@@ -52,11 +55,36 @@ beforeEach(() => {
     if (url.endsWith("/wallet-auth") || url.endsWith("/api/wallet-auth")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { action?: string };
       if (body.action === "nonce") {
-        return Response.json({ nonceId: "00000000-0000-4000-8000-000000000999", nonce: "test-nonce", message: "Sign in", issuedAt: new Date().toISOString(), expirationTime: new Date(Date.now() + 300000).toISOString() });
+        const nonceId = "00000000-0000-4000-8000-000000000999";
+        const nonce = "testnonce123";
+        const issuedAt = new Date();
+        const expirationTime = new Date(issuedAt.getTime() + 300000);
+        const origin = new URL(window.location.origin);
+        return Response.json({
+          authenticationMethod: SIWE_AUTHENTICATION_METHOD,
+          nonceId,
+          nonce,
+          message: createSiweMessage({
+            address: testWallet,
+            chainId: 84532,
+            domain: origin.host,
+            expirationTime,
+            issuedAt,
+            nonce,
+            requestId: nonceId,
+            resources: siweResources(origin.origin),
+            scheme: origin.protocol.slice(0, -1),
+            statement: SIWE_STATEMENT,
+            uri: origin.origin,
+            version: "1"
+          }),
+          issuedAt: issuedAt.toISOString(),
+          expirationTime: expirationTime.toISOString()
+        });
       }
       if (body.action === "verify") {
         authenticated = true;
-        return Response.json({ walletAddress: testWallet, csrfToken: "csrf-test" });
+        return Response.json({ authenticationMethod: SIWE_AUTHENTICATION_METHOD, walletAddress: testWallet, csrfToken: "csrf-test" });
       }
     }
 

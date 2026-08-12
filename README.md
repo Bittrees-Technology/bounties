@@ -59,8 +59,11 @@ and private keys out of git.
 
 Local Supabase setup and migration rules are documented in
 [docs/local-supabase.md](docs/local-supabase.md). The local configuration keeps
-email signup disabled; production authentication must remain wallet-only with
-nonce plus signed-wallet sessions.
+email signup disabled; production authentication must remain wallet-only through
+Sign-In with Ethereum (EIP-4361). The five-minute, single-use challenge binds
+the wallet, chain, site origin, request ID, terms/privacy resources, and expiry;
+successful verification creates an opaque HttpOnly session and never authorizes
+a transaction or token spend.
 
 Browser code must use same-origin `/api/wallet-auth` and `/api/bounties/*`
 paths only. Local development proxies those requests through the Vite dev

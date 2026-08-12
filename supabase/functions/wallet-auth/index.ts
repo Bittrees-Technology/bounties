@@ -1,9 +1,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { Contract, JsonRpcProvider, getAddress, hashMessage, verifyMessage } from "npm:ethers@6.15.0";
+import { createSiweMessage } from "npm:viem@2.55.13/siwe";
 
 const encoder = new TextEncoder();
 const eip1271Abi = ["function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)"];
 const EIP1271_MAGIC_VALUE = "0x1626ba7e";
+const SIWE_AUTHENTICATION_METHOD = "siwe-eip4361";
+const SIWE_STATEMENT = "Sign in to Bounties. This proves wallet ownership and does not authorize a transaction or token spend.";
 const mutationMethods = new Set(["POST"]);
 const jsonBodyLimitBytes = 64 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
@@ -63,8 +66,25 @@ function rpcUrl(id: number): string | undefined {
   return Deno.env.get(`CHAIN_${id}_RPC_URL`) ?? (id === 84532 ? Deno.env.get("BASE_SEPOLIA_RPC_URL") : undefined);
 }
 
-function message(domain: string, uri: string, wallet: string, id: number, nonce: string, issuedAt: string, expirationTime: string) {
-  return `${domain} wants you to sign in with your Ethereum account:\n${wallet}\n\nSign in to Bounties. This does not authorize a transaction.\n\nURI: ${uri}\nVersion: 1\nChain ID: ${id}\nNonce: ${nonce}\nIssued At: ${issuedAt}\nExpiration Time: ${expirationTime}`;
+function message(origin: URL, wallet: string, id: number, nonce: string, issuedAt: string, expirationTime: string, requestId: string) {
+  try {
+    return createSiweMessage({
+      address: wallet as `0x${string}`,
+      chainId: id,
+      domain: origin.host,
+      expirationTime: new Date(expirationTime),
+      issuedAt: new Date(issuedAt),
+      nonce,
+      requestId,
+      resources: [`${origin.origin}/terms.html`, `${origin.origin}/privacy.html`],
+      scheme: origin.protocol.slice(0, -1),
+      statement: SIWE_STATEMENT,
+      uri: origin.origin,
+      version: "1"
+    });
+  } catch {
+    throw new AuthError("SIWE_MESSAGE_INVALID", 400);
+  }
 }
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
@@ -121,19 +141,24 @@ Deno.serve(async (request) => {
       const nonce = randomToken(); const issuedAt = new Date().toISOString(); const expirationTime = new Date(Date.now() + 300000).toISOString();
       const { data: nonceId, error } = await db.rpc("app_issue_auth_nonce", { p_wallet_address: wallet.toLowerCase(), p_chain_id: id, p_domain: domain, p_uri: uri, p_nonce_digest: await digest(nonce), p_issued_at: issuedAt, p_expires_at: expirationTime });
       if (error) throw new AuthError(error.message || "NONCE_FAILED", error.message?.includes("NONCE_RATE_LIMITED") ? 429 : 401);
-      return Response.json({ nonceId, nonce, message: message(domain, uri, wallet, id, nonce, issuedAt, expirationTime), issuedAt, expirationTime }, { headers: headers(origin) });
+      if (typeof nonceId !== "string") throw new AuthError("NONCE_FAILED", 401);
+      return Response.json({ authenticationMethod: SIWE_AUTHENTICATION_METHOD, nonceId, nonce, message: message(origin, wallet, id, nonce, issuedAt, expirationTime, nonceId), issuedAt, expirationTime }, { headers: headers(origin) });
     }
     if (body.action === "verify") {
       const wallet = address(requiredString(body, "walletAddress")); const id = chainId(body.chainId);
       const issuedAt = requiredString(body, "issuedAt"); const expirationTime = requiredString(body, "expirationTime");
-      const signedMessage = message(domain, uri, wallet, id, requiredString(body, "nonce"), issuedAt, expirationTime);
-      if (Date.parse(expirationTime) <= Date.now()) throw new AuthError("SIGNATURE_EXPIRED", 401);
+      const nonceId = requiredString(body, "nonceId");
+      const signedMessage = message(origin, wallet, id, requiredString(body, "nonce"), issuedAt, expirationTime, nonceId);
+      const issuedAtMs = Date.parse(issuedAt); const expirationTimeMs = Date.parse(expirationTime);
+      if (!Number.isFinite(issuedAtMs) || !Number.isFinite(expirationTimeMs) || expirationTimeMs - issuedAtMs !== 300000) throw new AuthError("SIWE_MESSAGE_INVALID", 400);
+      if (expirationTimeMs <= Date.now()) throw new AuthError("SIGNATURE_EXPIRED", 401);
+      if (requiredString(body, "message") !== signedMessage) throw new AuthError("SIWE_MESSAGE_MISMATCH", 401);
       await verifySignature(wallet, id, signedMessage, requiredString(body, "signature"));
-      const { data: accountId, error: consumeError } = await db.rpc("app_consume_auth_nonce", { p_nonce_id: requiredString(body, "nonceId"), p_nonce_digest: await digest(requiredString(body, "nonce")), p_wallet_address: wallet.toLowerCase(), p_chain_id: id, p_domain: domain, p_uri: uri, p_issued_at: issuedAt, p_expires_at: expirationTime });
+      const { data: accountId, error: consumeError } = await db.rpc("app_consume_auth_nonce", { p_nonce_id: nonceId, p_nonce_digest: await digest(requiredString(body, "nonce")), p_wallet_address: wallet.toLowerCase(), p_chain_id: id, p_domain: domain, p_uri: uri, p_issued_at: issuedAt, p_expires_at: expirationTime });
       if (consumeError) throw new AuthError(consumeError.message || "NONCE_INVALID", 401);
       const token = randomToken(); const csrf = randomToken(); const { error: sessionError } = await db.rpc("app_create_wallet_session", { p_account_id: accountId, p_token_digest: await digest(token), p_csrf_digest: await digest(csrf) });
       if (sessionError) throw new AuthError(sessionError.message || "SESSION_FAILED", 401);
-      return new Response(JSON.stringify({ walletAddress: wallet.toLowerCase(), csrfToken: csrf }), { headers: { ...headers(origin), "set-cookie": `bounties_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800` } });
+      return new Response(JSON.stringify({ authenticationMethod: SIWE_AUTHENTICATION_METHOD, walletAddress: wallet.toLowerCase(), csrfToken: csrf }), { headers: { ...headers(origin), "set-cookie": `bounties_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=1800` } });
     }
     throw new AuthError("NOT_FOUND", 404);
   } catch (error) {

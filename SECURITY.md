@@ -9,4 +9,4 @@ Report suspected vulnerabilities privately to the Bittrees Technology maintainer
 - Expected impact.
 - Suggested mitigation, if known.
 
-Before launch, this project needs review for wallet authentication, buyer/provider identity, signer authority, escrow release/refund timing, input validation, secrets, deployment configuration, marketplace spam, provider impersonation, and abuse controls. Disputes are outside Bounties and introduce no authority into its escrow.
+Before launch, this project needs review for Sign-In with Ethereum domain/nonce/chain binding, EIP-1271 contract-wallet resolution, buyer/provider identity, signer authority, escrow release/refund timing, input validation, secrets, deployment configuration, marketplace spam, provider impersonation, and abuse controls. Disputes are outside Bounties and introduce no authority into its escrow.

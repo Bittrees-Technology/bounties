@@ -35,7 +35,7 @@ import {
   refreshEscrowState,
   reportContent,
   selectRole,
-  signInWithWallet,
+  signInWithEthereum,
   signOut,
   submitEvidence,
   toBase,
@@ -163,7 +163,7 @@ export default function App() {
   async function connect() {
     try {
       setError(null);
-      await signInWithWallet();
+      await signInWithEthereum();
       await refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Wallet sign-in failed.");
@@ -524,7 +524,7 @@ export default function App() {
               {wallet ? (
                 <button onClick={() => void disconnect()}><WalletCards size={18} />{short(wallet)} · Sign out</button>
               ) : (
-                <button onClick={() => void connect()}><WalletCards size={18} />Connect wallet</button>
+                <button onClick={() => void connect()}><WalletCards size={18} />Sign in with Ethereum</button>
               )}
               {notificationsOpen ? (
                 <div className="notification-popover">
@@ -544,15 +544,15 @@ export default function App() {
             </div>
           </header>
 
-          {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Reconnect and sign</button></div> : null}
+          {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Sign in with Ethereum again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           {loading ? <p><Loader2 className="spin" /> Loading persisted marketplace…</p> : null}
 
           {!wallet ? (
             <section className="panel empty-state-panel">
               <WalletCards size={28} />
-              <strong>Connect a wallet to enter the marketplace</strong>
-              <span>Authentication is wallet-only; email, password, and guest accounts are not supported.</span>
+              <strong>Sign in with Ethereum to enter the marketplace</strong>
+              <span>Sign a free EIP-4361 message to prove wallet ownership. This is not a transaction and does not authorize token spending.</span>
             </section>
           ) : (
             <>
