@@ -1152,6 +1152,15 @@ async function handle(request: Request, action: string): Promise<Response> {
     }, { headers });
   }
 
+  if (action === "profiles/directory" && method === "GET") {
+    const profiles = await callRpc<PublicProfileRecord[]>("app_browse_public_wallet_profiles", {
+      p_actor_id: session.account_id,
+      p_limit: 18
+    });
+    const results = await Promise.all((profiles ?? []).map((profile) => profile.display_name ? profile : enrichPublicProfile(profile)));
+    return Response.json({ results: results.filter(Boolean) }, { headers });
+  }
+
   if (action === "me" && method === "GET") {
     return Response.json({ accountId: session.account_id, walletAddress: session.wallet_address }, { headers });
   }

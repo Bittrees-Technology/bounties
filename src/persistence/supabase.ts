@@ -309,6 +309,7 @@ export const recordRevisionRequest = (milestoneId: string, reason: string, reaso
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });
 export const createReviewResponse = (reviewId: string, body: string) => request<ParticipantReview>(`/reviews/${reviewId}/response`, { method: "POST", body: JSON.stringify({ body }) });
 export const loadPublicProfile = (walletAddress: string) => request<PublicWalletProfile>(`/profiles/${getAddress(walletAddress)}`, { method: "GET" });
+export const browsePublicProfiles = () => request<{ results: PublicWalletProfile[] }>("/profiles/directory", { method: "GET" });
 export const searchPublicProfiles = (query: string) => request<{ results: PublicWalletProfile[] }>(`/profiles/search?q=${encodeURIComponent(query.trim())}`, { method: "GET" });
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const reportContent = (entityType: "bounty" | "review" | "profile", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });

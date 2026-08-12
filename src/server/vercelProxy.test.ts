@@ -32,6 +32,11 @@ describe("resolveDirectRoute", () => {
       method: "GET"
     });
     expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?path=profiles%2Fsearch&q=Alice", "GET").action).toBe("profiles/search");
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/directory", "GET")).toEqual({
+      action: "profiles/directory",
+      handler: "bounties",
+      method: "GET"
+    });
   });
 
   it("rejects unknown paths, query strings, traversal, and methods", () => {

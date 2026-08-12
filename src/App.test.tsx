@@ -188,14 +188,25 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("link", { name: /^profiles$/i }));
-    await user.type(screen.getByLabelText(/profile search/i), "testparticipant.eth");
-    await user.click(screen.getByRole("button", { name: /search profiles/i }));
+    expect(screen.getByText(/connect your wallet to browse profiles/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /profile directory/i })).not.toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+    expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 
-    const result = await screen.findByRole("button", { name: /test participant.*testparticipant\.eth/i });
+    expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
+    expect(screen.getByText(/ENS names are resolved/i)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /view test participant profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /view capital guide profile/i })).toBeInTheDocument();
+    expect(screen.getByText(/2 public profiles/i)).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/search profiles/i), "testparticipant.eth");
+    await user.click(screen.getByRole("button", { name: /^search$/i }));
+
+    const result = await screen.findByRole("button", { name: /view test participant profile/i });
     await user.click(result);
     expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
     expect(screen.getAllByText(/testparticipant\.eth/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/ENS lookup is active/i)).toBeInTheDocument();
   });
 
   it("loads separate participant roles on a public wallet profile and limits editing to its owner", async () => {
