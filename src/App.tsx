@@ -69,8 +69,8 @@ const emptyDraft: RequestDraft = {
   deliveryDeadline: defaultDeliveryDeadline(),
   providerPreference: "Chirpy",
   milestones: "Delivery",
-  support: "Source materials and reviewer contact",
-  criteria: "Deliverable submitted with evidence\nBuyer accepts the evidence"
+  support: "",
+  criteria: ""
 };
 const categories: Array<{ value: ServiceCategory; label: string }> = [
   { value: "Software Engineering", label: "Software engineering" },
@@ -984,7 +984,7 @@ export default function App() {
               <span><span className="eyebrow">Token-funded work</span><span className="brand-wordmark">Bounties</span></span>
             </a>
             <div className="sidebar-account" aria-label="Account controls" id="account-controls">
-              <div className="account-actions">
+              <div className={`account-actions ${wallet ? "connected-account-actions" : "disconnected-account-actions"}`}>
                 {wallet ? (
                   <button className="compact-account-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
                     <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
@@ -1026,12 +1026,12 @@ export default function App() {
           </div>
         </aside>
 
-        <section className="content">
+        <section className={`content content-${visiblePage}`}>
           <header className="topbar">
             <div className="topbar-copy">
               <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : visiblePage === "moderator" ? "Authorized workspace" : "Wallet reputation"}</p>
-              <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty people can deliver." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h1>
-              <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Describe the work, choose a token, set a timeline, and define how delivery will be accepted." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Discover a public wallet profile, its verified marketplace activity, and its preferred areas of work."}</p>
+              <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create work with clear terms." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h1>
+              <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Set the scope, payment, timeline, and approval conditions in one place." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Discover a public wallet profile, its verified marketplace activity, and its preferred areas of work."}</p>
             </div>
           </header>
 
@@ -1053,14 +1053,14 @@ export default function App() {
 
               <section className="page-stack">
                 {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
-                  <div className="section-heading"><ClipboardList /><h2>Create a bounty</h2></div>
-                  <p className="section-copy">Describe the work, set the payment terms, and define what success looks like.</p>
+                  <div className="section-heading"><ClipboardList /><h2>Bounty details</h2></div>
+                  <p className="section-copy">Give applicants the information they need to deliver successfully.</p>
                   <label>Bounty title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What do you need completed?" required /></label>
                   <div className="form-grid">
                     <label>Work type<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}</select></label>
                     <label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as ServiceCategory })}>{categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>
                   </div>
-                  <label>Description<textarea value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} placeholder="Describe the work. HTTP and HTTPS links will be clickable on the published bounty." maxLength={5000} required /><span className="form-hint">Links beginning with http:// or https:// are shown as clickable links.</span></label>
+                  <label>Description<textarea value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} placeholder="Describe the deliverable, context, and requirements. You can include links." maxLength={5000} required /></label>
                   <div className="form-grid">
                     <label>Contact alias<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} placeholder="A public alias, not a private email or phone number" maxLength={80} required /><span className="form-hint">Share only the name you want bounty applicants to see.</span></label>
                     <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
@@ -1077,10 +1077,10 @@ export default function App() {
                     </label>
                   </div>
                   {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{selectedToken.name ?? "Unnamed ERC20"} {selectedToken.symbol ? `(${selectedToken.symbol})` : ""}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
-                  <div className="payment-token-actions"><button className="secondary-button" type="button" onClick={() => { const inspector = document.querySelector<HTMLDetailsElement>("#custom-token-inspector"); if (inspector) { inspector.open = true; inspector.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>Add or inspect a token</button><span>{availableTokens.length ? `${availableTokens.length} inspected payment token${availableTokens.length === 1 ? "" : "s"} available.` : "Choose a standard token shortcut or inspect any ERC20 contract below."}</span></div>
+                  <div className="payment-token-actions"><button className="secondary-button" type="button" onClick={() => { const inspector = document.querySelector<HTMLDetailsElement>("#custom-token-inspector"); if (inspector) { inspector.open = true; inspector.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>Manage payment tokens</button><span>{availableTokens.length ? `${availableTokens.length} inspected token${availableTokens.length === 1 ? "" : "s"} available.` : "Standard and custom ERC20 options are below."}</span></div>
                   <fieldset className="milestone-builder">
-                    <legend>Deliverables, amounts, and deadlines</legend>
-                    <p className="form-hint">Use one row for a simple bounty, or add up to 32 ordered milestones. Amounts must total the budget. Consecutive deadlines must be at least 22 days apart so review and revision windows remain usable.</p>
+                    <legend>Payment milestones</legend>
+                    <p className="form-hint">Add up to 32 deliverables. Amounts must total the budget, and deadlines must be at least 22 days apart.</p>
                     {milestoneSchedule.map((milestone, index) => (
                       <div className="milestone-input-row" key={`${index}-${milestone.title}`}>
                         <span className="milestone-number">{index + 1}</span>
@@ -1099,8 +1099,8 @@ export default function App() {
                     {selectedToken && !scheduleTotalsBudget ? <p className="schedule-error">Deliverable amounts must total exactly {draft.budget || "0"} {selectedToken.symbol || "tokens"}.</p> : null}
                     {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be in the future and at least 22 days after the previous deliverable.</p> : null}
                   </fieldset>
-                  <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} /></label>
-                  <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} /></label>
+                  <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
+                  <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
@@ -1111,9 +1111,9 @@ export default function App() {
                 </form> : null}
 
                 {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector" open>
-                  <summary><Search size={18} /><span><strong>Add custom token</strong><small>Inspect a token contract before adding it to your payment choices.</small></span></summary>
+                  <summary><Search size={18} /><span><strong>Payment tokens</strong><small>Add a standard token or inspect another ERC20 contract.</small></span></summary>
                   <div className="standard-token-presets" aria-label="Standard token shortcuts">
-                    <div><strong>Standard tokens on {chains[Number(inspectChain) as SupportedChainId]?.name}</strong><span>Each shortcut is independently inspected before it is added.</span></div>
+                    <div><strong>Available on {chains[Number(inspectChain) as SupportedChainId]?.name}</strong></div>
                     {selectedTokenPresets.length ? <div className="preset-token-list">{selectedTokenPresets.map((preset) => (
                       <button
                         className="secondary-button"
