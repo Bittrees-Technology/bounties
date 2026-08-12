@@ -35,6 +35,8 @@ it("enables participant escrow creation only when a deployment is configured", a
   await user.type(screen.getByLabelText(/bounty title/i), "Verify escrow observation");
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
+  await user.type(screen.getByLabelText(/resources provided/i), "Project brief and source files");
+  await user.type(screen.getByLabelText(/acceptance criteria/i), "Delivery matches the approved scope");
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 

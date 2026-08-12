@@ -307,7 +307,9 @@ button {
 }
 
 button:disabled {
-  background: #9fb0a8;
+  background: #d7dfdb;
+  border: 1px solid #bdc9c3;
+  color: #415048;
   cursor: not-allowed;
 }
 
@@ -1406,8 +1408,8 @@ main {
 .sidebar-header {
   align-items: start;
   display: grid;
-  gap: 10px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .brand-lockup {
@@ -1451,10 +1453,20 @@ main {
 .sidebar-account,
 .sidebar-account .account-actions {
   min-width: 0;
+  width: 100%;
 }
 
 .sidebar-account .account-actions {
-  justify-content: flex-start;
+  display: grid;
+  justify-content: stretch;
+}
+
+.sidebar-account .connected-account-actions {
+  grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.sidebar-account .disconnected-account-actions {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar-account .compact-account-button {
@@ -1462,6 +1474,15 @@ main {
   border-color: rgba(255, 255, 255, 0.17);
   box-shadow: none;
   color: #f7fbf6;
+  min-width: 0;
+  overflow: hidden;
+  width: 100%;
+}
+
+.sidebar-account .compact-account-button > span:not(.notification-count, .visually-hidden) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-account .compact-account-button:hover:not(:disabled) {
@@ -1507,11 +1528,19 @@ main {
   width: 100%;
 }
 
+.content-create .topbar,
+.content-create .page-stack {
+  justify-self: center;
+  max-width: 880px;
+  width: 100%;
+}
+
 .topbar {
   align-items: end;
   display: grid;
   gap: 20px;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 390px);
+  margin-bottom: 0;
 }
 
 .topbar h1 {
@@ -1527,6 +1556,11 @@ main {
 
 .topbar-copy > p:last-child {
   margin-top: 18px;
+}
+
+.content-create .topbar h1 {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  max-width: 13ch;
 }
 
 .metrics {
@@ -1659,6 +1693,7 @@ button:hover:not(:disabled) {
 
 button:disabled {
   box-shadow: none;
+  filter: none;
 }
 
 .service-grid,
@@ -2223,7 +2258,16 @@ textarea {
   grid-template-columns: minmax(190px, 1fr) auto;
 }
 
-.secondary-button { background: #52645c; }
+.secondary-button {
+  background: #e7f3ef;
+  border: 1px solid #8bbcaf;
+  color: #084c3f;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #d8ece5;
+  color: #063b31;
+}
 
 .token-identity {
   color: #5d6d65;
@@ -2400,10 +2444,6 @@ textarea {
 }
 
 @media (max-width: 430px) {
-  .sidebar-header {
-    grid-template-columns: 1fr;
-  }
-
   .sidebar-account .account-actions {
     width: 100%;
   }

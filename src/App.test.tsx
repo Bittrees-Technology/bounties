@@ -14,7 +14,7 @@ async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
 
 async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
-  expect(screen.getByRole("heading", { name: /create a bounty people can deliver/i })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /create work with clear terms/i })).toBeInTheDocument();
 }
 
 async function completeCreateForm(
@@ -25,6 +25,8 @@ async function completeCreateForm(
   await user.type(screen.getByLabelText(/bounty title/i), title);
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
+  await user.type(screen.getByLabelText(/resources provided/i), "Project brief and source files");
+  await user.type(screen.getByLabelText(/acceptance criteria/i), "Delivery matches the approved scope");
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: tokenName }));
 }
 
@@ -62,7 +64,13 @@ describe("App", () => {
     expect(screen.getByLabelText(/bounty title/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to inspect/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to publish/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add or inspect a token/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /manage payment tokens/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /bounty details/i })).toBeInTheDocument();
+    expect(screen.queryByText(/links beginning with http/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/resources provided/i)).toHaveValue("");
+    expect(screen.getByLabelText(/resources provided/i)).toBeRequired();
+    expect(screen.getByLabelText(/acceptance criteria/i)).toHaveValue("");
+    expect(screen.getByLabelText(/acceptance criteria/i)).toBeRequired();
     expect(screen.queryByText(/session expired/i)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/bounty title/i), "Audit the creation flow");
     await user.type(screen.getByLabelText(/^description/i), "Bounties");
@@ -86,7 +94,7 @@ describe("App", () => {
     await connectWallet(user);
 
     await user.click(screen.getByRole("button", { name: /i want to hire/i }));
-    expect(await screen.findByRole("heading", { name: /create a bounty people can deliver/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /create work with clear terms/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
     await user.click(screen.getByRole("button", { name: /i want to work/i }));
@@ -98,6 +106,10 @@ describe("App", () => {
     render(<App />);
     const toolbar = screen.getByRole("banner", { name: /account controls/i });
     expect(within(toolbar).getByRole("button", { name: /^connect wallet$/i })).toBeInTheDocument();
+    expect(toolbar.querySelector(".disconnected-account-actions")).toBeInTheDocument();
+    await connectWallet(user);
+    expect(toolbar.querySelector(".connected-account-actions")).toBeInTheDocument();
+    expect(within(toolbar).getByRole("button", { name: /0x1111.*disconnect/i })).toBeInTheDocument();
     await openCreatePage(user);
     expect(screen.getByRole("button", { name: /add milestone/i })).toHaveClass("secondary-button", "add-milestone");
   });
@@ -217,6 +229,8 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/bounty title/i), "Linked bounty");
     await user.type(screen.getByLabelText(/^description/i), "See https://example.com/spec for details.");
     await user.type(screen.getByLabelText(/contact alias/i), "build-team");
+    await user.type(screen.getByLabelText(/resources provided/i), "Product brief");
+    await user.type(screen.getByLabelText(/acceptance criteria/i), "Specification is satisfied");
     await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
     expect(screen.getByLabelText(/preferred contact method/i)).toHaveValue("Chirpy");
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
