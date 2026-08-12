@@ -37,7 +37,7 @@ it("enables participant escrow creation only when a deployment is configured", a
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
   await user.type(screen.getByLabelText(/resources provided/i), "Project brief and source files");
   await user.type(screen.getByLabelText(/acceptance criteria/i), "Delivery matches the approved scope");
-  await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
+  await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC test token.*USDC/i }));
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
   const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));

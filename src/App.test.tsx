@@ -20,7 +20,7 @@ async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
 async function completeCreateForm(
   user: ReturnType<typeof userEvent.setup>,
   title: string,
-  tokenName: RegExp = /USDC/i
+  tokenName: RegExp = /USDC test token.*USDC/i
 ) {
   await user.type(screen.getByLabelText(/bounty title/i), title);
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
@@ -30,7 +30,7 @@ async function completeCreateForm(
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: tokenName }));
 }
 
-async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "Ship provider storefront", tokenName: RegExp = /USDC/i) {
+async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "Ship provider storefront", tokenName: RegExp = /USDC test token.*USDC/i) {
   await openCreatePage(user);
   await completeCreateForm(user, title, tokenName);
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
@@ -62,9 +62,11 @@ describe("App", () => {
     expect(window.location.pathname).toBe("/create");
     expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByLabelText(/bounty title/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /connect wallet to inspect/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect wallet to add/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to publish/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /manage payment tokens/i })).toBeInTheDocument();
+    expect(screen.getByText(/add a custom erc20 token/i)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /WETH.*Wrapped Ether/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /USDC.*USD Coin/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /bounty details/i })).toBeInTheDocument();
     expect(screen.queryByText(/links beginning with http/i)).not.toBeInTheDocument();
     expect(screen.getByLabelText(/resources provided/i)).toHaveValue("");
@@ -139,7 +141,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/budget/i), exact);
     await user.clear(screen.getByLabelText(/^amount$/i));
     await user.type(screen.getByLabelText(/^amount$/i), exact);
-    await completeCreateForm(user, "Exact decimal bounty", /WETH/i);
+    await completeCreateForm(user, "Exact decimal bounty", /WETH test token.*WETH/i);
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
     const order = within((await screen.findByRole("heading", { name: "Exact decimal bounty" })).closest("article") as HTMLElement);
     expect(order.getByText(/0\.123456789012345678 WETH/i)).toBeInTheDocument();
@@ -161,8 +163,23 @@ describe("App", () => {
     await openCreatePage(user);
     expect(screen.getByRole("option", { name: /CUSTOM.*Base Sepolia/i })).toBeInTheDocument();
     expect(screen.queryByText(/84532/)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add weth/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add usdc/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /WETH.*Wrapped Ether/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /USDC.*USD Coin/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add weth/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /add usdc/i })).not.toBeInTheDocument();
+  });
+
+  it("adds a standard payment token directly from the payment dropdown", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC.*USD Coin/i }));
+
+    expect(await screen.findByText(/USDC is ready to use/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/USD Coin \(USDC\)/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("link", { name: /inspect contract/i })).toHaveAttribute("href", expect.stringContaining("0x036cbd"));
   });
 
   it("discovers public profiles by custom or ENS identity", async () => {
@@ -231,7 +248,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/contact alias/i), "build-team");
     await user.type(screen.getByLabelText(/resources provided/i), "Product brief");
     await user.type(screen.getByLabelText(/acceptance criteria/i), "Specification is satisfied");
-    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC test token.*USDC/i }));
     expect(screen.getByLabelText(/preferred contact method/i)).toHaveValue("Chirpy");
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
