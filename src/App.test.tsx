@@ -40,7 +40,7 @@ async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "
 describe("App", () => {
   it("separates marketplace and creation while requiring wallet auth only for actions", async () => {
     const user = userEvent.setup();
-    const { container } = render(<App />);
+    render(<App />);
 
     expect(screen.getAllByRole("button", { name: /^connect wallet$/i })).toHaveLength(1);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
@@ -51,9 +51,11 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("href", "/create");
-    expect(screen.getByLabelText(/illustrative bounty previews/i)).toBeInTheDocument();
-    expect(container.querySelectorAll(".preview-bounty-card")).toHaveLength(3);
-    expect(screen.getByText(/illustrative examples only/i)).toBeInTheDocument();
+    expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
+    expect(screen.getByText(/connecting does not authorize a transaction or token spending/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect to marketplace/i })).toBeInTheDocument();
+    expect(screen.queryByText(/illustrative examples/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/review a product onboarding flow/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /escrow docs/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md"));
     expect(screen.queryByRole("heading", { name: /check a token/i })).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/bounty title/i)).not.toBeInTheDocument();
