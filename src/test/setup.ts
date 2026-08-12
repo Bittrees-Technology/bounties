@@ -8,7 +8,7 @@ import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment } fr
 expect.extend(matchers);
 
 const testWallet = "0x1111111111111111111111111111111111111111";
-const tokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
+const defaultTokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
   id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
   symbol,
   decimals: symbol === "USDC" || symbol === "USDT" ? 6 : symbol === "WBTC" ? 8 : 18,
@@ -23,6 +23,7 @@ const tokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((s
   risk_flags: [],
   inspected_at: new Date().toISOString()
 }));
+let tokens = [...defaultTokens];
 let bounties: Array<Record<string, unknown>> = [];
 let authenticated = false;
 let snapshotStaffRole: "moderator" | "admin" | null = null;
@@ -117,6 +118,7 @@ export function configureMockSettlementProposal(
 
 beforeEach(() => {
   bounties = [];
+  tokens = [...defaultTokens];
   authenticated = false;
   snapshotStaffRole = null;
   snapshotModerationReports = [];
@@ -257,6 +259,28 @@ beforeEach(() => {
     if (url.endsWith("/api/bounties/logout")) {
       authenticated = false;
       return Response.json({ ok: true });
+    }
+    if (url.endsWith("/api/bounties/tokens/inspect")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { chainId: number; contractAddress: string };
+      const normalizedAddress = body.contractAddress.toLowerCase();
+      const symbol = normalizedAddress === "0x036cbd53842c5426634e7929541ec2318f3dcf7c" ? "USDC" : "WETH";
+      const token = {
+        id: "00000000-0000-4000-8000-000000000099",
+        symbol,
+        decimals: symbol === "USDC" ? 6 : 18,
+        chain_id: body.chainId,
+        contract_address: normalizedAddress,
+        checksum_address: body.contractAddress,
+        name: symbol === "USDC" ? "USD Coin" : "Wrapped Ether",
+        total_supply: "1000000000",
+        explorer_url: `https://sepolia.basescan.org/address/${body.contractAddress}`,
+        proxy_status: "unknown",
+        source_verification_status: "unavailable",
+        risk_flags: [],
+        inspected_at: new Date().toISOString()
+      };
+      tokens = [...tokens.filter((candidate) => !(candidate.chain_id === body.chainId && candidate.contract_address.toLowerCase() === normalizedAddress)), token];
+      return Response.json(token);
     }
     if (url.endsWith("/api/bounties/bounties")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;

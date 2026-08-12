@@ -20,7 +20,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { isDraftValid, orderStatusLabel } from "./bountyModel";
-import { chains, supportedChainIds } from "./chain/config";
+import { activeChainId, chains, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter } from "./chain/escrowAdapter";
 import { keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
@@ -251,7 +251,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [inspectChain, setInspectChain] = useState("84532");
+  const [inspectChain, setInspectChain] = useState(String(activeChainId));
   const [inspectAddress, setInspectAddress] = useState("");
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
@@ -269,6 +269,16 @@ export default function App() {
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
   const wallet = session?.account.wallet_address;
   const selectedTokenPresets = standardTokenPresets[Number(inspectChain) as SupportedChainId] ?? [];
+  const networkTokens = availableTokens.filter((token) => token.chain_id === Number(inspectChain));
+  const standardPaymentOptions = selectedTokenPresets.map((preset) => {
+    const token = networkTokens.find((candidate) => candidate.contract_address.toLowerCase() === preset.contractAddress.toLowerCase());
+    return {
+      preset,
+      token,
+      value: token?.id ?? `preset:${inspectChain}:${preset.contractAddress.toLowerCase()}`
+    };
+  });
+  const otherPaymentTokens = networkTokens.filter((token) => !selectedTokenPresets.some((preset) => preset.contractAddress.toLowerCase() === token.contract_address.toLowerCase()));
 
   const walletProfiles = useMemo(() => {
     const profiles = new Map<string, WalletProfile>();
@@ -390,7 +400,11 @@ export default function App() {
       const next = await loadMarketplace();
       setSession(next);
       setExpired(false);
-      if (!draft.token && next.tokens.length) setDraft((current) => ({ ...current, token: next.tokens[0].id }));
+      setDraft((current) => {
+        if (current.token && next.tokens.some((token) => token.id === current.token)) return current;
+        const fallback = next.tokens.find((token) => token.chain_id === Number(inspectChain));
+        return fallback ? { ...current, token: fallback.id } : { ...current, token: "" };
+      });
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to load the marketplace.";
       if (allowDisconnected) {
@@ -498,6 +512,33 @@ export default function App() {
     event.preventDefault();
     if (!wallet) return void connect();
     await act(() => inspectContract(Number(inspectChain), inspectAddress), "Token inspected and added to your payment choices.");
+  }
+
+  function choosePaymentNetwork(chainId: string) {
+    setInspectChain(chainId);
+    setInspectAddress("");
+    setInspected(null);
+    setDraft((current) => {
+      const currentToken = availableTokens.find((token) => token.id === current.token);
+      return currentToken && currentToken.chain_id !== Number(chainId) ? { ...current, token: "" } : current;
+    });
+  }
+
+  async function choosePaymentToken(value: string) {
+    if (!value) {
+      setDraft((current) => ({ ...current, token: "" }));
+      return;
+    }
+    const standard = standardPaymentOptions.find((option) => option.value === value);
+    if (standard && !standard.token) {
+      if (!wallet) return void connect();
+      await act(
+        () => inspectContract(Number(inspectChain), standard.preset.contractAddress),
+        `${standard.preset.symbol} is ready to use.`
+      );
+      return;
+    }
+    setDraft((current) => ({ ...current, token: value }));
   }
 
   async function chooseRole(role: "buyer" | "provider") {
@@ -1066,18 +1107,31 @@ export default function App() {
                     <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
                     <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
                   </div>
-                  <div className="form-grid">
+                  <div className="form-grid payment-setup-grid">
                     <label>Total budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
                     <label>
+                      Payment network
+                      <select aria-label="Payment network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>
+                        {supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}
+                      </select>
+                    </label>
+                    <label>
                       Payment token
-                      <select aria-label="Payment token" value={draft.token} onChange={(event) => setDraft({ ...draft, token: event.target.value })} required>
-                        <option value="">{wallet ? availableTokens.length ? "Select a payment token" : "No payment tokens added yet" : "Connect wallet to load payment tokens"}</option>
-                        {availableTokens.map((token) => <option key={token.id} value={token.id}>{tokenOptionLabel(token)}</option>)}
+                      <select aria-label="Payment token" value={draft.token} onChange={(event) => void choosePaymentToken(event.target.value)} disabled={!wallet || loading} required>
+                        <option value="">{wallet ? "Choose a payment token" : "Connect wallet to choose"}</option>
+                        <optgroup label="Standard tokens">
+                          {standardPaymentOptions.length
+                            ? standardPaymentOptions.map(({ preset, token, value }) => <option key={value} value={value}>{token ? tokenOptionLabel(token) : `${preset.symbol} · ${preset.name}`}</option>)
+                            : <option disabled>No verified standard tokens on this network</option>}
+                        </optgroup>
+                        {otherPaymentTokens.length ? <optgroup label="Added tokens">
+                          {otherPaymentTokens.map((token) => <option key={token.id} value={token.id}>{tokenOptionLabel(token)}</option>)}
+                        </optgroup> : null}
                       </select>
                     </label>
                   </div>
                   {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{selectedToken.name ?? "Unnamed ERC20"} {selectedToken.symbol ? `(${selectedToken.symbol})` : ""}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
-                  <div className="payment-token-actions"><button className="secondary-button" type="button" onClick={() => { const inspector = document.querySelector<HTMLDetailsElement>("#custom-token-inspector"); if (inspector) { inspector.open = true; inspector.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>Manage payment tokens</button><span>{availableTokens.length ? `${availableTokens.length} inspected token${availableTokens.length === 1 ? "" : "s"} available.` : "Standard and custom ERC20 options are below."}</span></div>
+                  <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
                     <p className="form-hint">Add up to 32 deliverables. Amounts must total the budget, and deadlines must be at least 22 days apart.</p>
@@ -1110,25 +1164,12 @@ export default function App() {
                   </button>
                 </form> : null}
 
-                {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector" open>
-                  <summary><Search size={18} /><span><strong>Payment tokens</strong><small>Add a standard token or inspect another ERC20 contract.</small></span></summary>
-                  <div className="standard-token-presets" aria-label="Standard token shortcuts">
-                    <div><strong>Available on {chains[Number(inspectChain) as SupportedChainId]?.name}</strong></div>
-                    {selectedTokenPresets.length ? <div className="preset-token-list">{selectedTokenPresets.map((preset) => (
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        key={`${inspectChain}-${preset.contractAddress}`}
-                        onClick={wallet
-                          ? () => void act(() => inspectContract(Number(inspectChain), preset.contractAddress), `${preset.symbol} inspected and added.`)
-                          : () => void connect()}
-                      >Add {preset.symbol}</button>
-                    ))}</div> : <p className="form-hint">No standard token shortcut has been verified for this network yet. You can still inspect a contract address below.</p>}
-                  </div>
+                {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector">
+                  <summary><Search size={18} /><span><strong>Add a custom ERC20 token</strong><small>Use a contract that is not in the standard token list.</small></span></summary>
+                  <p className="custom-token-copy">Add a token on <strong>{chains[Number(inspectChain) as SupportedChainId]?.name}</strong>. Bounties will inspect its contract before making it available.</p>
                   <form className="token-inspector-form" onSubmit={inspect}>
-                    <label>Network<select value={inspectChain} onChange={(event) => setInspectChain(event.target.value)} required>{supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
-                    <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect token contract" : "Connect wallet to inspect"}</button>
+                    <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                   </form>
                   {inspected ? <article className="inspected-token-card"><h4>{inspected.name ?? "Unnamed ERC20"} {inspected.symbol ? `(${inspected.symbol})` : ""}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Automated checks do not guarantee that a token is safe.</p></article> : null}
                 </details> : null}

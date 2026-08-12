@@ -649,29 +649,23 @@ li {
 .token-inspector > summary span { display: grid; gap: 3px; }
 .token-inspector > summary small { color: #5a6862; font-weight: 500; }
 
-.standard-token-presets {
-  background: #f3f8f5;
-  border: 1px solid #cfe0d6;
-  border-radius: 14px;
-  display: grid;
-  gap: 10px;
-  margin-top: 16px;
-  padding: 14px;
+.custom-token-copy {
+  color: #5a6862;
+  margin: 16px 0 0;
 }
-
-.standard-token-presets > div:first-child { display: grid; gap: 3px; }
-.standard-token-presets span { color: #5a6862; font-size: .82rem; }
-.preset-token-list { display: flex; flex-wrap: wrap; gap: 8px; }
-.preset-token-list button { min-height: 36px; padding: 8px 12px; }
 
 .token-inspector-form {
   align-items: end;
   border-top: 1px solid #dce5df;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(170px, .65fr) minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   margin-top: 16px;
   padding-top: 16px;
+}
+
+.payment-setup-grid {
+  grid-template-columns: minmax(140px, .65fr) minmax(180px, .85fr) minmax(260px, 1.35fr);
 }
 
 .selected-token-card,
@@ -698,14 +692,7 @@ li {
 .inspected-token-card a,
 .token-identity-card a { color: #0f6b57; font-weight: 700; justify-self: start; }
 
-.payment-token-actions {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.payment-token-actions > span { color: #5a6862; font-size: .82rem; }
+.payment-token-note { margin-top: -2px; }
 
 .milestone-builder {
   border: 1px solid #cfe0d6;
