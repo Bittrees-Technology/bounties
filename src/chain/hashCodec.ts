@@ -1,4 +1,4 @@
-import { EscrowClientError } from "./errors";
+import { EscrowClientError } from "./errors.js";
 import { encodeAbiParameters, keccak256, parseAbiParameters, sha256, toHex } from "viem";
 
 export const HASH_CODEC_VERSION = "bounty-commitments.v1";
