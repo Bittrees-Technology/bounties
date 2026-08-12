@@ -16,7 +16,7 @@ it("enables participant escrow creation only when a deployment is configured", a
   const user = userEvent.setup();
 
   render(<App />);
-  await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+  await user.click(screen.getByRole("button", { name: /sign in with ethereum/i }));
   await screen.findByText(/roles are additive/i);
   await user.type(screen.getByLabelText(/request title/i), "Verify escrow observation");
   await user.type(screen.getByLabelText(/project/i), "Marketplace");

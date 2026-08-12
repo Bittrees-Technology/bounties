@@ -9,7 +9,7 @@ afterEach(() => {
 });
 
 async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("button", { name: /connect wallet/i }));
+  await user.click(screen.getByRole("button", { name: /sign in with ethereum/i }));
   expect(await screen.findByText(/roles are additive/i)).toBeInTheDocument();
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 }
@@ -26,7 +26,8 @@ async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "
 describe("App", () => {
   it("requires wallet auth before entering the marketplace", () => {
     render(<App />);
-    expect(screen.getByText(/connect a wallet to enter the marketplace/i)).toBeInTheDocument();
+    expect(screen.getByText(/sign in with ethereum to enter the marketplace/i)).toBeInTheDocument();
+    expect(screen.getByText(/not a transaction and does not authorize token spending/i)).toBeInTheDocument();
     expect(screen.queryByText(/session expired/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/request title/i)).not.toBeInTheDocument();
   });

@@ -1,7 +1,8 @@
 import { parseCriteria, parseSupport } from "../bountyModel";
+import { SIWE_AUTHENTICATION_METHOD, validateSiweChallenge } from "../auth/siwe";
 import { hashSourceJson } from "../chain/hashCodec";
 import type { MarketplaceOrder, Proposal, RequestDraft } from "../types";
-import { formatUnits, keccak256, toHex } from "viem";
+import { formatUnits, getAddress, keccak256, toHex } from "viem";
 
 type EthereumProvider = { request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> };
 declare global { interface Window { ethereum?: EthereumProvider } }
@@ -47,16 +48,24 @@ async function auth(body: Record<string, unknown>) {
   return payload ?? {};
 }
 
-export async function signInWithWallet(): Promise<string> {
-  if (!window.ethereum) throw new PersistenceError("Install a wallet extension to sign in.");
+export async function signInWithEthereum(): Promise<string> {
+  if (!window.ethereum) throw new PersistenceError("Install an Ethereum wallet to sign in.");
   const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
   const chainHex = await window.ethereum.request({ method: "eth_chainId" }) as string;
-  const walletAddress = accounts[0];
-  if (!walletAddress) throw new PersistenceError("No wallet account was selected.");
+  const selectedAddress = accounts[0];
+  if (!selectedAddress) throw new PersistenceError("No wallet account was selected.");
+  const walletAddress = getAddress(selectedAddress);
   const chainId = Number.parseInt(chainHex, 16);
-  const nonce = await auth({ action: "nonce", walletAddress, chainId });
-  const signature = await window.ethereum.request({ method: "personal_sign", params: [nonce.message, walletAddress] }) as string;
-  const verified = await auth({ action: "verify", walletAddress, chainId, nonceId: nonce.nonceId, nonce: nonce.nonce, issuedAt: nonce.issuedAt, expirationTime: nonce.expirationTime, signature });
+  const challenge = validateSiweChallenge(await auth({ action: "nonce", walletAddress, chainId }), {
+    walletAddress,
+    chainId,
+    origin: window.location.origin
+  });
+  const signature = await window.ethereum.request({ method: "personal_sign", params: [challenge.message, walletAddress] }) as string;
+  const verified = await auth({ action: "verify", walletAddress, chainId, ...challenge, signature });
+  if (verified.authenticationMethod !== SIWE_AUTHENTICATION_METHOD || getAddress(verified.walletAddress) !== walletAddress) {
+    throw new PersistenceError("The Sign-In with Ethereum response did not match the selected wallet.");
+  }
   rememberCsrf(verified.csrfToken);
   return verified.walletAddress.toLowerCase();
 }
