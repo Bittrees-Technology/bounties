@@ -26,6 +26,25 @@ export class PersistenceError extends Error {
   constructor(message: string, code: PersistenceError["code"] = "server") { super(message); this.name = "PersistenceError"; this.code = code; }
 }
 
+function marketplaceErrorMessage(status: number): string {
+  if (status >= 500) {
+    return "Bounties is temporarily unavailable. Please try again shortly.";
+  }
+  if (status === 403) return "Your wallet does not have permission to complete that action.";
+  if (status === 404) return "That item could not be found.";
+  if (status === 409) return "The bounty changed before that action completed. Refresh and try again.";
+  if (status === 413) return "That submission is too large. Shorten it and try again.";
+  return "Bounties could not complete that request. Please check the details and try again.";
+}
+
+function authenticationErrorMessage(status: number): string {
+  if (status >= 500) {
+    return "Sign-in is temporarily unavailable. Please try again shortly.";
+  }
+  if (status === 429) return "Too many sign-in attempts. Please wait a moment and try again.";
+  return "Wallet sign-in could not be completed. Please try again.";
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
@@ -35,7 +54,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   catch { throw new PersistenceError("Could not reach the marketplace. Check your connection and retry.", "network"); }
   if (response.status === 401) throw new PersistenceError("Your wallet session expired. Reconnect to continue.", "auth-expired");
   const body = await response.json().catch(() => null) as { code?: string } | null;
-  if (!response.ok) throw new PersistenceError(body?.code ?? `Marketplace request failed (${response.status}).`);
+  if (!response.ok) throw new PersistenceError(marketplaceErrorMessage(response.status));
   return body as T;
 }
 
@@ -44,7 +63,7 @@ async function auth(body: Record<string, unknown>) {
   try { response = await fetch(AUTH, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch { throw new PersistenceError("Could not reach wallet authentication.", "network"); }
   const payload = await response.json().catch(() => null) as Record<string, string> | null;
-  if (!response.ok) throw new PersistenceError(payload?.code ?? "Wallet authentication failed.");
+  if (!response.ok) throw new PersistenceError(authenticationErrorMessage(response.status));
   return payload ?? {};
 }
 

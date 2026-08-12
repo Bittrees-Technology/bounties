@@ -122,7 +122,7 @@ export default function App() {
       if (!draft.token && next.tokens.length) setDraft((current) => ({ ...current, token: next.tokens[0].id }));
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Unable to load the marketplace.";
-      if (allowDisconnected && message.toLowerCase().includes("expired")) {
+      if (allowDisconnected) {
         setSession(null);
         setError(null);
         setExpired(false);
@@ -181,6 +181,7 @@ export default function App() {
 
   async function publish(event: FormEvent) {
     event.preventDefault();
+    if (!wallet) return void connect();
     if (!selectedToken) return setError("Inspect or select a configured ERC20 token first.");
     if (!isDraftValid(draft)) return setError("Complete every required bounty field.");
     await act(async () => {
@@ -191,6 +192,7 @@ export default function App() {
 
   async function inspect(event: FormEvent) {
     event.preventDefault();
+    if (!wallet) return void connect();
     await act(async () => {
       const token = await inspectToken(Number(inspectChain), inspectAddress);
       setInspected(token);
@@ -504,23 +506,27 @@ export default function App() {
     <main>
       <section className="workspace">
         <aside className="sidebar">
-          <div><p className="eyebrow">Wallet-only marketplace</p><h1>Bounties</h1></div>
+          <div><p className="eyebrow">Token-funded work</p><h1>Bounties</h1></div>
           <nav><a href="#tokens">Tokens</a><a href="#request">Create bounty</a><a href="#orders">Marketplace</a>{session?.staffRole ? <a href="#moderation">Admin</a> : null}</nav>
           <div className="gate-callout">
             <ShieldCheck size={18} />
-            <span>
-              Participant wallet actions are enabled only for configured deployments. The API verifies confirmations, receipts, and canonical logs before displaying funding state.
-            </span>
+            <span>You can explore and prepare bounties now. Token escrow will be enabled after the contracts are deployed.</span>
           </div>
         </aside>
 
         <section className="content">
           <header className="topbar">
-            <div><p className="eyebrow">Persisted marketplace lifecycle</p><h2>Post work, choose providers, and verify delivery with a wallet.</h2></div>
+            <div className="topbar-copy">
+              <p className="eyebrow">Work with confidence</p>
+              <h2>Post work. Find contributors. Pay with confidence.</h2>
+              <p>Define the work, choose a provider, and release token payments when delivery is approved.</p>
+            </div>
             <div className="account-actions">
-              <button aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
-                <Bell size={18} /> Notifications ({session?.notifications.filter((notification) => !notification.read_at).length ?? 0})
-              </button>
+              {wallet ? (
+                <button aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                  <Bell size={18} /> Notifications ({session?.notifications.filter((notification) => !notification.read_at).length ?? 0})
+                </button>
+              ) : null}
               {wallet ? (
                 <button onClick={() => void disconnect()}><WalletCards size={18} />{short(wallet)} · Sign out</button>
               ) : (
@@ -546,25 +552,28 @@ export default function App() {
 
           {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Sign in with Ethereum again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
-          {loading ? <p><Loader2 className="spin" /> Loading persisted marketplace…</p> : null}
+          {loading ? <p className="loading-state"><Loader2 className="spin" /> Updating Bounties…</p> : null}
 
           {!wallet ? (
-            <section className="panel empty-state-panel">
+            <section className="panel auth-callout">
               <WalletCards size={28} />
-              <strong>Sign in with Ethereum to enter the marketplace</strong>
-              <span>Sign a free EIP-4361 message to prove wallet ownership. This is not a transaction and does not authorize token spending.</span>
+              <div>
+                <strong>Explore Bounties, then sign in when you’re ready.</strong>
+                <span>Sign a free message to verify your wallet. This won’t send a transaction or give Bounties access to your tokens.</span>
+              </div>
             </section>
           ) : (
-            <>
-              <section className="panel" aria-label="Marketplace roles">
-                <div className="section-heading"><BadgeCheck /><h3>Roles</h3></div>
-                <p>Roles are additive and enforced by the API.</p>
-                <button disabled={session?.roles.includes("buyer")} onClick={() => void act(() => selectRole("buyer"))}>Enable buyer role</button>{" "}
-                <button disabled={session?.roles.includes("provider")} onClick={() => void act(() => selectRole("provider"))}>Enable provider role</button>
-              </section>
+            <section className="panel role-panel" aria-label="Marketplace roles">
+              <div className="section-heading"><BadgeCheck /><h3>How would you like to participate?</h3></div>
+              <p>Post bounties, provide services, or do both.</p>
+              <button disabled={session?.roles.includes("buyer")} onClick={() => void act(() => selectRole("buyer"))}>I want to hire</button>{" "}
+              <button disabled={session?.roles.includes("provider")} onClick={() => void act(() => selectRole("provider"))}>I want to work</button>
+            </section>
+          )}
 
-              <section id="tokens" className="panel">
-                <div className="section-heading"><Search /><h3>Inspect an ERC20</h3></div>
+              <section id="tokens" className="panel workspace-section">
+                <div className="section-heading"><Search /><h3>Check a token</h3></div>
+                <p className="section-copy">Review the network, contract address, verification status, and known warnings before using a token.</p>
                 <form className="form-grid" onSubmit={inspect}>
                   <label>
                     Network
@@ -572,52 +581,68 @@ export default function App() {
                       {supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name} · {chainId}</option>)}
                     </select>
                   </label>
-                  <label>Contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" required /></label>
-                  <button>Inspect contract</button>
+                  <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
+                  <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Check token" : "Sign in to check token"}</button>
                 </form>
                 {inspected ? (
                   <article className="readiness-card">
                     <h4>{tokenLabel(inspected)}</h4>
                     <p>{inspected.name ?? "Unnamed ERC20"} · {inspected.decimals} decimals · chain {inspected.chain_id}</p>
-                    <p>Source: {inspected.source_verification_status} · Proxy: {inspected.proxy_status}</p>
-                    <p>Risk flags: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "none reported"}</p>
-                    <a href={inspected.explorer_url} target="_blank" rel="noreferrer">Explorer <ExternalLink size={14} /></a>
+                    <p>Contract source: {inspected.source_verification_status}</p>
+                    <p>Upgradeability: {inspected.proxy_status}</p>
+                    <p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p>
+                    <a href={inspected.explorer_url} target="_blank" rel="noreferrer">View contract on explorer <ExternalLink size={14} /></a>
+                    <p className="form-hint">Automated checks do not guarantee that a token is safe.</p>
                   </article>
                 ) : null}
               </section>
 
-              <section className="columns">
+              <section className="columns product-columns">
                 <form id="request" className="panel form-panel" onSubmit={publish}>
-                  <div className="section-heading"><ClipboardList /><h3>Create bounty</h3></div>
-                  <label>Request title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} required /></label>
+                  <div className="section-heading"><ClipboardList /><h3>Create a bounty</h3></div>
+                  <p className="section-copy">Describe the work, set the payment terms, and define what success looks like.</p>
+                  <label>Bounty title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What do you need completed?" required /></label>
                   <div className="form-grid">
-                    <label>Scope<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope}>{scope}</option>)}</select></label>
+                    <label>Work type<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope}>{scope}</option>)}</select></label>
                     <label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as ServiceCategory })}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
                   </div>
-                  <label>Project<input value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} required /></label>
+                  <label>Project name<input value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} required /></label>
                   <div className="form-grid">
-                    <label>Buyer / reviewer<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} required /></label>
-                    <label>Delivery deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
+                    <label>Review contact<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} required /></label>
+                    <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
                   </div>
                   <div className="form-grid">
-                    <label>Budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
+                    <label>Budget amount<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
                     <label>
-                      Token
-                      <select aria-label="Token" value={draft.token} onChange={(event) => setDraft({ ...draft, token: event.target.value })} required>
-                        <option value="">Select configured token</option>
+                      Payment token
+                      <select aria-label="Payment token" value={draft.token} onChange={(event) => setDraft({ ...draft, token: event.target.value })} required>
+                        <option value="">{wallet ? "Select a token" : "Sign in to load tokens"}</option>
                         {availableTokens.map((token) => <option key={token.id} value={token.id}>{tokenLabel(token)} · chain {token.chain_id}</option>)}
                       </select>
                     </label>
                   </div>
-                  <label>Milestones<textarea value={draft.milestones} onChange={(event) => setDraft({ ...draft, milestones: event.target.value })} /><span className="form-hint">One per line. Optional exact amount: Discovery | 125.5</span></label>
-                  <label>Support<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} /></label>
+                  <label>Deliverables and milestones<textarea value={draft.milestones} onChange={(event) => setDraft({ ...draft, milestones: event.target.value })} /><span className="form-hint">Add one milestone per line. To assign amounts, use: Discovery | 125.5</span></label>
+                  <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} /></label>
-                  <button disabled={!isDraftValid(draft) || !selectedToken}>Publish bounty</button>
+                  <button
+                    type={wallet ? "submit" : "button"}
+                    onClick={wallet ? undefined : () => void connect()}
+                    disabled={wallet ? !isDraftValid(draft) || !selectedToken : false}
+                  >
+                    {wallet ? "Publish bounty" : "Sign in to publish"}
+                  </button>
                 </form>
 
                 <section id="orders" className="panel queue">
-                  <div className="section-heading"><BriefcaseBusiness /><h3>Marketplace</h3></div>
-                  {session?.orders.length ? (
+                  <div className="section-heading"><BriefcaseBusiness /><h3>Browse bounties</h3></div>
+                  <p className="section-copy">Browse open bounties and review the work, deadline, and payment terms before proposing.</p>
+                  {!wallet ? (
+                    <div className="empty-state-panel compact-empty-state">
+                      <BriefcaseBusiness />
+                      <strong>Sign in to view live bounties</strong>
+                      <span>Your wallet keeps proposals, work history, and payments connected to you.</span>
+                    </div>
+                  ) : session?.orders.length ? (
                     session.orders.map((order) => (
                       <article className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
                         <div className="bounty-card-header">
@@ -634,7 +659,7 @@ export default function App() {
                       </article>
                     ))
                   ) : (
-                    <div className="empty-state-panel"><CheckCircle2 /><strong>No persisted bounties yet</strong></div>
+                    <div className="empty-state-panel"><CheckCircle2 /><strong>No bounties are available yet</strong><span>New work will appear here when it is published.</span></div>
                   )}
                 </section>
               </section>
@@ -652,9 +677,7 @@ export default function App() {
                   ))}
                 </section>
               ) : null}
-            </>
-          )}
-          <footer className="legal-footer"><a href="/terms.html">Terms</a><a href="/acceptable-use.html">Acceptable Use</a><a href="/privacy.html">Privacy</a><span>Pre-launch legal drafts</span></footer>
+          <footer className="legal-footer"><a href="/terms.html">Terms</a><a href="/acceptable-use.html">Acceptable Use</a><a href="/privacy.html">Privacy</a><span>Built by Bittrees Technology</span></footer>
         </section>
       </section>
     </main>

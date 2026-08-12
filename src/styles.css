@@ -122,6 +122,20 @@ nav a:hover {
   max-width: 880px;
 }
 
+.topbar-copy > p:last-child,
+.section-copy,
+.role-panel > p,
+.auth-callout span {
+  color: #5f6d65;
+  line-height: 1.55;
+}
+
+.topbar-copy > p:last-child {
+  font-size: 16px;
+  margin: 14px 0 0;
+  max-width: 700px;
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(92px, 1fr));
@@ -160,6 +174,44 @@ nav a:hover {
 
 .panel {
   padding: 20px;
+}
+
+.workspace-section,
+.role-panel,
+.auth-callout {
+  margin-bottom: 20px;
+}
+
+.section-copy {
+  margin: -8px 0 18px;
+}
+
+.auth-callout {
+  align-items: center;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.auth-callout svg {
+  color: #0f6b57;
+}
+
+.auth-callout strong,
+.auth-callout span {
+  display: block;
+}
+
+.auth-callout span {
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.loading-state {
+  align-items: center;
+  color: #5a6861;
+  display: flex;
+  gap: 8px;
 }
 
 .section-heading {
@@ -500,6 +552,11 @@ li {
   color: #0f6b57;
 }
 
+.compact-empty-state {
+  align-self: start;
+  min-height: 260px;
+}
+
 @media (max-width: 900px) {
   .workspace { grid-template-columns: 1fr; }
   .sidebar { min-height: auto; position: static; }
@@ -518,6 +575,8 @@ li {
   .milestone-meta { justify-items: start; }
   .session-alert { align-items: flex-start; flex-wrap: wrap; }
   .session-alert button { margin-left: 0; }
+  .auth-callout { align-items: start; grid-template-columns: 1fr; }
+  .auth-callout button { width: 100%; }
 }
 
 .proposal-row button {
