@@ -7,13 +7,18 @@
     "dev": "vite --host 0.0.0.0",
     "preview": "vite preview",
     "build": "tsc -b && vite build",
+    "vercel-build": "node scripts/migrate-database.mjs && npm run build",
+    "db:migrate": "node scripts/migrate-database.mjs",
     "test": "vitest run",
     "lint": "eslint .",
     "audit": "npm audit --audit-level=moderate"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "@vitejs/plugin-react": "^6.0.3",
+    "ethers": "^6.17.0",
     "lucide-react": "^0.468.0",
+    "postgres": "^3.4.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",

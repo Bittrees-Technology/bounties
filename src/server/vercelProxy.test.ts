@@ -4,110 +4,70 @@ import vercelConfig from "../../vercel.json";
 
 import {
   ProxyRequestError,
-  buildResponseHeaders,
-  buildUpstreamHeaders,
-  buildUpstreamUrl,
-  getFunctionsOrigin,
-  readValidatedBody,
-  resolveAllowedRoute
+  resolveApplicationOrigin,
+  resolveDirectRoute
 } from "./vercelProxy";
 
-describe("resolveAllowedRoute", () => {
+describe("resolveDirectRoute", () => {
   it("allowlists wallet auth and bounties paths only", () => {
-    expect(resolveAllowedRoute("/api/wallet-auth", "POST")).toEqual({
-      method: "POST",
-      upstreamPath: "/wallet-auth"
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/wallet-auth", "POST")).toEqual({
+      action: "wallet-auth",
+      handler: "wallet-auth",
+      method: "POST"
     });
-    expect(resolveAllowedRoute("/api/bounties/proposals/accept", "POST")).toEqual({
-      method: "POST",
-      upstreamPath: "/bounties-api/proposals/accept"
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/proposals/accept", "POST")).toEqual({
+      action: "proposals/accept",
+      handler: "bounties",
+      method: "POST"
     });
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties", "GET").action).toBe("snapshot");
   });
 
-  it("rejects unknown paths and methods", () => {
-    expect(() => resolveAllowedRoute("/api/other", "POST")).toThrow(ProxyRequestError);
-    expect(() => resolveAllowedRoute("/api/wallet-auth", "GET")).toThrow(ProxyRequestError);
-    expect(() => resolveAllowedRoute("/api/bounties/../admin", "POST")).toThrow(ProxyRequestError);
+  it("rejects unknown paths, query strings, traversal, and methods", () => {
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/other", "POST")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/wallet-auth", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/../admin", "POST")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties?debug=1", "GET")).toThrow(ProxyRequestError);
   });
 });
 
-describe("buildUpstreamUrl", () => {
-  it("builds URLs under the configured functions origin", () => {
-    const origin = getFunctionsOrigin("https://project.supabase.co/functions/v1");
-    expect(buildUpstreamUrl("https://bounties.bittrees.org/api/bounties/snapshot", "GET", origin).toString()).toBe(
-      "https://project.supabase.co/functions/v1/bounties-api/snapshot"
+describe("resolveApplicationOrigin", () => {
+  it("derives and verifies a same-origin production request", () => {
+    const request = new Request("https://bounties.bittrees.org/api/wallet-auth", {
+      method: "POST",
+      headers: { origin: "https://bounties.bittrees.org" }
+    });
+    expect(resolveApplicationOrigin(request, undefined, "production").origin).toBe("https://bounties.bittrees.org");
+    expect(resolveApplicationOrigin(request, "https://bounties.bittrees.org", "production").origin).toBe("https://bounties.bittrees.org");
+  });
+
+  it("lets previews bind SIWE to their own deployment host", () => {
+    const request = new Request("https://bounties-git-feature-bittrees-tech.vercel.app/api/wallet-auth", {
+      method: "POST",
+      headers: { origin: "https://bounties-git-feature-bittrees-tech.vercel.app" }
+    });
+    expect(resolveApplicationOrigin(request, "https://bounties.bittrees.org", "preview").origin).toBe(
+      "https://bounties-git-feature-bittrees-tech.vercel.app"
     );
   });
 
-  it("rejects unsupported query strings", () => {
-    const origin = getFunctionsOrigin("https://project.supabase.co/functions/v1");
-    expect(() => buildUpstreamUrl("https://bounties.bittrees.org/api/bounties/snapshot?debug=1", "GET", origin)).toThrow(ProxyRequestError);
-  });
-});
-
-describe("readValidatedBody", () => {
-  it("accepts object JSON payloads", async () => {
-    const request = new Request("https://bounties.bittrees.org/api/wallet-auth", {
+  it("rejects cross-origin, unsafe, and malformed overrides", () => {
+    const crossOrigin = new Request("https://bounties.bittrees.org/api/wallet-auth", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "nonce" })
+      headers: { origin: "https://attacker.example" }
     });
-    await expect(readValidatedBody(request)).resolves.toBe("{\"action\":\"nonce\"}");
-  });
+    expect(() => resolveApplicationOrigin(crossOrigin, undefined, "production")).toThrow(ProxyRequestError);
 
-  it("rejects malformed or disallowed request bodies", async () => {
-    const badJson = new Request("https://bounties.bittrees.org/api/wallet-auth", {
+    const correctOrigin = new Request("https://bounties.bittrees.org/api/wallet-auth", {
       method: "POST",
-      headers: { "content-type": "application/json" },
-      body: "{"
+      headers: { origin: "https://bounties.bittrees.org" }
     });
-    await expect(readValidatedBody(badJson)).rejects.toThrow(ProxyRequestError);
-
-    const getWithBody = new Request("https://bounties.bittrees.org/api/bounties/snapshot", {
-      method: "GET",
-      headers: { "content-length": "2" }
-    });
-    await expect(readValidatedBody(getWithBody)).rejects.toThrow(ProxyRequestError);
-  });
-});
-
-describe("proxy session and CSRF headers", () => {
-  it("forwards the browser origin, secure session cookie, and CSRF token upstream", () => {
-    const request = new Request("https://bounties.bittrees.org/api/bounties/proposals", {
-      method: "POST",
-      headers: {
-        origin: "https://bounties.bittrees.org",
-        cookie: "bounties_session=opaque-session",
-        "content-type": "application/json",
-        "x-csrf-token": "opaque-csrf"
-      },
-      body: "{}"
-    });
-    const headers = buildUpstreamHeaders(request);
-    expect(headers.get("origin")).toBe("https://bounties.bittrees.org");
-    expect(headers.get("cookie")).toBe("bounties_session=opaque-session");
-    expect(headers.get("x-csrf-token")).toBe("opaque-csrf");
-    expect(headers.get("content-type")).toBe("application/json");
-  });
-
-  it("preserves Set-Cookie and security headers while stripping hop-by-hop headers", () => {
-    const upstream = new Headers({
-      connection: "keep-alive",
-      "content-length": "123",
-      "content-type": "application/json",
-      "set-cookie": "bounties_session=opaque-session; Path=/; HttpOnly; Secure; SameSite=Lax",
-      "x-content-type-options": "nosniff"
-    });
-    const headers = buildResponseHeaders(upstream);
-    expect(headers.get("set-cookie")).toContain("bounties_session=opaque-session");
-    expect(headers.get("x-content-type-options")).toBe("nosniff");
-    expect(headers.has("connection")).toBe(false);
-    expect(headers.has("content-length")).toBe(false);
+    expect(() => resolveApplicationOrigin(correctOrigin, "http://bounties.bittrees.org", "production")).toThrow(ProxyRequestError);
   });
 });
 
 describe("Vercel deployment boundary", () => {
-  it("uses supported rewrites while applying security headers to every route", () => {
+  it("uses supported same-origin rewrites while applying security headers to every route", () => {
     expect(vercelConfig).not.toHaveProperty("routes");
     expect(vercelConfig.rewrites).toEqual(
       expect.arrayContaining([

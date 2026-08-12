@@ -1,43 +1,31 @@
-import {
-  ProxyRequestError,
-  buildResponseHeaders,
-  buildUpstreamHeaders,
-  buildUpstreamUrl,
-  getFunctionsOrigin,
-  readValidatedBody
-} from "../src/server/vercelProxy.js";
-
-export const config = {
-  runtime: "edge"
-};
+import { handleBountiesApi } from "../src/server/bountiesApiHandler.js";
+import { handleWalletAuth } from "../src/server/walletAuthHandler.js";
+import { ProxyRequestError, resolveDirectRoute } from "../src/server/vercelProxy.js";
 
 function errorResponse(error: unknown): Response {
   const status = error instanceof ProxyRequestError ? error.status : 500;
   const publicStatus = status >= 500 ? 503 : status;
-  const code = status >= 500 ? "SERVICE_UNAVAILABLE" : error instanceof ProxyRequestError ? error.message : "REQUEST_FAILED";
+  const code = status >= 500
+    ? "SERVICE_UNAVAILABLE"
+    : error instanceof ProxyRequestError
+      ? error.message
+      : "REQUEST_FAILED";
   return Response.json({ code }, { status: publicStatus, headers: { "cache-control": "no-store" } });
 }
 
-export default async function handler(request: Request): Promise<Response> {
+export async function handleApiRequest(request: Request): Promise<Response> {
   try {
-    const functionsOrigin = getFunctionsOrigin();
-    const upstreamUrl = buildUpstreamUrl(request.url, functionsOrigin, request.method);
-    const body = await readValidatedBody(request);
-    const upstreamResponse = await fetch(upstreamUrl, {
-      method: request.method,
-      headers: buildUpstreamHeaders(request),
-      body,
-      redirect: "manual"
-    });
-
-    const responseHeaders = buildResponseHeaders(upstreamResponse.headers);
-    responseHeaders.set("cache-control", "no-store");
-    return new Response(upstreamResponse.body, {
-      status: upstreamResponse.status,
-      statusText: upstreamResponse.statusText,
-      headers: responseHeaders
-    });
+    const route = resolveDirectRoute(request.url, request.method);
+    const response = route.handler === "wallet-auth"
+      ? await handleWalletAuth(request)
+      : await handleBountiesApi(request, route.action);
+    response.headers.set("cache-control", "no-store");
+    return response;
   } catch (error) {
     return errorResponse(error);
   }
 }
+
+export default {
+  fetch: handleApiRequest
+};
