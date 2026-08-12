@@ -1,5 +1,5 @@
 import { EscrowClientError } from "./errors.js";
-import { encodeAbiParameters, keccak256, parseAbiParameters, sha256, toHex } from "viem";
+import { encodeAbiParameters, keccak256, parseAbiParameters, toHex } from "viem";
 
 export const HASH_CODEC_VERSION = "bounty-commitments.v1";
 export type Bytes32Hex = `0x${string}`;
@@ -98,6 +98,8 @@ export interface CanonicalEvidenceCommitmentInput {
   milestoneId: string;
   ordinal: number;
   uri: string;
+  /** SHA-256 of the exact delivered file or canonical bundle bytes; never a hash of the URI. */
+  contentHash: Bytes32Hex;
 }
 
 export interface CanonicalApprovalCommitmentInput {
@@ -305,7 +307,11 @@ export function buildCanonicalEvidenceCommitment(input: CanonicalEvidenceCommitm
   const milestoneId = canonicalMilestoneIdentity(input.milestoneId, input.ordinal);
   if (!normalizedUri) throw new EscrowClientError("CONTRACT_REVERTED", "Evidence URI is required.");
   if (input.bountyId <= 0n) throw new EscrowClientError("CONTRACT_REVERTED", "Onchain bounty ID must be positive.");
-  const contentHash = sha256(toHex(normalizedUri));
+  assertBytes32Hash(input.contentHash, "content_hash");
+  const contentHash = input.contentHash.toLowerCase() as Bytes32Hex;
+  if (/^0x0{64}$/.test(contentHash)) {
+    throw new EscrowClientError("CONTRACT_REVERTED", "content_hash cannot be zero.");
+  }
   const uriHash = keccak256(toHex(normalizedUri));
   const salt = hashSourceJson({
     version: "bounty-evidence-salt.v1",

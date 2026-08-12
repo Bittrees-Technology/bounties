@@ -8,7 +8,7 @@ afterEach(() => cleanup());
 
 async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
-  expect(await screen.findByText(/post bounties, provide services, or do both/i)).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: /how would you like to participate/i })).toBeInTheDocument();
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 }
 
@@ -23,8 +23,8 @@ async function completeCreateForm(
   tokenName: RegExp = /USDC/i
 ) {
   await user.type(screen.getByLabelText(/bounty title/i), title);
-  await user.type(screen.getByLabelText(/project/i), "Marketplace");
-  await user.type(screen.getByLabelText(/review contact/i), "Marketplace Ops");
+  await user.type(screen.getByLabelText(/^description/i), "Marketplace");
+  await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: tokenName }));
 }
 
@@ -53,10 +53,10 @@ describe("App", () => {
     expect(screen.getByLabelText(/bounty title/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to inspect/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect wallet to publish/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /add custom token/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add or inspect a token/i })).toBeInTheDocument();
     expect(screen.queryByText(/session expired/i)).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/bounty title/i), "Audit the creation flow");
-    await user.type(screen.getByLabelText(/project name/i), "Bounties");
+    await user.type(screen.getByLabelText(/^description/i), "Bounties");
     expect(screen.getByLabelText(/bounty title/i)).toHaveValue("Audit the creation flow");
     expect(vi.mocked(window.ethereum!.request)).not.toHaveBeenCalled();
   });
@@ -69,6 +69,28 @@ describe("App", () => {
     expect(order.getByText(/Marketplace Ops/i)).toBeInTheDocument();
     expect(order.getByText(/250 USDC/i)).toBeInTheDocument();
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
+  });
+
+  it("routes the participation choices to hiring and work destinations", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    await user.click(screen.getByRole("button", { name: /i want to hire/i }));
+    expect(await screen.findByRole("heading", { name: /create a bounty people can deliver/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /^marketplace$/i }));
+    await user.click(screen.getByRole("button", { name: /i want to work/i }));
+    expect(await screen.findByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
+  });
+
+  it("keeps account controls at the top and makes milestone creation legible", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const toolbar = screen.getByRole("banner", { name: /account controls/i });
+    expect(within(toolbar).getByRole("button", { name: /^connect wallet$/i })).toBeInTheDocument();
+    await openCreatePage(user);
+    expect(screen.getByRole("button", { name: /add milestone/i })).toHaveClass("secondary-button", "add-milestone");
   });
 
   it("accepts fractional token budgets with an exact deliverable allocation", async () => {
@@ -118,6 +140,22 @@ describe("App", () => {
     await openCreatePage(user);
     expect(screen.getByRole("option", { name: /CUSTOM.*Base Sepolia/i })).toBeInTheDocument();
     expect(screen.queryByText(/84532/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add weth/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add usdc/i })).toBeInTheDocument();
+  });
+
+  it("discovers public profiles by custom or ENS identity", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: /^profiles$/i }));
+    await user.type(screen.getByLabelText(/profile search/i), "testparticipant.eth");
+    await user.click(screen.getByRole("button", { name: /search profiles/i }));
+
+    const result = await screen.findByRole("button", { name: /test participant.*testparticipant\.eth/i });
+    await user.click(result);
+    expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
+    expect(screen.getAllByText(/testparticipant\.eth/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/ENS lookup is active/i)).toBeInTheDocument();
   });
 
   it("loads separate participant roles on a public wallet profile and limits editing to its owner", async () => {
@@ -130,10 +168,23 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
     await user.click(screen.getByText(/edit my public profile/i));
-    await user.clear(screen.getByLabelText(/display name/i));
-    await user.type(screen.getByLabelText(/display name/i), "Updated participant");
+    await user.clear(screen.getByLabelText(/custom profile name/i));
+    await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
+    await user.click(screen.getByLabelText(/defined task/i));
+    await user.click(screen.getByLabelText(/software engineering/i));
+    await user.type(screen.getByLabelText(/other specialty/i), "Protocol documentation");
     await user.click(screen.getByRole("button", { name: /save public profile/i }));
     expect(await screen.findByRole("heading", { name: /updated participant/i })).toBeInTheDocument();
+
+    const profileUpdateCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST");
+    expect(JSON.parse(String(profileUpdateCall?.[1]?.body))).toMatchObject({
+      workTypes: ["task"],
+      categories: ["Software Engineering"],
+      customSpecialty: "Protocol documentation"
+    });
+
+    const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
+    expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 
     await user.click(screen.getByText(/report this profile/i));
     await user.selectOptions(screen.getByLabelText(/^concern$/i), "Illegal or prohibited activity");
@@ -147,6 +198,23 @@ describe("App", () => {
     });
     await user.click(screen.getByRole("button", { name: /^marketplace$/i }));
     expect(screen.getByText(/^Profile report$/i)).toBeInTheDocument();
+  });
+
+  it("publishes safe clickable links and privacy-conscious contact preferences", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+    await user.type(screen.getByLabelText(/bounty title/i), "Linked bounty");
+    await user.type(screen.getByLabelText(/^description/i), "See https://example.com/spec for details.");
+    await user.type(screen.getByLabelText(/contact alias/i), "build-team");
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC/i }));
+    expect(screen.getByLabelText(/preferred contact method/i)).toHaveValue("Chirpy");
+    await user.click(screen.getByRole("button", { name: /publish bounty/i }));
+
+    const order = within((await screen.findByRole("heading", { name: /linked bounty/i })).closest("article") as HTMLElement);
+    expect(order.getByRole("link", { name: /https:\/\/example\.com\/spec/i })).toHaveAttribute("href", "https://example.com/spec");
+    expect(order.getByRole("link", { name: /chirpy/i })).toHaveAttribute("href", "https://chirpy.bittrees.org");
   });
 
   it("surfaces the server-side escrow verifier while live settlement is disabled", async () => {

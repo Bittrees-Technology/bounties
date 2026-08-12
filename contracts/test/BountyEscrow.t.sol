@@ -84,6 +84,7 @@ contract BountyEscrowTest is Test {
         assertEq(bounty.approvalHash, bytes32(0));
         assertEq(bounty.settlementProposer, address(0));
         assertEq(bounty.proposedProviderPayout, 0);
+        assertEq(bounty.settlementProposalExpiry, 0);
     }
 
     function testCreateBountyAllowsUnfundedRecordAndLaterFunding() public {
@@ -156,7 +157,9 @@ contract BountyEscrowTest is Test {
     function testCreateBountyRejectsZeroProposalHash() public {
         vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.ZeroProposalHash.selector));
         vm.prank(requester);
-        escrow.createBounty(address(token), 0, 0, bytes32(uint256(1)), provider, bytes32(0));
+        escrow.createBounty(
+            address(token), 0, uint64(block.timestamp + 1 days), bytes32(uint256(1)), provider, bytes32(0)
+        );
     }
 
     function testCreateAndAcceptBountyAllowsSmartContractProvider() public {
@@ -325,6 +328,109 @@ contract BountyEscrowTest is Test {
         assertEq(escrow.totalLiability(address(token)), 0);
     }
 
+    function testRequesterMayRequestExactlyOneBoundedRevision() public {
+        uint256 amount = 800 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(106)));
+        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+        bytes32 reasonHash = keccak256("missing acceptance criterion");
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        vm.prank(provider);
+        escrow.acceptBounty(bountyId, termsHash);
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("first delivery"));
+
+        uint64 revisionDeadline = uint64(block.timestamp) + escrow.REVISION_PERIOD();
+        vm.expectEmit(true, true, true, true);
+        emit IBountyEscrow.MilestoneRevisionRequested(bountyId, 0, requester, reasonHash, revisionDeadline);
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, reasonHash);
+
+        IBountyEscrow.Bounty memory revising = escrow.getBounty(bountyId);
+        IBountyEscrow.Milestone memory milestone = escrow.getMilestone(bountyId, 0);
+        assertEq(uint256(revising.state), uint256(IBountyEscrow.State.ProviderAccepted));
+        assertEq(revising.deliveryDeadline, revisionDeadline);
+        assertEq(revising.reviewDeadline, 0);
+        assertEq(milestone.revisionRequested, true);
+        assertEq(milestone.revisionReasonHash, reasonHash);
+        assertEq(milestone.revisionDeadline, revisionDeadline);
+        assertEq(milestone.previousEvidenceHash, keccak256("first delivery"));
+        assertEq(milestone.evidenceHash, bytes32(0));
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBountyEscrow.UnchangedRevisionEvidence.selector, bountyId, 0, keccak256("first delivery")
+            )
+        );
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("first delivery"));
+
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("revised delivery"));
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.RevisionAlreadyRequested.selector, bountyId, 0));
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, keccak256("another revision"));
+
+        uint64 revisedReviewDeadline = escrow.getBounty(bountyId).reviewDeadline;
+        vm.warp(revisedReviewDeadline);
+        vm.prank(stranger);
+        escrow.release(bountyId);
+        assertEq(uint256(escrow.getBounty(bountyId).state), uint256(IBountyEscrow.State.Released));
+    }
+
+    function testMissedRevisionDeadlineRefundsRemainingPrincipal() public {
+        uint256 amount = 725 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(107)));
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        bytes32 termsHash = escrow.getBounty(bountyId).termsHash;
+        vm.prank(provider);
+        escrow.acceptBounty(bountyId, termsHash);
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("incomplete delivery"));
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, keccak256("correct the missing work"));
+
+        uint64 revisionDeadline = escrow.getBounty(bountyId).deliveryDeadline;
+        vm.warp(revisionDeadline);
+        vm.prank(stranger);
+        escrow.refundBounty(bountyId);
+
+        assertEq(uint256(escrow.getBounty(bountyId).state), uint256(IBountyEscrow.State.Refunded));
+        assertEq(token.balanceOf(requester), INITIAL_MINT);
+        assertEq(escrow.totalLiability(address(token)), 0);
+    }
+
+    function testRevisionMustBeRequestedByRequesterDuringReviewWithReason() public {
+        uint256 amount = 500 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(108)));
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        bytes32 termsHash = escrow.getBounty(bountyId).termsHash;
+        vm.prank(provider);
+        escrow.acceptBounty(bountyId, termsHash);
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("delivery"));
+
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.UnauthorizedActor.selector, bountyId, provider));
+        vm.prank(provider);
+        escrow.requestRevision(bountyId, keccak256("self revision"));
+        vm.expectRevert(IBountyEscrow.ZeroRevisionReasonHash.selector);
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, bytes32(0));
+
+        uint64 reviewDeadline = escrow.getBounty(bountyId).reviewDeadline;
+        vm.warp(reviewDeadline);
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.RevisionWindowClosed.selector, bountyId, reviewDeadline));
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, keccak256("too late"));
+    }
+
     function testEitherPartyCanProposeAndCounterpartyCanAtomicallySettle() public {
         uint256 amount = 1_000 ether;
         uint64 deadline = uint64(block.timestamp + 2 days);
@@ -337,7 +443,7 @@ contract BountyEscrowTest is Test {
         uint256 requesterRefund = amount - providerPayout;
 
         vm.expectEmit(true, true, false, true);
-        emit IBountyEscrow.SettlementProposed(buyerProposedId, requester, providerPayout);
+        emit IBountyEscrow.SettlementProposed(buyerProposedId, requester, providerPayout, deadline);
         vm.prank(requester);
         escrow.proposeSettlement(buyerProposedId, providerPayout);
 
@@ -351,6 +457,9 @@ contract BountyEscrowTest is Test {
         BountyEscrow.Bounty memory first = escrow.getBounty(buyerProposedId);
         assertEq(uint256(first.state), uint256(IBountyEscrow.State.Settled));
         assertEq(first.amount, 0);
+        assertEq(first.settlementProposer, address(0));
+        assertEq(first.proposedProviderPayout, 0);
+        assertEq(first.settlementProposalExpiry, 0);
         assertEq(token.balanceOf(provider), providerPayout);
         assertEq(escrow.totalLiability(address(token)), 0);
 
@@ -433,6 +542,124 @@ contract BountyEscrowTest is Test {
         escrow.acceptSettlement(bountyId, 450 ether);
     }
 
+    function testSettlementProposalHasBoundedExpiryAndCannotCrossLifecycleDeadline() public {
+        uint256 amount = 800 ether;
+        uint64 longDeadline = uint64(block.timestamp + 30 days);
+        bytes32 scopeHash = _scopeHash(amount, longDeadline, METADATA_HASH, bytes32(uint256(109)));
+
+        vm.prank(requester);
+        uint256 boundedId =
+            escrow.createBounty(address(token), amount, longDeadline, scopeHash, provider, PROPOSAL_HASH);
+        uint64 boundedExpiry = uint64(block.timestamp) + escrow.SETTLEMENT_PROPOSAL_PERIOD();
+        vm.prank(requester);
+        escrow.proposeSettlement(boundedId, 300 ether);
+        assertEq(escrow.getBounty(boundedId).settlementProposalExpiry, boundedExpiry);
+
+        vm.warp(boundedExpiry);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.SettlementProposalExpired.selector, boundedId, boundedExpiry)
+        );
+        vm.prank(provider);
+        escrow.acceptSettlement(boundedId, 300 ether);
+
+        uint64 shortDeadline = uint64(block.timestamp + 2 days);
+        scopeHash = _scopeHash(amount, shortDeadline, METADATA_HASH, bytes32(uint256(110)));
+        vm.prank(requester);
+        uint256 lifecycleBoundId =
+            escrow.createBounty(address(token), amount, shortDeadline, scopeHash, provider, PROPOSAL_HASH);
+        vm.prank(provider);
+        escrow.proposeSettlement(lifecycleBoundId, 200 ether);
+        assertEq(escrow.getBounty(lifecycleBoundId).settlementProposalExpiry, shortDeadline);
+
+        vm.warp(shortDeadline);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.SettlementProposalExpired.selector, lifecycleBoundId, shortDeadline)
+        );
+        vm.prank(requester);
+        escrow.acceptSettlement(lifecycleBoundId, 200 ether);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.SettlementWindowClosed.selector, lifecycleBoundId, shortDeadline)
+        );
+        vm.prank(requester);
+        escrow.proposeSettlement(lifecycleBoundId, 200 ether);
+    }
+
+    function testDeliveredSettlementProposalExpiresAtReviewBoundary() public {
+        uint256 amount = 500 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(111)));
+        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        vm.prank(provider);
+        escrow.acceptBounty(bountyId, termsHash);
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("expiry-bound delivery"));
+
+        uint64 reviewDeadline = escrow.getBounty(bountyId).reviewDeadline;
+        vm.prank(provider);
+        escrow.proposeSettlement(bountyId, 250 ether);
+        assertEq(escrow.getBounty(bountyId).settlementProposalExpiry, reviewDeadline);
+
+        vm.warp(reviewDeadline);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.SettlementProposalExpired.selector, bountyId, reviewDeadline)
+        );
+        vm.prank(requester);
+        escrow.acceptSettlement(bountyId, 250 ether);
+
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.SettlementWindowClosed.selector, bountyId, reviewDeadline));
+        vm.prank(provider);
+        escrow.proposeSettlement(bountyId, 250 ether);
+
+        escrow.release(bountyId);
+        IBountyEscrow.Bounty memory released = escrow.getBounty(bountyId);
+        assertEq(uint256(released.state), uint256(IBountyEscrow.State.Released));
+        assertEq(released.settlementProposer, address(0));
+        assertEq(released.settlementProposalExpiry, 0);
+    }
+
+    function testOnlyCurrentProposerCanCancelSettlementProposalIncludingAfterExpiry() public {
+        uint256 amount = 600 ether;
+        uint64 deadline = uint64(block.timestamp + 30 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(112)));
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+
+        vm.prank(provider);
+        escrow.proposeSettlement(bountyId, 225 ether);
+        uint64 expiry = escrow.getBounty(bountyId).settlementProposalExpiry;
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBountyEscrow.SettlementProposalCancellationUnavailable.selector, bountyId, requester, provider
+            )
+        );
+        vm.prank(requester);
+        escrow.cancelSettlementProposal(bountyId);
+
+        vm.warp(expiry);
+        vm.expectEmit(true, true, false, false);
+        emit IBountyEscrow.SettlementProposalCancelled(bountyId, provider);
+        vm.prank(provider);
+        escrow.cancelSettlementProposal(bountyId);
+
+        IBountyEscrow.Bounty memory cleared = escrow.getBounty(bountyId);
+        assertEq(cleared.settlementProposer, address(0));
+        assertEq(cleared.proposedProviderPayout, 0);
+        assertEq(cleared.settlementProposalExpiry, 0);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                IBountyEscrow.SettlementAcceptanceUnavailable.selector, bountyId, requester, address(0)
+            )
+        );
+        vm.prank(requester);
+        escrow.acceptSettlement(bountyId, 225 ether);
+    }
+
     function testSettlementProposalIsInvalidatedByAcceptanceAndDelivery() public {
         uint256 amount = 800 ether;
         uint64 deadline = uint64(block.timestamp + 2 days);
@@ -484,8 +711,14 @@ contract BountyEscrowTest is Test {
         reentrantToken.approve(address(escrow), amount);
 
         vm.prank(requester);
-        uint256 bountyId =
-            escrow.createBounty(address(reentrantToken), amount, 0, bytes32(uint256(104)), provider, PROPOSAL_HASH);
+        uint256 bountyId = escrow.createBounty(
+            address(reentrantToken),
+            amount,
+            uint64(block.timestamp + 1 days),
+            bytes32(uint256(104)),
+            provider,
+            PROPOSAL_HASH
+        );
         vm.prank(requester);
         escrow.proposeSettlement(bountyId, providerPayout);
 
@@ -510,8 +743,14 @@ contract BountyEscrowTest is Test {
         blockingToken.approve(address(escrow), amount);
 
         vm.prank(requester);
-        uint256 bountyId =
-            escrow.createBounty(address(blockingToken), amount, 0, bytes32(uint256(105)), provider, PROPOSAL_HASH);
+        uint256 bountyId = escrow.createBounty(
+            address(blockingToken),
+            amount,
+            uint64(block.timestamp + 1 days),
+            bytes32(uint256(105)),
+            provider,
+            PROPOSAL_HASH
+        );
         vm.prank(requester);
         escrow.proposeSettlement(bountyId, providerPayout);
 
@@ -887,6 +1126,18 @@ contract BountyEscrowTest is Test {
         assertEq(_goldenApprovalHash(), 0xf99877a3334f86ee1f72eeb6934cec009b12632dcfc5d9444fb9c5fca7a4e74d);
     }
 
+    function testEvidenceCommitmentBindsMutableUriToExactDeliveredBytes() public pure {
+        bytes32 uriHash = keccak256("https://mutable.example.test/latest");
+        bytes32 contentA = sha256("release-a-exact-bytes");
+        bytes32 contentB = sha256("release-b-exact-bytes");
+        bytes32 first = _goldenEvidenceHashWith(contentA, uriHash);
+
+        assertEq(first, _goldenEvidenceHashWith(contentA, uriHash));
+        assertNotEq(first, _goldenEvidenceHashWith(contentB, uriHash));
+        assertNotEq(first, _goldenEvidenceHashWith(contentA, keccak256("https://mirror.example.test/release-a")));
+        assertNotEq(contentA, uriHash);
+    }
+
     function _goldenScopeHash() internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -917,6 +1168,13 @@ contract BountyEscrowTest is Test {
     }
 
     function _goldenEvidenceHash() internal pure returns (bytes32) {
+        return _goldenEvidenceHashWith(
+            bytes32(uint256(0x7777777777777777777777777777777777777777777777777777777777777777)),
+            bytes32(uint256(0x8888888888888888888888888888888888888888888888888888888888888888))
+        );
+    }
+
+    function _goldenEvidenceHashWith(bytes32 contentHash, bytes32 uriHash) internal pure returns (bytes32) {
         return keccak256(
             abi.encode(
                 keccak256("BOUNTY_EVIDENCE_V1"),
@@ -926,8 +1184,8 @@ contract BountyEscrowTest is Test {
                 _goldenScopeHash(),
                 _goldenTermsHash(),
                 address(0x4444444444444444444444444444444444444444),
-                bytes32(uint256(0x7777777777777777777777777777777777777777777777777777777777777777)),
-                bytes32(uint256(0x8888888888888888888888888888888888888888888888888888888888888888)),
+                contentHash,
+                uriHash,
                 bytes32(uint256(0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa))
             )
         );

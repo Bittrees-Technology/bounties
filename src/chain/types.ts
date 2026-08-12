@@ -17,7 +17,7 @@ export interface ChainConfig {
   nativeCurrency: string;
   blockExplorer: string;
   explorerContractPath: string;
-  /** Name of the env var a live client would read an RPC URL from. Never a literal endpoint. */
+  /** Server-only env-var name used by same-origin APIs. The browser never reads the endpoint value. */
   rpcUrlEnvVar: string;
   escrowContractAddress?: ChecksumAddress;
   deploymentBlock?: number;
@@ -82,10 +82,12 @@ export type EscrowAction =
   | "fundEscrow"
   | "acceptBounty"
   | "submitDelivery"
+  | "requestRevision"
   | "acceptDelivery"
   | "releasePayment"
   | "proposeSettlement"
   | "acceptSettlement"
+  | "cancelSettlementProposal"
   | "cancelEscrow"
   | "claimTimeoutRefund";
 
@@ -140,6 +142,7 @@ export interface EscrowOnchainRecord {
   approvalHash: `0x${string}`;
   settlementProposer: ChecksumAddress;
   proposedProviderPayoutBaseUnits: string;
+  settlementProposalExpiry: bigint;
   allocatedAmountBaseUnits: string;
   releasedAmountBaseUnits: string;
   milestoneCount: number;
@@ -151,16 +154,20 @@ export type EscrowMilestoneState = "Pending" | "Submitted" | "Approved" | "Relea
 
 export interface EscrowMilestoneInput {
   amountBaseUnits: string;
-  /** Zero disables timeout for this milestone and requires every later deadline to be zero. */
+  /** A positive Unix deadline is mandatory for every milestone. */
   deliveryDeadline: bigint;
 }
 
 export interface EscrowMilestoneRecord extends EscrowMilestoneInput {
   milestoneIndex: number;
   reviewDeadline: bigint;
+  revisionDeadline: bigint;
   state: EscrowMilestoneState;
   evidenceHash: `0x${string}`;
+  previousEvidenceHash: `0x${string}`;
   approvalHash: `0x${string}`;
+  revisionReasonHash: `0x${string}`;
+  revisionRequested: boolean;
 }
 
 export type EscrowEventType =
@@ -171,6 +178,7 @@ export type EscrowEventType =
   | "DeliveryAccepted"
   | "PaymentReleased"
   | "SettlementProposed"
+  | "SettlementProposalCancelled"
   | "BilateralSettlementCompleted"
   | "EscrowCancelled"
   | "TimeoutRefundClaimed";
@@ -201,6 +209,10 @@ export interface EscrowSettlementInput {
   providerPayoutBaseUnits: string;
 }
 
+export interface EscrowRevisionInput {
+  reasonHash: `0x${string}`;
+}
+
 /**
  * Typed boundary between the marketplace UI and escrow settlement. Production construction remains
  * gated behind CHAIN_INTEGRATION_ENABLED; test doubles live only in direct test modules.
@@ -212,10 +224,12 @@ export interface EscrowClient {
   fundEscrow(order: EscrowOrderRef, funding: EscrowFundingInput): Promise<EscrowTxResult>;
   acceptBounty(order: EscrowOrderRef): Promise<EscrowTxResult>;
   submitDelivery(order: EscrowOrderRef, delivery: EscrowDeliveryInput): Promise<EscrowTxResult>;
+  requestRevision(order: EscrowOrderRef, revision: EscrowRevisionInput): Promise<EscrowTxResult>;
   acceptDelivery(order: EscrowOrderRef): Promise<EscrowTxResult>;
   releasePayment(order: EscrowOrderRef): Promise<EscrowTxResult>;
   proposeSettlement(order: EscrowOrderRef, settlement: EscrowSettlementInput): Promise<EscrowTxResult>;
   acceptSettlement(order: EscrowOrderRef, settlement: EscrowSettlementInput): Promise<EscrowTxResult>;
+  cancelSettlementProposal(order: EscrowOrderRef): Promise<EscrowTxResult>;
   cancelEscrow(order: EscrowOrderRef): Promise<EscrowTxResult>;
   claimTimeoutRefund(order: EscrowOrderRef): Promise<EscrowTxResult>;
   readEscrow(order: EscrowOrderRef): Promise<EscrowOnchainRecord>;

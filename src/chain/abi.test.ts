@@ -10,10 +10,12 @@ describe("escrow boundary ABI descriptor", () => {
       "fundEscrow",
       "acceptBounty",
       "submitDelivery",
+      "requestRevision",
       "acceptDelivery",
       "releasePayment",
       "proposeSettlement",
       "acceptSettlement",
+      "cancelSettlementProposal",
       "cancelEscrow",
       "claimTimeoutRefund"
     ]);
@@ -21,7 +23,7 @@ describe("escrow boundary ABI descriptor", () => {
 
   it("is pinned to the current compiler artifact and exposes its state-changing methods", () => {
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toBe(
-      "sha256:8f3f1aba2071a031feb88abe2813e54989ad42d82eba902ae38cad6fd409cd01"
+      "sha256:23aec44b1b4c74779f62ff69a604032274613df5138f8966e5bc1ad11d8b1091"
     );
     expect(BOUNTY_ESCROW_ABI.map((entry) => ("name" in entry ? entry.name : undefined))).toEqual([
       "createBounty",
@@ -29,13 +31,18 @@ describe("escrow boundary ABI descriptor", () => {
       "fundBounty",
       "acceptBounty",
       "submitDelivery",
+      "requestRevision",
       "approveDelivery",
       "release",
       "proposeSettlement",
       "acceptSettlement",
+      "cancelSettlementProposal",
       "cancelBounty",
       "refundBounty",
       "REVIEW_PERIOD",
+      "REVISION_PERIOD",
+      "SETTLEMENT_PROPOSAL_PERIOD",
+      "MIN_MILESTONE_SPACING",
       "MAX_MILESTONES",
       "MILESTONE_SCHEDULE_DOMAIN",
       "MILESTONE_TERMS_DOMAIN",
@@ -45,7 +52,7 @@ describe("escrow boundary ABI descriptor", () => {
   });
 
   it("defines every emitted event with an order reference", () => {
-    expect(ESCROW_BOUNDARY_ABI.events).toHaveLength(10);
+    expect(ESCROW_BOUNDARY_ABI.events).toHaveLength(11);
     for (const event of ESCROW_BOUNDARY_ABI.events) {
       expect(event.inputs[0]).toEqual({ name: "orderId", kind: "order-id" });
     }

@@ -31,6 +31,8 @@ enabled = false
 
 [functions.wallet-auth]
 verify_jwt = false
+# Retained only as an explicit HTTP 410 tombstone. SIWE is handled exclusively
+# by the same-origin Vercel/Node endpoint.
 
 [functions.bounties-api]
 verify_jwt = false

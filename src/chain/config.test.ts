@@ -30,4 +30,10 @@ describe("chain config", () => {
     expect(getAssetConfig("WETH")?.decimals).toBe(18);
     expect(getAssetConfig("DOGE")).toBeUndefined();
   });
+
+  it("documents only the server-side RPC variable used by each supported chain", () => {
+    for (const chainId of supportedChainIds) {
+      expect(chains[chainId].rpcUrlEnvVar).toBe(`CHAIN_${chainId}_RPC_URL`);
+    }
+  });
 });

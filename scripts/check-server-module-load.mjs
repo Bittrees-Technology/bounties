@@ -9,10 +9,13 @@ const temporaryRoot = await mkdtemp(join(projectRoot, "node_modules/.server-esm-
 const productionServerSources = [
   "src/chain/errors.ts",
   "src/chain/hashCodec.ts",
+  "src/server/chainRpc.ts",
   "src/server/vercelProxy.ts",
   "src/server/serverEnv.ts",
+  "src/server/requestRateLimit.ts",
   "src/server/sharedRoleResolver.ts",
-  "src/server/bountiesApiHandler.ts"
+  "src/server/bountiesApiHandler.ts",
+  "src/server/walletAuthHandler.ts"
 ];
 
 try {
@@ -31,9 +34,11 @@ try {
     await writeFile(emittedPath, emitted.outputText);
   }
 
-  const handlerPath = join(temporaryRoot, "src/server/bountiesApiHandler.js");
-  await import(pathToFileURL(handlerPath).href);
-  process.stdout.write(`Loaded ${relative(projectRoot, handlerPath)} with Node ESM.\n`);
+  for (const handler of ["bountiesApiHandler.js", "walletAuthHandler.js"]) {
+    const handlerPath = join(temporaryRoot, "src/server", handler);
+    await import(pathToFileURL(handlerPath).href);
+    process.stdout.write(`Loaded ${relative(projectRoot, handlerPath)} with Node ESM.\n`);
+  }
 } finally {
   await rm(temporaryRoot, { recursive: true, force: true });
 }

@@ -73,7 +73,11 @@ export function validateTokenIdentity(chainId: number, contractAddress: string):
   if (!isLikelyChecksummedAddress(contractAddress)) {
     throw new EscrowClientError("ASSET_UNSUPPORTED", "Token contract address must be a valid 20-byte address.");
   }
-  return { chainId, contractAddress: getAddress(contractAddress) };
+  const checksumAddress = getAddress(contractAddress);
+  if (checksumAddress === "0x0000000000000000000000000000000000000000") {
+    throw new EscrowClientError("ASSET_UNSUPPORTED", "Token contract address cannot be the zero address.");
+  }
+  return { chainId, contractAddress: checksumAddress };
 }
 
 export function inspectTokenInput(input: TokenValidationInput): TokenInspectionSnapshot {

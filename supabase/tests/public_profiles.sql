@@ -242,7 +242,7 @@ select lives_ok(
        84532,'20000000-0000-4000-8000-000000000010','100',
        jsonb_build_array(
          jsonb_build_object('ordinal',0,'title','First','amount_base_units','40','delivery_deadline',(now()+interval '2 days')::text,'scope_source','{}'::jsonb,'evidence_requirements','{}'::jsonb),
-         jsonb_build_object('ordinal',1,'title','Second','amount_base_units','60','delivery_deadline',(now()+interval '4 days')::text,'scope_source','{}'::jsonb,'evidence_requirements','{}'::jsonb)
+         jsonb_build_object('ordinal',1,'title','Second','amount_base_units','60','delivery_deadline',(now()+interval '24 days')::text,'scope_source','{}'::jsonb,'evidence_requirements','{}'::jsonb)
        )) $$,
   'the database persists an exact ordered two-milestone schedule'
 );

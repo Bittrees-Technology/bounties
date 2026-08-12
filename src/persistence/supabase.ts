@@ -26,7 +26,24 @@ export class PersistenceError extends Error {
   constructor(message: string, code: PersistenceError["code"] = "server") { super(message); this.name = "PersistenceError"; this.code = code; }
 }
 
-function marketplaceErrorMessage(status: number): string {
+function marketplaceErrorMessage(status: number, serverCode?: string): string {
+  if (serverCode === "TOKEN_INSPECTION_RPC_UNAVAILABLE") {
+    return "Token inspection is not configured for this network yet. Operations must add its server-side RPC endpoint.";
+  }
+  if (serverCode === "TOKEN_INSPECTION_TIMEOUT") {
+    return "The selected network did not answer the token inspection in time. Try again shortly.";
+  }
+  if (serverCode === "TOKEN_INSPECTION_CHAIN_MISMATCH") {
+    return "The configured RPC endpoint does not match the selected network. Operations must correct it before this token can be added.";
+  }
+  if (serverCode === "TOKEN_BYTECODE_MISSING") return "No smart contract was found at that address on the selected network.";
+  if (serverCode === "TOKEN_DECIMALS_UNAVAILABLE") return "That contract does not expose the ERC20 decimals information required by Bounties.";
+  if (serverCode === "TOKEN_TOTAL_SUPPLY_UNAVAILABLE") return "That contract does not expose the ERC20 total supply function required for token inspection.";
+  if (serverCode === "INVALID_CONTENT_HASH") return "Enter the SHA-256 digest of the delivered bytes as 0x followed by 64 hexadecimal characters.";
+  if (serverCode === "ENS_RPC_UNAVAILABLE") return "ENS search is not configured. Operations must add the Ethereum mainnet server-side RPC endpoint.";
+  if (serverCode === "ENS_RPC_CHAIN_MISMATCH") return "ENS search is unavailable because the configured endpoint is not Ethereum mainnet.";
+  if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
+  if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters, a wallet address, or an ENS name.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
   }
@@ -54,7 +71,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   catch { throw new PersistenceError("Could not reach the marketplace. Check your connection and retry.", "network"); }
   if (response.status === 401) throw new PersistenceError("Your wallet session expired. Reconnect to continue.", "auth-expired");
   const body = await response.json().catch(() => null) as { code?: string } | null;
-  if (!response.ok) throw new PersistenceError(marketplaceErrorMessage(response.status));
+  if (!response.ok) throw new PersistenceError(marketplaceErrorMessage(response.status, body?.code));
   return body as T;
 }
 
@@ -106,19 +123,23 @@ export type EscrowObservation = {
   onchain_bounty_id: string; received_base_units: string; requested_base_units: string; remaining_base_units?: string | null;
   onchain_state?: string | null; review_deadline?: string | null; state_checked_at?: string | null;
   settlement_proposer?: string | null; proposed_provider_payout_base_units?: string | null;
+  settlement_proposal_expiry?: string | null;
   allocated_amount_base_units?: string | null; released_amount_base_units?: string | null;
   milestone_count?: number | null; current_milestone?: number | null;
   schedule_hash?: `0x${string}` | null; terms_hash?: `0x${string}` | null;
   current_milestone_detail?: {
     milestone_index: number; amount_base_units: string; delivery_deadline: string | null; review_deadline: string | null;
-    state: "Pending" | "Submitted" | "Approved" | "Released"; evidence_hash: `0x${string}`; approval_hash: `0x${string}`;
+    revision_deadline?: string | null; state: "Pending" | "Submitted" | "Approved" | "Released";
+    evidence_hash: `0x${string}`; previous_evidence_hash?: `0x${string}`; approval_hash: `0x${string}`; revision_reason_hash?: `0x${string}`;
+    revision_requested?: boolean;
   } | null;
 };
 export type ParticipantReview = {
   id: string; bounty_id: string; author_id: string; subject_id: string;
   author_wallet_address: string; subject_wallet_address: string;
-  direction: "service_received" | "payment_received"; rating: number; body: string;
+  direction: "service_received" | "payment_received"; rating: number; body: string | null;
   moderation_status: "visible" | "hidden"; moderation_reason?: string | null; created_at: string;
+  response_body?: string | null; response_created_at?: string | null;
 };
 export type ModerationDecision = "hide" | "restore" | "no_action";
 export type ModerationReport = {
@@ -136,7 +157,7 @@ export type ModerationReport = {
   created_at: string;
 };
 type Evidence = { id: string; uri: string; content_hash: string; evidence_hash: string; canonical_approval_hash?: string | null; revision: number };
-type ApiMilestone = { id: string; ordinal: number; title: string; amount_base_units: string; delivery_deadline?: string | null; status: string; evidence?: Evidence[]; scope_source?: { criteria?: string[]; deliveryDeadline?: string } };
+type ApiMilestone = { id: string; ordinal: number; title: string; amount_base_units: string; delivery_deadline?: string | null; status: string; evidence?: Evidence[]; revision_request?: { reason: string; reason_hash: `0x${string}`; transaction_hash: `0x${string}` } | null; scope_source?: { criteria?: string[]; deliveryDeadline?: string } };
 export type ApiProposal = { id: string; provider_id: string; provider_wallet_address: string; proposal_hash: string | null; note: string; proposed_total_base_units: string; status: string };
 export type BountyRow = { id: string; creator_id: string; title: string; description: string; scope_source: Record<string, unknown>; scope_hash: `0x${string}`; chain_id: number; token_id: string; token_decimals: number; budget_base_units: string; status: string; escrow_schedule_status?: "structured" | "requires_recreation"; moderation_status?: "visible" | "hidden"; moderation_reason?: string | null; created_at: string; accepted_proposal_id?: string; token: TokenRecord; milestones: ApiMilestone[]; proposals: ApiProposal[]; escrow?: EscrowObservation | null; reviews?: ParticipantReview[] };
 export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; myReports: ModerationReport[]; moderationReports: ModerationReport[] };
@@ -153,10 +174,15 @@ export type PublicWalletProfile = {
   profile_url: string | null;
   profile_moderation_status: "visible" | "hidden";
   profile_updated_at: string;
+  ens_name?: string | null;
+  work_types?: string[];
+  categories?: string[];
+  custom_specialty?: string | null;
   member_since: string;
   roles: Role[];
+  activity_summary: { capital_bounties: number; labor_bounties: number };
   rating_summaries: { capital_provider: RatingSummary; labor_provider: RatingSummary };
-  reviews_received: Array<Pick<ParticipantReview, "id" | "bounty_id" | "direction" | "rating" | "body" | "created_at"> & { author_wallet_address: string }>;
+  reviews_received: Array<Pick<ParticipantReview, "id" | "bounty_id" | "direction" | "rating" | "body" | "created_at" | "response_body" | "response_created_at"> & { author_wallet_address: string }>;
 };
 type RawSnapshot = { account: MarketplaceSnapshot["account"]; roles?: Role[]; staffRole?: MarketplaceSnapshot["staffRole"]; tokens?: TokenRecord[]; bounties?: BountyRow[]; notifications?: Notification[]; myReports?: ModerationReport[]; moderationReports?: ModerationReport[] };
 
@@ -194,9 +220,9 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
   const accepted = proposals.find(p => p.id === row.accepted_proposal_id);
   const milestones = (row.milestones ?? []).map((m) => {
     const evidence = m.evidence?.at(-1);
-    return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
+    return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryRevision: evidence?.revision, revisionReason: m.revision_request?.reason, revisionReasonHash: m.revision_request?.reason_hash, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
   });
-  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", dueDate: typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString().slice(0, 10), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
+  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", dueDate: typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString().slice(0, 10), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
 }
 
 export async function loadMarketplace(): Promise<MarketplaceSnapshot> {
@@ -224,18 +250,16 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
         };
       });
   if (milestones.length < 1 || milestones.length > 32) throw new PersistenceError("A bounty requires between 1 and 32 milestones.");
-  let noTimeoutSeen = false;
   let previousDeadline = 0;
   for (const [index, milestone] of milestones.entries()) {
     if (!milestone.deliveryDeadline) {
-      noTimeoutSeen = true;
-      continue;
+      throw new PersistenceError(`Milestone ${index + 1} requires a delivery deadline.`);
     }
     const deadline = /^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline)
       ? Date.parse(`${milestone.deliveryDeadline}T23:59:59.999Z`)
       : Date.parse(milestone.deliveryDeadline);
-    if (!Number.isFinite(deadline) || deadline <= Date.now() || noTimeoutSeen || deadline <= previousDeadline) {
-      throw new PersistenceError(`Milestone ${index + 1} must have a future deadline later than the previous milestone; no-timeout milestones may appear only at the end.`);
+    if (!Number.isFinite(deadline) || deadline <= Date.now() || (previousDeadline !== 0 && deadline <= previousDeadline + 21 * 24 * 60 * 60 * 1000)) {
+      throw new PersistenceError(`Milestone ${index + 1} must have a future deadline more than 21 days after the previous milestone so its review and revision windows remain usable.`);
     }
     previousDeadline = deadline;
   }
@@ -260,7 +284,7 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
       throw new PersistenceError("The budget must provide at least one token base unit per milestone.");
     }
   }
-  const scopeSource = { scope: draft.scope, category: draft.category, project: draft.project.trim(), buyer: draft.buyer.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label) };
+  const scopeSource = { scope: draft.scope, category: draft.category, project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label) };
   const row = await request<BountyRow>("/bounties", { method: "POST", body: JSON.stringify({ title: draft.title.trim(), description: draft.project.trim(), scopeSource, scopeHash: hashSourceJson(scopeSource).value, chainId: token.chain_id, tokenId: token.id, budgetBaseUnits, milestones: milestones.map((milestone, index) => ({ ordinal: milestone.ordinal, title: milestone.title, amount_base_units: milestoneAmounts[index], delivery_deadline: milestone.deliveryDeadline ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline) ? `${milestone.deliveryDeadline}T23:59:59.999Z` : milestone.deliveryDeadline).toISOString() : null, scope_source: { criteria: criteria.map(c => c.label), deliveryDeadline: milestone.deliveryDeadline }, evidence_requirements: {} })) }) });
   return mapBounty(row);
 }
@@ -268,13 +292,25 @@ export const selectRole = (role: Role) => request("/roles", { method: "POST", bo
 export const inspectToken = (chainId: number, contractAddress: string) => request<TokenRecord>("/tokens/inspect", { method: "POST", body: JSON.stringify({ chainId, contractAddress }) });
 export const createProposal = (order: MarketplaceOrder, note: string) => request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), proposedMilestones: [] }) });
 export const acceptProposal = (bountyId: string, proposalId: string) => request("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) });
-export async function submitEvidence(milestoneId: string, uri: string) { return request("/evidence", { method: "POST", body: JSON.stringify({ milestoneId, uri }) }); }
+export async function submitEvidence(milestoneId: string, uri: string, contentHash: string) {
+  const normalizedContentHash = contentHash.trim().toLowerCase();
+  if (!/^0x[0-9a-f]{64}$/.test(normalizedContentHash) || /^0x0{64}$/.test(normalizedContentHash)) {
+    throw new PersistenceError("Enter the SHA-256 digest of the delivered bytes as 0x followed by 64 hexadecimal characters.");
+  }
+  return request("/evidence", {
+    method: "POST",
+    body: JSON.stringify({ milestoneId, uri, contentHash: normalizedContentHash })
+  });
+}
 export const acceptEvidence = (milestoneId: string) => request("/evidence/accept", { method: "POST", body: JSON.stringify({ milestoneId }) });
 export const recordEscrowObservation = (bountyId: string, txHash: string) => request("/escrow", { method: "POST", body: JSON.stringify({ bountyId, txHash }) });
 export const refreshEscrowState = (bountyId: string) => request<EscrowObservation>("/escrow/state", { method: "POST", body: JSON.stringify({ bountyId }) });
+export const recordRevisionRequest = (milestoneId: string, reason: string, reasonHash: `0x${string}`, txHash: string) => request("/revisions", { method: "POST", body: JSON.stringify({ milestoneId, reason, reasonHash, txHash }) });
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });
+export const createReviewResponse = (reviewId: string, body: string) => request<ParticipantReview>(`/reviews/${reviewId}/response`, { method: "POST", body: JSON.stringify({ body }) });
 export const loadPublicProfile = (walletAddress: string) => request<PublicWalletProfile>(`/profiles/${getAddress(walletAddress)}`, { method: "GET" });
-export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
+export const searchPublicProfiles = (query: string) => request<{ results: PublicWalletProfile[] }>(`/profiles/search?q=${encodeURIComponent(query.trim())}`, { method: "GET" });
+export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const reportContent = (entityType: "bounty" | "review" | "profile", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
 export const decideContentReport = (
   reportId: string,

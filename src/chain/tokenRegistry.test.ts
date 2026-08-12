@@ -23,6 +23,12 @@ describe("token registry boundary", () => {
     expect(() => validateTokenIdentity(84532, "0xA0b86991c6218b36c1d19D4a2e9eb0cE3606eB48")).toThrow(EscrowClientError);
   });
 
+  it("rejects the zero address before requesting server inspection", () => {
+    expect(() => validateTokenIdentity(84532, "0x0000000000000000000000000000000000000000")).toThrow(
+      "Token contract address cannot be the zero address."
+    );
+  });
+
   it("returns explorer-linked inspection warnings without trusting symbol identity", () => {
     const snapshot = inspectTokenInput({
       chainId: 84532,

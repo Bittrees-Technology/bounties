@@ -43,6 +43,7 @@ interface IBountyEscrow {
         bytes32 approvalHash;
         address settlementProposer;
         uint256 proposedProviderPayout;
+        uint64 settlementProposalExpiry;
         uint256 allocatedAmount;
         uint256 releasedAmount;
         uint32 milestoneCount;
@@ -54,9 +55,13 @@ interface IBountyEscrow {
         uint256 amount;
         uint64 deliveryDeadline;
         uint64 reviewDeadline;
+        uint64 revisionDeadline;
         MilestoneState state;
         bytes32 evidenceHash;
+        bytes32 previousEvidenceHash;
         bytes32 approvalHash;
+        bytes32 revisionReasonHash;
+        bool revisionRequested;
     }
 
     error ZeroAddress();
@@ -67,7 +72,9 @@ interface IBountyEscrow {
     error ZeroScopeHash();
     error ZeroProposalHash();
     error ZeroEvidenceHash();
+    error UnchangedRevisionEvidence(uint256 bountyId, uint256 milestoneIndex, bytes32 evidenceHash);
     error ZeroApprovalHash();
+    error ZeroRevisionReasonHash();
     error BountyNotFound(uint256 bountyId);
     error UnauthorizedActor(uint256 bountyId, address actor);
     error InvalidState(uint256 bountyId, State current, State required);
@@ -75,10 +82,15 @@ interface IBountyEscrow {
     error DeadlineExpired(uint256 bountyId, uint64 deliveryDeadline);
     error RefundNotAvailable(uint256 bountyId, uint64 deliveryDeadline);
     error ReviewPeriodActive(uint256 bountyId, uint64 reviewDeadline);
+    error RevisionAlreadyRequested(uint256 bountyId, uint256 milestoneIndex);
+    error RevisionWindowClosed(uint256 bountyId, uint64 reviewDeadline);
     error SettlementUnavailable(uint256 bountyId, State current);
     error SettlementAmountExceedsPrincipal(uint256 bountyId, uint256 providerPayout, uint256 principal);
     error SettlementAcceptanceUnavailable(uint256 bountyId, address actor, address proposer);
     error SettlementProposalMismatch(uint256 bountyId, uint256 expectedProviderPayout, uint256 suppliedProviderPayout);
+    error SettlementProposalExpired(uint256 bountyId, uint64 expiry);
+    error SettlementProposalCancellationUnavailable(uint256 bountyId, address actor, address proposer);
+    error SettlementWindowClosed(uint256 bountyId, uint64 lifecycleDeadline);
     error TermsHashMismatch(bytes32 expected, bytes32 supplied);
     error FundingAmountMismatch(address token, uint256 expected, uint256 received);
     error FundingDebitMismatch(address token, uint256 expected, uint256 debited);
@@ -126,7 +138,8 @@ interface IBountyEscrow {
         uint256 amount,
         uint64 deliveryDeadline
     );
-    event SettlementProposed(uint256 indexed bountyId, address indexed proposer, uint256 providerPayout);
+    event SettlementProposed(uint256 indexed bountyId, address indexed proposer, uint256 providerPayout, uint64 expiry);
+    event SettlementProposalCancelled(uint256 indexed bountyId, address indexed proposer);
     event MilestoneScheduleCreated(
         uint256 indexed bountyId, bytes32 indexed scheduleHash, uint256 milestoneCount, uint256 allocatedAmount
     );
@@ -142,6 +155,13 @@ interface IBountyEscrow {
     );
     event MilestoneApproved(
         uint256 indexed bountyId, uint256 indexed milestoneIndex, address indexed requester, bytes32 approvalHash
+    );
+    event MilestoneRevisionRequested(
+        uint256 indexed bountyId,
+        uint256 indexed milestoneIndex,
+        address indexed requester,
+        bytes32 reasonHash,
+        uint64 revisionDeadline
     );
     event MilestoneReleased(
         uint256 indexed bountyId,
@@ -169,6 +189,9 @@ interface IBountyEscrow {
     function EVIDENCE_DOMAIN() external view returns (bytes32);
     function APPROVAL_DOMAIN() external view returns (bytes32);
     function REVIEW_PERIOD() external view returns (uint64);
+    function REVISION_PERIOD() external view returns (uint64);
+    function SETTLEMENT_PROPOSAL_PERIOD() external view returns (uint64);
+    function MIN_MILESTONE_SPACING() external view returns (uint64);
     function MAX_MILESTONES() external view returns (uint32);
     function MILESTONE_SCHEDULE_DOMAIN() external view returns (bytes32);
     function MILESTONE_TERMS_DOMAIN() external view returns (bytes32);
@@ -194,11 +217,15 @@ interface IBountyEscrow {
 
     function fundBounty(uint256 bountyId, uint256 amount) external;
     function acceptBounty(uint256 bountyId, bytes32 acceptedTermsHash) external;
+    /// @notice Commits canonical evidence whose offchain preimage independently binds the
+    /// exact delivered-byte SHA-256 digest and URI hash. Direct callers derive this hash.
     function submitDelivery(uint256 bountyId, bytes32 evidenceHash) external;
     function approveDelivery(uint256 bountyId, bytes32 approvalHash) external;
+    function requestRevision(uint256 bountyId, bytes32 reasonHash) external;
     function release(uint256 bountyId) external;
     function proposeSettlement(uint256 bountyId, uint256 providerPayout) external;
     function acceptSettlement(uint256 bountyId, uint256 providerPayout) external;
+    function cancelSettlementProposal(uint256 bountyId) external;
     function cancelBounty(uint256 bountyId) external;
     function refundBounty(uint256 bountyId) external;
     function getBounty(uint256 bountyId) external view returns (Bounty memory);

@@ -39,6 +39,11 @@
       ]
     }
   ],
+  "redirects": [
+    { "source": "/terms.html", "destination": "/terms", "permanent": true },
+    { "source": "/acceptable-use.html", "destination": "/acceptable-use", "permanent": true },
+    { "source": "/privacy.html", "destination": "/privacy", "permanent": true }
+  ],
   "rewrites": [
     {
       "source": "/api/wallet-auth",
@@ -51,6 +56,18 @@
     {
       "source": "/api/bounties/:path*",
       "destination": "/api/proxy"
+    },
+    {
+      "source": "/terms",
+      "destination": "/terms.html"
+    },
+    {
+      "source": "/acceptable-use",
+      "destination": "/acceptable-use.html"
+    },
+    {
+      "source": "/privacy",
+      "destination": "/privacy.html"
     },
     {
       "source": "/:path((?!api(?:/|$)).*)",

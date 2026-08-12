@@ -12,6 +12,7 @@ describe("event label mapping", () => {
       "DeliveryAccepted",
       "PaymentReleased",
       "SettlementProposed",
+      "SettlementProposalCancelled",
       "BilateralSettlementCompleted",
       "EscrowCancelled",
       "TimeoutRefundClaimed"

@@ -18,8 +18,12 @@ The stateful Foundry campaign targets the smallest realistic risk boundary: one 
 - The requester commits the provider at creation time, and only that provider can accept and mark delivery.
 - Delivered funds cannot release before the stored seven-day review deadline
   without buyer approval, and anyone may release at the exact deadline.
-- Either party may propose an exact bilateral split; only the counterparty can
-  accept the current amount, and provider payout plus requester refund equals principal.
+- Either party may propose an exact bilateral split; each offer expires within
+  seven days and no later than the active delivery or review boundary. Only the
+  counterparty can accept the current amount strictly before expiry; acceptance
+  at or after expiry always reverts. The proposer alone may cancel it, cancellation
+  clears every offer field without moving lifecycle state or principal, and
+  provider payout plus requester refund equals principal.
 - Accepted or settled funds release once; terminal states cannot be paid twice.
 - Reentrant token callbacks cannot create or fund a bounty twice.
 - Milestone allocations are positive, ordered, and sum exactly to funding.
@@ -27,7 +31,8 @@ The stateful Foundry campaign targets the smallest realistic risk boundary: one 
 - Settlement and timeout refund apply only to outstanding principal after any
   completed tranche releases.
 - Settlement proposals are invalidated on provider acceptance, delivery, buyer
-  approval, and milestone advancement.
+  approval, release, cancellation, refund, completed settlement, and milestone
+  advancement.
 
 The stateful handler now exercises multiple bounties across two tokens, direct
 transfers, deadlines, review expiry, cancellation, refund, approval, full release,

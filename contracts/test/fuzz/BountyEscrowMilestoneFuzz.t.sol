@@ -35,8 +35,8 @@ contract BountyEscrowMilestoneFuzzTest is Test {
         amounts[2] = third;
         uint64[] memory deadlines = new uint64[](3);
         deadlines[0] = uint64(block.timestamp + 8 days);
-        deadlines[1] = uint64(block.timestamp + 16 days);
-        deadlines[2] = uint64(block.timestamp + 24 days);
+        deadlines[1] = uint64(block.timestamp + 30 days);
+        deadlines[2] = uint64(block.timestamp + 52 days);
 
         vm.prank(requester);
         uint256 bountyId = escrow.createMilestoneBounty(
@@ -91,7 +91,7 @@ contract BountyEscrowMilestoneFuzzTest is Test {
         amounts[1] = remaining;
         uint64[] memory deadlines = new uint64[](2);
         deadlines[0] = uint64(block.timestamp + 2 days);
-        deadlines[1] = uint64(block.timestamp + 4 days);
+        deadlines[1] = uint64(block.timestamp + 24 days);
         vm.prank(requester);
         uint256 bountyId = escrow.createMilestoneBounty(
             address(token), total, amounts, deadlines, keccak256("scope"), provider, keccak256("proposal")
@@ -115,6 +115,40 @@ contract BountyEscrowMilestoneFuzzTest is Test {
         assertEq(token.balanceOf(address(escrow)), 0);
         assertEq(escrow.totalLiability(address(token)), 0);
     }
+
+    function testFuzzOneRevisionPreservesPrincipalAndCreatesFixedDeadline(uint96 rawAmount, bytes32 reason) public {
+        uint256 amount = bound(uint256(rawAmount), 1, type(uint88).max);
+        if (reason == bytes32(0)) reason = bytes32(uint256(1));
+        BountyEscrow escrow = new BountyEscrow();
+        MockERC20 token = new MockERC20();
+        token.mint(requester, amount);
+        vm.prank(requester);
+        token.approve(address(escrow), amount);
+        uint64 deadline = uint64(block.timestamp + 2 days);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(
+            address(token), amount, deadline, keccak256("revision scope"), provider, keccak256("revision proposal")
+        );
+        bytes32 termsHash = escrow.getBounty(bountyId).termsHash;
+        vm.prank(provider);
+        escrow.acceptBounty(bountyId, termsHash);
+        vm.prank(provider);
+        escrow.submitDelivery(bountyId, keccak256("first submission"));
+        uint64 expectedRevisionDeadline = uint64(block.timestamp) + 7 days;
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, reason);
+
+        IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
+        IBountyEscrow.Milestone memory milestone = escrow.getMilestone(bountyId, 0);
+        assertEq(bounty.amount, amount);
+        assertEq(escrow.totalLiability(address(token)), amount);
+        assertEq(token.balanceOf(address(escrow)), amount);
+        assertEq(bounty.deliveryDeadline, expectedRevisionDeadline);
+        assertEq(milestone.revisionDeadline, expectedRevisionDeadline);
+        assertEq(milestone.revisionReasonHash, reason);
+        assertTrue(milestone.revisionRequested);
+    }
 }
 
 contract MilestoneInvariantHandler is Test {
@@ -135,6 +169,10 @@ contract MilestoneInvariantHandler is Test {
         if (bounty.state != IBountyEscrow.State.ProviderAccepted) return;
         if (bounty.deliveryDeadline != 0 && block.timestamp >= bounty.deliveryDeadline) return;
         if (evidence == bytes32(0)) evidence = bytes32(uint256(1));
+        IBountyEscrow.Milestone memory milestone = escrow.getMilestone(bountyId, bounty.currentMilestone);
+        if (milestone.revisionRequested && evidence == milestone.previousEvidenceHash) {
+            evidence = keccak256(abi.encode(evidence, "revision"));
+        }
         vm.prank(provider);
         escrow.submitDelivery(bountyId, evidence);
     }
@@ -145,6 +183,16 @@ contract MilestoneInvariantHandler is Test {
         if (approval == bytes32(0)) approval = bytes32(uint256(1));
         vm.prank(requester);
         escrow.approveDelivery(bountyId, approval);
+    }
+
+    function requestRevision(bytes32 reason) external {
+        IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
+        if (bounty.state != IBountyEscrow.State.Delivered || block.timestamp >= bounty.reviewDeadline) return;
+        IBountyEscrow.Milestone memory milestone = escrow.getMilestone(bountyId, bounty.currentMilestone);
+        if (milestone.revisionRequested) return;
+        if (reason == bytes32(0)) reason = bytes32(uint256(1));
+        vm.prank(requester);
+        escrow.requestRevision(bountyId, reason);
     }
 
     function release() external {
@@ -158,6 +206,11 @@ contract MilestoneInvariantHandler is Test {
     function proposeSettlement(uint96 rawPayout, bool providerProposes) external {
         IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
         if (!_settlementState(bounty.state)) return;
+        if (
+            ((bounty.state == IBountyEscrow.State.Funded || bounty.state == IBountyEscrow.State.ProviderAccepted)
+                    && block.timestamp >= bounty.deliveryDeadline)
+                || (bounty.state == IBountyEscrow.State.Delivered && block.timestamp >= bounty.reviewDeadline)
+        ) return;
         uint256 payout = bound(uint256(rawPayout), 0, bounty.amount);
         vm.prank(providerProposes ? provider : requester);
         escrow.proposeSettlement(bountyId, payout);
@@ -166,8 +219,16 @@ contract MilestoneInvariantHandler is Test {
     function acceptSettlement() external {
         IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
         if (!_settlementState(bounty.state) || bounty.settlementProposer == address(0)) return;
+        if (block.timestamp >= bounty.settlementProposalExpiry) return;
         vm.prank(bounty.settlementProposer == requester ? provider : requester);
         escrow.acceptSettlement(bountyId, bounty.proposedProviderPayout);
+    }
+
+    function cancelSettlementProposal() external {
+        IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
+        if (bounty.settlementProposer == address(0)) return;
+        vm.prank(bounty.settlementProposer);
+        escrow.cancelSettlementProposal(bountyId);
     }
 
     function refund() external {
@@ -176,7 +237,7 @@ contract MilestoneInvariantHandler is Test {
             bounty.state != IBountyEscrow.State.ProviderAccepted || bounty.deliveryDeadline == 0
                 || block.timestamp < bounty.deliveryDeadline
         ) return;
-        vm.prank(requester);
+        vm.prank(address(0xCA11));
         escrow.refundBounty(bountyId);
     }
 
@@ -186,7 +247,7 @@ contract MilestoneInvariantHandler is Test {
 
     function _settlementState(IBountyEscrow.State state) private pure returns (bool) {
         return state == IBountyEscrow.State.Funded || state == IBountyEscrow.State.ProviderAccepted
-            || state == IBountyEscrow.State.Delivered;
+            || state == IBountyEscrow.State.Delivered || state == IBountyEscrow.State.BuyerApproved;
     }
 }
 
@@ -213,8 +274,8 @@ contract BountyEscrowMilestoneInvariantTest is StdInvariant, Test {
         amounts[2] = 500 ether;
         uint64[] memory deadlines = new uint64[](3);
         deadlines[0] = uint64(block.timestamp + 10 days);
-        deadlines[1] = uint64(block.timestamp + 20 days);
-        deadlines[2] = uint64(block.timestamp + 30 days);
+        deadlines[1] = uint64(block.timestamp + 32 days);
+        deadlines[2] = uint64(block.timestamp + 54 days);
         vm.prank(requester);
         bountyId = escrow.createMilestoneBounty(
             address(token), TOTAL, amounts, deadlines, keccak256("scope"), provider, keccak256("proposal")

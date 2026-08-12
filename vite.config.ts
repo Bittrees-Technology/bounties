@@ -1,7 +1,8 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
+import type { Plugin } from "vite";
 
-const localFunctionsOrigin = process.env.SUPABASE_FUNCTIONS_ORIGIN ?? "http://127.0.0.1:54321/functions/v1";
+import { handleDevelopmentApi, type DevelopmentApiHandler } from "./src/server/devApiMiddleware.js";
 
 const securityHeaders = {
   "Content-Security-Policy": [
@@ -30,21 +31,34 @@ const securityHeaders = {
 const developmentHeaders: Record<string, string> = { ...securityHeaders };
 delete developmentHeaders["Content-Security-Policy"];
 
+export function sameOriginDevelopmentApiPlugin(): Plugin {
+  return {
+    name: "bounties-same-origin-development-api",
+    apply: "serve",
+    configureServer(server) {
+      const loadProductionHandler = async (): Promise<DevelopmentApiHandler> => {
+        const module = await server.ssrLoadModule("/api/proxy.ts");
+        if (typeof module.handleApiRequest !== "function") throw new Error("Application API handler unavailable.");
+        return module.handleApiRequest as DevelopmentApiHandler;
+      };
+      server.middlewares.use((request, response, next) => {
+        if (!request.url || !new URL(request.url, "http://vite.local").pathname.startsWith("/api/")) {
+          next();
+          return;
+        }
+        void handleDevelopmentApi(
+          request,
+          response,
+          async (apiRequest) => (await loadProductionHandler())(apiRequest)
+        );
+      });
+    }
+  };
+}
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [sameOriginDevelopmentApiPlugin(), react()],
   server: {
-    proxy: {
-      "^/api/wallet-auth$": {
-        target: localFunctionsOrigin,
-        changeOrigin: true,
-        rewrite: () => "/wallet-auth"
-      },
-      "^/api/bounties(?:/.*)?$": {
-        target: localFunctionsOrigin,
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api\/bounties/, "/bounties-api")
-      }
-    },
     headers: developmentHeaders
   },
   preview: {

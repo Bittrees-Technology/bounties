@@ -33,7 +33,7 @@ contract BountyEscrowMilestonesTest is Test {
         amounts[1] = 600 ether;
         uint64[] memory deadlines = new uint64[](2);
         deadlines[0] = uint64(block.timestamp + 2 days);
-        deadlines[1] = uint64(block.timestamp + 4 days);
+        deadlines[1] = uint64(block.timestamp + 24 days);
 
         vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.MilestoneFundingMismatch.selector, TOTAL, TOTAL - 1));
         vm.prank(requester);
@@ -43,8 +43,14 @@ contract BountyEscrowMilestonesTest is Test {
         vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.InvalidMilestoneAmount.selector, 1, 0));
         vm.prank(requester);
         escrow.createMilestoneBounty(address(token), 0, amounts, deadlines, SCOPE_HASH, provider, PROPOSAL_HASH);
-        amounts[1] = 600 ether;
 
+        amounts[1] = 600 ether;
+        deadlines[1] = deadlines[0] + escrow.MIN_MILESTONE_SPACING();
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.InvalidMilestoneDeadline.selector, 1, deadlines[0], deadlines[1])
+        );
+        vm.prank(requester);
+        escrow.createMilestoneBounty(address(token), 0, amounts, deadlines, SCOPE_HASH, provider, PROPOSAL_HASH);
         deadlines[1] = deadlines[0];
         vm.expectRevert(
             abi.encodeWithSelector(IBountyEscrow.InvalidMilestoneDeadline.selector, 1, deadlines[0], deadlines[1])
@@ -218,13 +224,11 @@ contract BountyEscrowMilestonesTest is Test {
         escrow.proposeSettlement(bountyId, 3 ether);
         vm.prank(requester);
         escrow.approveDelivery(bountyId, bytes32(uint256(32)));
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBountyEscrow.SettlementUnavailable.selector, bountyId, IBountyEscrow.State.BuyerApproved
-            )
-        );
+        vm.prank(provider);
+        escrow.proposeSettlement(bountyId, 3 ether);
         vm.prank(requester);
         escrow.acceptSettlement(bountyId, 3 ether);
+        assertEq(uint256(escrow.getBounty(bountyId).state), uint256(IBountyEscrow.State.Settled));
     }
 
     function testScheduleHashAndTermsHashBindExactMilestonePlan() public {
@@ -262,8 +266,8 @@ contract BountyEscrowMilestonesTest is Test {
         amounts[2] = 300 ether;
         deadlines = new uint64[](3);
         deadlines[0] = uint64(block.timestamp + 3 days);
-        deadlines[1] = uint64(block.timestamp + 20 days);
-        deadlines[2] = uint64(block.timestamp + 40 days);
+        deadlines[1] = uint64(block.timestamp + 25 days);
+        deadlines[2] = uint64(block.timestamp + 47 days);
     }
 
     function _createFunded() internal returns (uint256 bountyId, uint256[] memory amounts, uint64[] memory deadlines) {

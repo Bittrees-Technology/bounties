@@ -19,8 +19,10 @@ export interface EscrowAbiParameter {
     | "proposal-hash"
     | "terms-hash"
     | "approval-hash"
+    | "revision-reason-hash"
     | "deadline"
     | "review-deadline"
+    | "settlement-expiry"
     | "evidence-hash"
     | "amount-base-units"
     | "token-address"
@@ -52,8 +54,10 @@ const scopeHash: EscrowAbiParameter = { name: "scopeHash", kind: "scope-hash" };
 const proposalHash: EscrowAbiParameter = { name: "proposalHash", kind: "proposal-hash" };
 const termsHash: EscrowAbiParameter = { name: "termsHash", kind: "terms-hash" };
 const approvalHash: EscrowAbiParameter = { name: "approvalHash", kind: "approval-hash" };
+const revisionReasonHash: EscrowAbiParameter = { name: "revisionReasonHash", kind: "revision-reason-hash" };
 const deliveryDeadline: EscrowAbiParameter = { name: "deliveryDeadline", kind: "deadline" };
 const reviewDeadline: EscrowAbiParameter = { name: "reviewDeadline", kind: "review-deadline" };
+const settlementExpiry: EscrowAbiParameter = { name: "settlementExpiry", kind: "settlement-expiry" };
 const tokenAddress: EscrowAbiParameter = { name: "tokenAddress", kind: "token-address" };
 const amountBaseUnits: EscrowAbiParameter = { name: "amountBaseUnits", kind: "amount-base-units" };
 const providerAddress: EscrowAbiParameter = { name: "providerAddress", kind: "provider-address" };
@@ -76,10 +80,12 @@ export const ESCROW_BOUNDARY_ABI = {
     { name: "fundEscrow", inputs: [orderId, onchainId, tokenAddress, amountBaseUnits] },
     { name: "acceptBounty", inputs: [orderId, onchainId, termsHash] },
     { name: "submitDelivery", inputs: [orderId, onchainId, evidenceHash] },
+    { name: "requestRevision", inputs: [orderId, onchainId, revisionReasonHash] },
     { name: "acceptDelivery", inputs: [orderId, onchainId, approvalHash] },
     { name: "releasePayment", inputs: [orderId, onchainId] },
     { name: "proposeSettlement", inputs: [orderId, onchainId, providerPayoutBaseUnits] },
     { name: "acceptSettlement", inputs: [orderId, onchainId, providerPayoutBaseUnits] },
+    { name: "cancelSettlementProposal", inputs: [orderId, onchainId] },
     { name: "cancelEscrow", inputs: [orderId, onchainId] },
     { name: "claimTimeoutRefund", inputs: [orderId, onchainId] }
   ],
@@ -90,7 +96,8 @@ export const ESCROW_BOUNDARY_ABI = {
     { name: "DeliverySubmitted", inputs: [orderId, onchainId, evidenceHash, reviewDeadline] },
     { name: "DeliveryAccepted", inputs: [orderId, onchainId, approvalHash] },
     { name: "PaymentReleased", inputs: [orderId] },
-    { name: "SettlementProposed", inputs: [orderId, onchainId, proposerAddress, providerPayoutBaseUnits] },
+    { name: "SettlementProposed", inputs: [orderId, onchainId, proposerAddress, providerPayoutBaseUnits, settlementExpiry] },
+    { name: "SettlementProposalCancelled", inputs: [orderId, onchainId, proposerAddress] },
     { name: "BilateralSettlementCompleted", inputs: [orderId, onchainId, providerAddress, requesterAddress, proposerAddress, acceptorAddress, providerPayoutBaseUnits, requesterRefundBaseUnits] },
     { name: "EscrowCancelled", inputs: [orderId, onchainId] },
     { name: "TimeoutRefundClaimed", inputs: [orderId, onchainId] }

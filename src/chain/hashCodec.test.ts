@@ -99,15 +99,16 @@ describe("escrow commitment codec", () => {
       provider: "0x4444444444444444444444444444444444444444",
       milestoneId: "00000000-0000-4000-8000-000000000324",
       ordinal: 1,
-      uri: "  https://example.test/phase-two  "
+      uri: "  https://example.test/phase-two  ",
+      contentHash: `0x${"ab".repeat(32)}`
     });
     expect(evidence).toEqual({
       version: "bounty-evidence-commitment.v1",
       normalizedUri: "https://example.test/phase-two",
-      contentHash: "0xd6d5962ebf247152b0e1a35a3d3f00dfe8fdbc117e5f54d944bfd6ce38b0ac24",
+      contentHash: `0x${"ab".repeat(32)}`,
       uriHash: "0xfc88667a49812d504539419edcac9a47f5024053ccefbfd12d6edddfeba3b251",
       salt: "0xe2be643e304edd0e797055dc1e5b4697f58516a4c05b9fdb2ffa2c2fd4000979",
-      evidenceHash: "0x74ead1b326a78229313ae798c180692e9bad6dc3235b50b43d522a0006b148aa"
+      evidenceHash: "0xb979ad1b60220740083d99cb805b07873df326fc195c2584ce6ff114493a69e4"
     });
     expect(APPROVE_DELIVERY_DECISION_HASH).toBe("0x056af0fec0aaeac82977994e26b1cf0aff999e99e9f132e038cae81d44bd0b8c");
     expect(buildCanonicalApprovalCommitment({
@@ -121,8 +122,8 @@ describe("escrow commitment codec", () => {
     })).toEqual({
       version: "bounty-approval-commitment.v1",
       decisionHash: APPROVE_DELIVERY_DECISION_HASH,
-      salt: "0xa20cdd2dcfe478341b9de072c8d7dacd243b6e168ec01139383583a136435977",
-      approvalHash: "0x4d4d2d7868accc8bfda94cb87d4aaf0f7dc163bf390186291547767f25f00cad"
+      salt: "0xeeb7ee04593ff62fd4710dc511f5326a361d9edd5e86af4f7d485e56d93ca6a0",
+      approvalHash: "0x07fe6f89e69d3769bc1170bb621d640a3bd8bff84da75bfc7d7f187c311c4109"
     });
   });
 
@@ -136,13 +137,57 @@ describe("escrow commitment codec", () => {
       provider: "0x4444444444444444444444444444444444444444" as const,
       milestoneId: "00000000-0000-4000-8000-000000000324",
       ordinal: 1,
-      uri: "https://example.test/phase-two"
+      uri: "https://example.test/phase-two",
+      contentHash: `0x${"ab".repeat(32)}` as const
     };
     const committed = buildCanonicalEvidenceCommitment(input);
     expect(buildCanonicalEvidenceCommitment({ ...input, ordinal: 0 }).evidenceHash).not.toBe(committed.evidenceHash);
     expect(buildCanonicalEvidenceCommitment({ ...input, milestoneId: `${input.milestoneId}-other` }).evidenceHash).not.toBe(committed.evidenceHash);
     expect(buildCanonicalEvidenceCommitment({ ...input, uri: `${input.uri}/revision` }).evidenceHash).not.toBe(committed.evidenceHash);
+    expect(buildCanonicalEvidenceCommitment({ ...input, contentHash: `0x${"cd".repeat(32)}` }).evidenceHash).not.toBe(committed.evidenceHash);
     expect(() => buildCanonicalEvidenceCommitment({ ...input, bountyId: 0n })).toThrow(/bounty ID must be positive/i);
+  });
+
+  it("binds a mutable URI to the exact delivered bytes instead of deriving content from the URI", () => {
+    const input = {
+      chainId: 84532n,
+      escrowAddress: "0x1111111111111111111111111111111111111111" as const,
+      bountyId: 9n,
+      scopeHash: `0x${"22".repeat(32)}` as const,
+      termsHash: `0x${"33".repeat(32)}` as const,
+      provider: "0x4444444444444444444444444444444444444444" as const,
+      milestoneId: "00000000-0000-4000-8000-000000000324",
+      ordinal: 1,
+      uri: "https://mutable.example.test/latest",
+      contentHash: `0x${"11".repeat(32)}` as const
+    };
+    const first = buildCanonicalEvidenceCommitment(input);
+    const sameBytes = buildCanonicalEvidenceCommitment({ ...input });
+    const changedBytes = buildCanonicalEvidenceCommitment({ ...input, contentHash: `0x${"22".repeat(32)}` });
+    const movedSameBytes = buildCanonicalEvidenceCommitment({ ...input, uri: "https://mirror.example.test/release" });
+
+    expect(sameBytes.evidenceHash).toBe(first.evidenceHash);
+    expect(changedBytes.evidenceHash).not.toBe(first.evidenceHash);
+    expect(changedBytes.uriHash).toBe(first.uriHash);
+    expect(movedSameBytes.contentHash).toBe(first.contentHash);
+    expect(movedSameBytes.evidenceHash).not.toBe(first.evidenceHash);
+    expect(first.contentHash).not.toBe(first.uriHash);
+  });
+
+  it("rejects absent, malformed, or zero delivered-byte digests", () => {
+    const input = {
+      chainId: 84532n,
+      escrowAddress: "0x1111111111111111111111111111111111111111" as const,
+      bountyId: 9n,
+      scopeHash: `0x${"22".repeat(32)}` as const,
+      termsHash: `0x${"33".repeat(32)}` as const,
+      provider: "0x4444444444444444444444444444444444444444" as const,
+      milestoneId: "00000000-0000-4000-8000-000000000324",
+      ordinal: 1,
+      uri: "https://example.test/delivery"
+    };
+    expect(() => buildCanonicalEvidenceCommitment({ ...input, contentHash: "0x1234" as `0x${string}` })).toThrow(/32-byte hex hash/i);
+    expect(() => buildCanonicalEvidenceCommitment({ ...input, contentHash: `0x${"00".repeat(32)}` })).toThrow(/cannot be zero/i);
   });
 
   it("matches stable Solidity-compatible scope, terms, evidence, and approval vectors", () => {

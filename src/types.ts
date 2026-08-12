@@ -65,6 +65,9 @@ export interface Milestone {
   deliveryEvidenceHash?: `0x${string}`;
   deliveryContentHash?: `0x${string}`;
   deliveryApprovalHash?: `0x${string}`;
+  deliveryRevision?: number;
+  revisionReason?: string;
+  revisionReasonHash?: `0x${string}`;
   deliveryDeadline?: string;
 }
 
@@ -94,6 +97,7 @@ export interface MarketplaceOrder {
   budgetBaseUnits?: string;
   token: EscrowToken;
   buyer: string;
+  contactMethod?: string;
   provider?: string;
   providerAddress?: `0x${string}`;
   providerId?: string;

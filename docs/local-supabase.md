@@ -61,6 +61,8 @@ Never run reconciliation during a build, preview, or normal development flow.
 - Every table that stores account, role, bounty, proposal, milestone, delivery evidence, token registry, notification, nonce, or session data must enable RLS before it is used by the app.
 - Wallet accounts are keyed by wallet address and chain-aware identities. Email login is out of scope.
 - Wallet sessions must be nonce + signed-message based. Nonces must be single-use and expire.
+- The Supabase `wallet-auth` and `bounties-api` functions are HTTP 410 tombstones only. Local and production browser requests must use the same Vercel-compatible Node handlers so authentication and mutation authority cannot drift.
+- Test nonce issuance, verification attempts, and public profile/ENS discovery against keyed source rate limits. Never persist raw client network addresses.
 - Add negative authorization tests with each RLS migration. At minimum, test anonymous access, the wrong wallet, the wrong role, and cross-account reads/writes.
 - Bounty funding is persisted as ERC20 escrow records. ETH must be modeled as WETH in ERC20-only flows.
 - Token identity is `(chain_id, checksummed_contract_address)`. Symbols are display-only and must never be trusted as identity.

@@ -22,13 +22,16 @@ import {
 import { isDraftValid, orderStatusLabel } from "./bountyModel";
 import { chains, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter } from "./chain/escrowAdapter";
+import { keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
+import { standardTokenPresets } from "./chain/tokenPresets";
 import type { EscrowClient, EscrowOrderRef, SupportedChainId } from "./chain/types";
 import {
   acceptEvidence,
   acceptProposal,
   createBounty,
   createParticipantReview,
+  createReviewResponse,
   createProposal,
   decideContentReport,
   inspectToken,
@@ -36,9 +39,11 @@ import {
   loadPublicProfile,
   markNotificationRead,
   recordEscrowObservation,
+  recordRevisionRequest,
   refreshEscrowState,
   reportContent,
   selectRole,
+  searchPublicProfiles,
   signInWithEthereum,
   signOut,
   submitEvidence,
@@ -62,7 +67,7 @@ const emptyDraft: RequestDraft = {
   token: "",
   buyer: "",
   deliveryDeadline: defaultDeliveryDeadline(),
-  providerPreference: "",
+  providerPreference: "Chirpy",
   milestones: "Delivery",
   support: "Source materials and reviewer contact",
   criteria: "Deliverable submitted with evidence\nBuyer accepts the evidence"
@@ -132,7 +137,7 @@ function deriveMilestoneApprovalHash(order: MarketplaceOrder, milestone: NonNull
 function deriveMilestoneEvidenceHash(order: MarketplaceOrder, milestone: NonNullable<MarketplaceOrder["milestones"]>[number], ordinal: number): `0x${string}` | null {
   const token = order.tokenRecord;
   const observation = order.escrowObservation;
-  if (!token || !order.scopeHash || !order.providerAddress || !observation?.onchain_bounty_id || !observation.terms_hash || !milestone.deliveryEvidence) return null;
+  if (!token || !order.scopeHash || !order.providerAddress || !observation?.onchain_bounty_id || !observation.terms_hash || !milestone.deliveryEvidence || !milestone.deliveryContentHash) return null;
   const chain = chains[token.chain_id as SupportedChainId];
   if (!chain?.escrowContractAddress) return null;
   try {
@@ -145,7 +150,8 @@ function deriveMilestoneEvidenceHash(order: MarketplaceOrder, milestone: NonNull
       provider: order.providerAddress,
       milestoneId: milestone.id,
       ordinal,
-      uri: milestone.deliveryEvidence
+      uri: milestone.deliveryEvidence,
+      contentHash: milestone.deliveryContentHash
     }).evidenceHash;
   } catch {
     return null;
@@ -163,6 +169,29 @@ type WalletProfile = {
 function short(value: string) {
   return value.length > 14 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value;
 }
+
+function linkedDescription(value: string) {
+  return value.split(/(https?:\/\/[^\s]+)/gi).map((part, index) => {
+    if (!/^https?:\/\//i.test(part)) return part;
+    const match = part.match(/^(.*?)([),.!?;:]*)$/);
+    const candidate = match?.[1] ?? part;
+    const punctuation = match?.[2] ?? "";
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== "http:" && url.protocol !== "https:") return part;
+      return <span key={`${candidate}-${index}`}><a href={url.href} target="_blank" rel="noreferrer noopener">{candidate}<ExternalLink size={12} /></a>{punctuation}</span>;
+    } catch {
+      return part;
+    }
+  });
+}
+
+const contactMethods = [
+  { value: "Chirpy", label: "Chirpy (recommended)" },
+  { value: "Bounties notifications", label: "Bounties notifications" },
+  { value: "ENS profile", label: "ENS profile" },
+  { value: "Wallet message", label: "Wallet message" }
+];
 
 function tokenOptionLabel(token: TokenRecord) {
   const network = chains[token.chain_id as SupportedChainId]?.name ?? "Supported network";
@@ -210,11 +239,16 @@ export default function App() {
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileSearchQuery, setProfileSearchQuery] = useState("");
+  const [profileSearchResults, setProfileSearchResults] = useState<PublicWalletProfile[]>([]);
+  const [profileSearchMessage, setProfileSearchMessage] = useState<string | null>(null);
+  const [profileSearching, setProfileSearching] = useState(false);
   const actionPending = useRef(false);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
   const wallet = session?.account.wallet_address;
+  const selectedTokenPresets = standardTokenPresets[Number(inspectChain) as SupportedChainId] ?? [];
 
   const walletProfiles = useMemo(() => {
     const profiles = new Map<string, WalletProfile>();
@@ -265,7 +299,7 @@ export default function App() {
     const timestamp = Date.parse(`${milestone.deliveryDeadline}T23:59:59Z`);
     if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return false;
     if (index === 0) return true;
-    return timestamp > Date.parse(`${milestoneSchedule[index - 1].deliveryDeadline}T23:59:59Z`);
+    return timestamp > Date.parse(`${milestoneSchedule[index - 1].deliveryDeadline}T23:59:59Z`) + 21 * 24 * 60 * 60 * 1000;
   });
   const scheduleTotalsBudget = Boolean(selectedToken) && scheduleAmountsValid && (() => {
     try {
@@ -292,6 +326,24 @@ export default function App() {
         setProfileMessage(null);
       })
       .catch(() => setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below."));
+  }
+
+  async function discoverProfiles(event: FormEvent) {
+    event.preventDefault();
+    const query = profileSearchQuery.trim();
+    if (query.length < 2) return setProfileSearchMessage("Enter a custom name, ENS name, or wallet address.");
+    try {
+      setProfileSearching(true);
+      setProfileSearchMessage(null);
+      const { results } = await searchPublicProfiles(query);
+      setProfileSearchResults(results);
+      setProfileSearchMessage(results.length ? null : "No public profiles matched that search.");
+    } catch (caught) {
+      setProfileSearchResults([]);
+      setProfileSearchMessage(caught instanceof Error ? caught.message : "Profile search is temporarily unavailable.");
+    } finally {
+      setProfileSearching(false);
+    }
   }
 
   async function refresh(allowDisconnected = false) {
@@ -387,14 +439,31 @@ export default function App() {
     setMilestoneSchedule((current) => current.map((milestone, milestoneIndex) => milestoneIndex === index ? { ...milestone, [field]: value } : milestone));
   }
 
+  async function inspectContract(chainId: number, contractAddress: string) {
+    const token = await inspectToken(chainId, contractAddress);
+    setInspected(token);
+    setInspectChain(String(chainId));
+    setInspectAddress(token.checksum_address);
+    setDraft((current) => ({ ...current, token: token.id }));
+  }
+
   async function inspect(event: FormEvent) {
     event.preventDefault();
     if (!wallet) return void connect();
+    await act(() => inspectContract(Number(inspectChain), inspectAddress), "Token inspected and added to your payment choices.");
+  }
+
+  async function chooseRole(role: "buyer" | "provider") {
+    if (!wallet) return void connect();
     await act(async () => {
-      const token = await inspectToken(Number(inspectChain), inspectAddress);
-      setInspected(token);
-      setDraft((current) => ({ ...current, token: token.id }));
-    });
+      if (!session?.roles.includes(role)) await selectRole(role);
+      if (role === "buyer") {
+        setActivePage("create");
+      } else {
+        setActivePage("marketplace");
+        setTimeout(() => document.querySelector("#orders")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 0);
+      }
+    }, role === "buyer" ? "Ready to create a bounty." : "Showing available work.");
   }
 
   const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
@@ -489,6 +558,9 @@ export default function App() {
     const milestoneCount = Number.isInteger(observation?.milestone_count) ? observation!.milestone_count! : order.milestones?.length ?? null;
     const activeMilestone = currentMilestone !== null && currentMilestone >= 0 ? order.milestones?.[currentMilestone] : undefined;
     const activeMilestoneState = observation?.current_milestone_detail?.state ?? observation?.current_milestone_state;
+    const revisionRequested = observation?.current_milestone_detail?.revision_requested === true;
+    const revisionReasonHash = observation?.current_milestone_detail?.revision_reason_hash;
+    const previousEvidenceHash = observation?.current_milestone_detail?.previous_evidence_hash;
     const activeEvidenceHash = activeMilestone?.deliveryEvidenceHash;
     const derivedEvidenceHash = activeMilestone && currentMilestone !== null ? deriveMilestoneEvidenceHash(order, activeMilestone, currentMilestone) : null;
     const onchainEvidenceHash = observation?.current_milestone_detail?.evidence_hash;
@@ -503,18 +575,28 @@ export default function App() {
       && derivedApprovalHash!.toLowerCase() === expectedApprovalHash!.toLowerCase();
     const approvalCommitmentMatches = approvalSourceMatches && Boolean(onchainApprovalHash)
       && expectedApprovalHash!.toLowerCase() === onchainApprovalHash!.toLowerCase();
-    const activeDeliveryDeadline = deadlineTimestamp(observation?.current_milestone_detail?.delivery_deadline ?? observation?.current_milestone_delivery_deadline ?? activeMilestone?.deliveryDeadline);
+    const activeDeliveryDeadline = deadlineTimestamp(
+      revisionRequested
+        ? observation?.current_milestone_detail?.revision_deadline
+        : observation?.current_milestone_detail?.delivery_deadline ?? observation?.current_milestone_delivery_deadline ?? activeMilestone?.deliveryDeadline
+    );
     const activeReviewDeadline = deadlineTimestamp(observation?.current_milestone_detail?.review_deadline ?? observation?.current_milestone_review_deadline ?? observation?.review_deadline);
     const scheduleStatus = order.escrowScheduleStatus;
-    const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered";
+    const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered" || state === "BuyerApproved";
     const settlementProposer = order.escrowObservation?.settlement_proposer;
     const proposedPayout = order.escrowObservation?.proposed_provider_payout_base_units;
+    const settlementExpiry = deadlineTimestamp(order.escrowObservation?.settlement_proposal_expiry);
+    const hasSettlementProposal = Boolean(settlementProposer && !/^0x0{40}$/i.test(settlementProposer));
+    const settlementProposalActive = hasSettlementProposal && settlementExpiry !== null && settlementExpiry > Date.now();
     const canAcceptSettlement = isParticipant(order)
+      && settlementProposalActive
       && settlementProposer
-      && !/^0x0{40}$/i.test(settlementProposer)
       && settlementProposer.toLowerCase() !== wallet?.toLowerCase()
       && proposedPayout !== null
       && proposedPayout !== undefined;
+    const canCancelSettlement = isParticipant(order)
+      && hasSettlementProposal
+      && settlementProposer?.toLowerCase() === wallet?.toLowerCase();
     const reviewReady = Boolean(activeMilestone) && evidenceCommitmentMatches && (state === "BuyerApproved" && activeMilestoneState === "Approved" && approvalCommitmentMatches
       || (state === "Delivered" && activeMilestoneState === "Submitted" && activeReviewDeadline !== null && activeReviewDeadline <= Date.now()));
     const timeoutReady = Boolean(activeMilestone) && state === "ProviderAccepted" && activeMilestoneState === "Pending"
@@ -532,17 +614,36 @@ export default function App() {
         ) : null}
         {state === "Funded" && isProvider(order) ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptBounty(ref))}>Accept committed bounty terms</button> : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
-        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
+        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
-        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeMilestone && !activeEvidenceHash ? <p className="form-hint">Submit evidence for {activeMilestone.label} below before committing delivery onchain.</p> : null}
+        {state === "ProviderAccepted" && revisionRequested && activeEvidenceHash && previousEvidenceHash && activeEvidenceHash.toLowerCase() === previousEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">Revised work must use a new evidence commitment. Submit the revised location and exact delivered-bytes digest before committing it onchain.</p> : null}
+        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeMilestone && !activeEvidenceHash ? <p className="form-hint">Submit an evidence location and delivered-bytes digest for {activeMilestone.label} below before committing delivery onchain.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && derivedApprovalHash ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptDelivery({ ...ref, approvalHash: derivedApprovalHash }))}>Approve {activeMilestone.label} onchain</button> : null}
+        {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && activeReviewDeadline !== null && activeReviewDeadline > Date.now() && !revisionRequested ? (
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const reason = String(new FormData(event.currentTarget).get("revisionReason") ?? "").trim();
+            if (!reason) return;
+            const reasonHash = keccak256(toHex(reason));
+            void submitEscrowTransaction(order, async (client, ref) => {
+              const result = await client.requestRevision(ref, { reasonHash });
+              if (result.txHash) await recordRevisionRequest(activeMilestone.id, reason, reasonHash, result.txHash);
+              return result;
+            });
+          }}>
+            <label>Revision reason<textarea name="revisionReason" maxLength={500} required placeholder="Describe what must be corrected in this deliverable." /></label>
+            <button className="secondary-button" type="submit">Request one revision</button>
+            <span className="form-hint">This records a reason hash onchain and gives the provider exactly seven days to resubmit. A second revision cannot be requested.</span>
+          </form>
+        ) : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && !evidenceCommitmentMatches ? <p className="commitment-warning" role="alert">Delivery evidence does not match the current onchain milestone. Refresh canonical escrow state before reviewing or approving this work.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && !derivedApprovalHash ? <p className="commitment-warning" role="alert">The canonical approval commitment is not ready. Refresh this bounty before approving the milestone.</p> : null}
         {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>{releaseLabel}</button> : null}
         {state === "Funded" && isBuyer(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel and refund before provider acceptance</button> : null}
-        {timeoutReady && isBuyer(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Claim missed-deadline refund</button> : null}
+        {timeoutReady ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
         {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
         {activeMilestone && milestoneCount ? <p className="form-hint">Active milestone {currentMilestone! + 1} of {milestoneCount}: {activeMilestone.label}</p> : null}
+        {revisionRequested ? <p className="revision-status">{state === "ProviderAccepted" ? <>One revision was requested for this milestone. Revised work is due {activeDeliveryDeadline ? new Date(activeDeliveryDeadline).toLocaleString() : "at the recorded onchain deadline"}.</> : <>The revised work was submitted. A second revision cannot be requested.</>} {activeMilestone?.revisionReason && activeMilestone.revisionReasonHash?.toLowerCase() === revisionReasonHash?.toLowerCase() ? <>Requested changes: {activeMilestone.revisionReason}</> : revisionReasonHash ? <>Reason commitment: <code>{short(revisionReasonHash)}</code>.</> : null}</p> : null}
         {state === "BuyerApproved" && activeMilestoneState === "Approved" && activeMilestone && isBuyer(order) && (!evidenceCommitmentMatches || !approvalCommitmentMatches) ? <p className="commitment-warning" role="alert">The accepted work commitments do not match the current onchain milestone. Refresh canonical escrow state before recording acceptance.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeReviewDeadline !== null && activeReviewDeadline <= Date.now() && !evidenceCommitmentMatches ? <p className="commitment-warning" role="alert">Payment release is unavailable because the displayed evidence differs from the active onchain milestone. Refresh canonical escrow state before releasing this tranche.</p> : null}
         {isSettlementState && isParticipant(order) ? (
@@ -556,7 +657,8 @@ export default function App() {
           </form>
         ) : null}
         {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
-        {settlementProposer && !/^0x0{40}$/i.test(settlementProposer) ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. Only the counterparty can accept it.</p> : null}
+        {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
+        {hasSettlementProposal ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. {settlementProposalActive ? <>Only the counterparty can accept it before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p> : null}
         {escrowTxHashes[order.id] ? <p className="form-hint">Submitted: <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">{short(escrowTxHashes[order.id])} <ExternalLink size={13} /></a>. Refresh canonical state after confirmation.</p> : null}
       </section>
     );
@@ -612,10 +714,16 @@ export default function App() {
                 {review.direction === "service_received" ? "Service received" : "Payment received"} · reviewed by{" "}
                 <button className="wallet-link" type="button" onClick={() => openProfile(review.author_wallet_address)}>{short(review.author_wallet_address)}</button>
               </span>
-              <p>{review.moderation_status === "hidden" ? "Hidden from public view by moderation." : review.body}</p>
+              <p>{review.moderation_status === "hidden" ? "Hidden from public view by moderation." : review.body?.trim() || "Rating submitted without a written comment."}</p>
+              {review.response_body ? <blockquote className="review-response"><strong>Response from the rated participant</strong><span>{review.response_body}</span></blockquote> : null}
               <button className="wallet-link" type="button" onClick={() => openProfile(review.subject_wallet_address)}>View rated wallet profile</button>
             </div>
             <div className="review-actions">
+              {review.subject_id === session?.account.id && !review.response_body ? <details className="review-response-control"><summary>Respond to this review</summary><form onSubmit={(event) => {
+                event.preventDefault();
+                const form = new FormData(event.currentTarget);
+                void act(() => createReviewResponse(review.id, String(form.get("response") ?? "")), "Your response is now shown with the review.");
+              }}><label>Your response<textarea name="response" minLength={3} maxLength={2000} required /></label><button type="submit">Publish response</button><span className="form-hint">Only the rated participant can respond, and each review accepts one response.</span></form></details> : null}
               {reportForm("review", review.id)}
             </div>
           </article>
@@ -630,7 +738,7 @@ export default function App() {
             }}
           >
             <label>{isBuyer(order) ? "Rate the labor provider" : "Rate the capital provider"}<select name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} star{rating === 1 ? "" : "s"}</option>)}</select></label>
-            <label>{isBuyer(order) ? "Review the work delivered" : "Review the payment experience"}<textarea name="body" minLength={3} maxLength={2000} required /></label>
+            <label>{isBuyer(order) ? "Comment on the work delivered (optional)" : "Comment on the payment experience (optional)"}<textarea name="body" maxLength={2000} /></label>
             <button type="submit">Publish review</button>
           </form>
         ) : null}
@@ -706,7 +814,10 @@ export default function App() {
               <p>{orderStatusLabel(milestone.status)}</p>
               {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>Due {new Date(deadlineTimestamp(milestone.deliveryDeadline)!).toLocaleDateString()}</p> : null}
               {milestone.deliveryEvidence ? (
-                <p>Evidence: <a href={milestone.deliveryEvidence} target="_blank" rel="noreferrer">{milestone.deliveryEvidence}</a></p>
+                <>
+                  <p>Evidence: <a href={milestone.deliveryEvidence} target="_blank" rel="noreferrer">{milestone.deliveryEvidence}</a></p>
+                  {milestone.deliveryContentHash ? <p>Delivered bytes SHA-256: <code>{milestone.deliveryContentHash}</code></p> : null}
+                </>
               ) : null}
             </div>
             <div>
@@ -714,12 +825,16 @@ export default function App() {
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
-                    const uri = String(new FormData(event.currentTarget).get("uri") ?? "");
-                    void act(() => submitEvidence(milestone.id, uri));
+                    const form = new FormData(event.currentTarget);
+                    const uri = String(form.get("uri") ?? "");
+                    const contentHash = String(form.get("contentHash") ?? "");
+                    void act(() => submitEvidence(milestone.id, uri, contentHash));
                   }}
                 >
                   <label>Work evidence link<input name="uri" type="url" placeholder="https://…" required /></label>
-                  <button>Submit completed work</button>
+                  <label>Delivered bytes SHA-256<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" aria-describedby={`content-hash-help-${milestone.id}`} required /></label>
+                  <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Hash the exact delivered file or a documented canonical bundle of the delivered bytes. Do not hash the link. Prefix the 64-character SHA-256 digest with 0x.</span>
+                  <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</button>
                 </form>
               ) : null}
               {isBuyer(order) && isActiveMilestone && milestone.status === "delivered" && observation?.current_milestone_detail?.state === "Approved" && observation?.onchain_state === "BuyerApproved" && evidenceMatches && approvalMatches ? (
@@ -791,7 +906,8 @@ export default function App() {
     return reviewsForRole?.length ? reviewsForRole.map((review) => (
       <article className="profile-review" key={review.id}>
         <strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong>
-        <p>{review.body}</p>
+        <p>{review.body?.trim() || "Rating submitted without a written comment."}</p>
+        {review.response_body ? <blockquote className="review-response"><strong>Response from the rated participant</strong><span>{review.response_body}</span></blockquote> : null}
         <span>From <button className="wallet-link" type="button" onClick={() => openProfile(review.author_wallet_address)}>{short(review.author_wallet_address)}</button></span>
       </article>
     )) : <p className="empty-profile-copy">{emptyMessage}</p>;
@@ -802,7 +918,8 @@ export default function App() {
     return profileReviews.length ? profileReviews.map((review) => (
       <article className="profile-review" key={review.id}>
         <strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong>
-        <p>{review.body}</p>
+        <p>{review.body?.trim() || "Rating submitted without a written comment."}</p>
+        {review.response_body ? <blockquote className="review-response"><strong>Response from the rated participant</strong><span>{review.response_body}</span></blockquote> : null}
         <span>From <button className="wallet-link" type="button" onClick={() => openProfile(review.author_wallet_address)}>{short(review.author_wallet_address)}</button></span>
       </article>
     )) : <p className="empty-profile-copy">{emptyMessage}</p>;
@@ -818,7 +935,8 @@ export default function App() {
           <nav className="primary-nav" aria-label="Primary navigation">
             <button className={visiblePage === "marketplace" ? "active" : ""} type="button" onClick={() => setActivePage("marketplace")}><BriefcaseBusiness size={17} />Marketplace</button>
             <button className={visiblePage === "create" ? "active" : ""} type="button" onClick={() => setActivePage("create")}><PlusCircle size={17} />Create bounty</button>
-            {wallet ? <button className={visiblePage === "profile" ? "active" : ""} type="button" onClick={() => openProfile(wallet)}><UserRound size={17} />My profile</button> : null}
+            <button className={visiblePage === "profile" && !selectedProfileAddress ? "active" : ""} type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setActivePage("profile"); }}><Search size={17} />Profiles</button>
+            {wallet ? <button className={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "active" : ""} type="button" onClick={() => openProfile(wallet)}><UserRound size={17} />My profile</button> : null}
             {session?.staffRole ? <button className={`moderator-nav ${visiblePage === "moderator" ? "active" : ""}`} type="button" onClick={() => setActivePage("moderator")}><EyeOff size={17} />Moderator</button> : null}
           </nav>
           <div className="gate-callout">
@@ -828,16 +946,11 @@ export default function App() {
         </aside>
 
         <section className="content">
-          <header className="topbar">
-            <div className="topbar-copy">
-              <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : visiblePage === "moderator" ? "Authorized workspace" : "Wallet reputation"}</p>
-              <h2>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty people can deliver." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h2>
-              <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Describe the work, choose a token, set a timeline, and define how delivery will be accepted." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Capital-provider and labor-provider ratings stay separate so each kind of participation is easy to understand."}</p>
-            </div>
+          <header className="site-toolbar" aria-label="Account controls">
             <div className="account-actions">
               {wallet ? (
-                <button className="compact-account-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
-                  <Bell size={17} /><span>{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
+                <button className="compact-account-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                  <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
                 </button>
               ) : null}
               {wallet ? (
@@ -862,6 +975,13 @@ export default function App() {
               ) : null}
             </div>
           </header>
+          <header className="topbar">
+            <div className="topbar-copy">
+              <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : visiblePage === "moderator" ? "Authorized workspace" : "Wallet reputation"}</p>
+              <h2>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty people can deliver." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h2>
+              <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Describe the work, choose a token, set a timeline, and define how delivery will be accepted." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Discover a public wallet profile, its verified marketplace activity, and its preferred areas of work."}</p>
+            </div>
+          </header>
 
           {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Connect wallet again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -871,9 +991,11 @@ export default function App() {
           {visiblePage === "marketplace" && wallet ? (
             <section className="panel role-panel" aria-label="Marketplace roles">
               <div className="section-heading"><BadgeCheck /><h3>How would you like to participate?</h3></div>
-              <p>Post bounties, provide services, or do both.</p>
-              <button disabled={session?.roles.includes("buyer")} onClick={() => void act(() => selectRole("buyer"))}>I want to hire</button>{" "}
-              <button disabled={session?.roles.includes("provider")} onClick={() => void act(() => selectRole("provider"))}>I want to work</button>
+              <p>Choose a starting point. This does not lock your wallet into one role; you can hire and work from the same profile.</p>
+              <div className="participation-options">
+                <button onClick={() => void chooseRole("buyer")}><span>I want to hire</span><small>Create and fund a bounty</small></button>
+                <button onClick={() => void chooseRole("provider")}><span>I want to work</span><small>Browse marketplace opportunities</small></button>
+              </div>
             </section>
           ) : null}
 
@@ -886,9 +1008,10 @@ export default function App() {
                     <label>Work type<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}</select></label>
                     <label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as ServiceCategory })}>{categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>
                   </div>
-                  <label>Project name<input value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} required /></label>
+                  <label>Description<textarea value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} placeholder="Describe the work. HTTP and HTTPS links will be clickable on the published bounty." maxLength={5000} required /><span className="form-hint">Links beginning with http:// or https:// are shown as clickable links.</span></label>
                   <div className="form-grid">
-                    <label>Review contact<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} required /></label>
+                    <label>Contact alias<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} placeholder="A public alias, not a private email or phone number" maxLength={80} required /><span className="form-hint">Share only the name you want bounty applicants to see.</span></label>
+                    <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
                     <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
                   </div>
                   <div className="form-grid">
@@ -896,33 +1019,33 @@ export default function App() {
                     <label>
                       Payment token
                       <select aria-label="Payment token" value={draft.token} onChange={(event) => setDraft({ ...draft, token: event.target.value })} required>
-                        <option value="">{wallet ? "Select a token" : "Connect wallet to load tokens"}</option>
+                        <option value="">{wallet ? availableTokens.length ? "Select a payment token" : "No payment tokens added yet" : "Connect wallet to load payment tokens"}</option>
                         {availableTokens.map((token) => <option key={token.id} value={token.id}>{tokenOptionLabel(token)}</option>)}
                       </select>
                     </label>
                   </div>
                   {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{selectedToken.name ?? "Unnamed ERC20"} {selectedToken.symbol ? `(${selectedToken.symbol})` : ""}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
-                  <div className="payment-token-actions"><button className="wallet-link" type="button" onClick={() => { const inspector = document.querySelector<HTMLDetailsElement>("#custom-token-inspector"); if (inspector) { inspector.open = true; inspector.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>Add custom token</button><span>Any ERC20 can be added after its contract is inspected.</span></div>
+                  <div className="payment-token-actions"><button className="secondary-button" type="button" onClick={() => { const inspector = document.querySelector<HTMLDetailsElement>("#custom-token-inspector"); if (inspector) { inspector.open = true; inspector.scrollIntoView({ behavior: "smooth", block: "center" }); } }}>Add or inspect a token</button><span>{availableTokens.length ? `${availableTokens.length} inspected payment token${availableTokens.length === 1 ? "" : "s"} available.` : "Choose a standard token shortcut or inspect any ERC20 contract below."}</span></div>
                   <fieldset className="milestone-builder">
                     <legend>Deliverables, amounts, and deadlines</legend>
-                    <p className="form-hint">Use one row for a simple bounty, or add up to 32 ordered milestones. Amounts must total the budget and deadlines must move forward.</p>
+                    <p className="form-hint">Use one row for a simple bounty, or add up to 32 ordered milestones. Amounts must total the budget. Consecutive deadlines must be at least 22 days apart so review and revision windows remain usable.</p>
                     {milestoneSchedule.map((milestone, index) => (
                       <div className="milestone-input-row" key={`${index}-${milestone.title}`}>
                         <span className="milestone-number">{index + 1}</span>
                         <label>Deliverable<input value={milestone.title} onChange={(event) => updateMilestone(index, "title", event.target.value)} placeholder="Completed deliverable" required /></label>
                         <label>Amount<input inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={milestone.amount} onChange={(event) => updateMilestone(index, "amount", event.target.value)} required /></label>
-                        <label>Delivery date<input type="date" min={index === 0 ? new Date().toISOString().slice(0, 10) : milestoneSchedule[index - 1].deliveryDeadline} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
+                        <label>Delivery date<input type="date" min={index === 0 ? new Date().toISOString().slice(0, 10) : (() => { const minimum = new Date(`${milestoneSchedule[index - 1].deliveryDeadline}T12:00:00Z`); minimum.setUTCDate(minimum.getUTCDate() + 22); return minimum.toISOString().slice(0, 10); })()} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
                         {milestoneSchedule.length > 1 ? <button className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => setMilestoneSchedule((current) => current.filter((_, milestoneIndex) => milestoneIndex !== index))}>Remove</button> : null}
                       </div>
                     ))}
                     {milestoneSchedule.length < 32 ? <button className="secondary-button add-milestone" type="button" onClick={() => {
                       const previous = milestoneSchedule.at(-1);
                       const nextDate = new Date(`${previous?.deliveryDeadline ?? defaultDeliveryDeadline()}T12:00:00Z`);
-                      nextDate.setUTCDate(nextDate.getUTCDate() + 7);
+                      nextDate.setUTCDate(nextDate.getUTCDate() + 22);
                       setMilestoneSchedule((current) => [...current, { title: `Milestone ${current.length + 1}`, amount: "", deliveryDeadline: nextDate.toISOString().slice(0, 10) }]);
                     }}>Add milestone</button> : null}
                     {selectedToken && !scheduleTotalsBudget ? <p className="schedule-error">Deliverable amounts must total exactly {draft.budget || "0"} {selectedToken.symbol || "tokens"}.</p> : null}
-                    {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be later than today and later than the previous deliverable.</p> : null}
+                    {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be in the future and at least 22 days after the previous deliverable.</p> : null}
                   </fieldset>
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} /></label>
@@ -935,8 +1058,21 @@ export default function App() {
                   </button>
                 </form> : null}
 
-                {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector">
+                {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector" open>
                   <summary><Search size={18} /><span><strong>Add custom token</strong><small>Inspect a token contract before adding it to your payment choices.</small></span></summary>
+                  <div className="standard-token-presets" aria-label="Standard token shortcuts">
+                    <div><strong>Standard tokens on {chains[Number(inspectChain) as SupportedChainId]?.name}</strong><span>Each shortcut is independently inspected before it is added.</span></div>
+                    {selectedTokenPresets.length ? <div className="preset-token-list">{selectedTokenPresets.map((preset) => (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        key={`${inspectChain}-${preset.contractAddress}`}
+                        onClick={wallet
+                          ? () => void act(() => inspectContract(Number(inspectChain), preset.contractAddress), `${preset.symbol} inspected and added.`)
+                          : () => void connect()}
+                      >Add {preset.symbol}</button>
+                    ))}</div> : <p className="form-hint">No standard token shortcut has been verified for this network yet. You can still inspect a contract address below.</p>}
+                  </div>
                   <form className="token-inspector-form" onSubmit={inspect}>
                     <label>Network<select value={inspectChain} onChange={(event) => setInspectChain(event.target.value)} required>{supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
@@ -972,7 +1108,8 @@ export default function App() {
                           <div><span className="scope">{order.scope}</span><h4>{order.title}</h4></div>
                           <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
                         </div>
-                        <p>{order.project} · Review by {order.buyer} · Delivery by {order.dueDate}</p>
+                        <p className="bounty-description">{linkedDescription(order.project)}</p>
+                        <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {order.dueDate}</p>
                         <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
                         {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{order.tokenRecord.name ?? "Unnamed ERC20"} {order.tokenRecord.symbol ? `(${order.tokenRecord.symbol})` : ""}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
                         {cardProgress(order)}
@@ -1011,11 +1148,34 @@ export default function App() {
 
               {visiblePage === "profile" ? (
                 <section className="page-stack profile-page" aria-label="Wallet profile">
+                  <section className="panel profile-discovery">
+                    <div className="section-heading"><Search /><h3>Discover profiles</h3></div>
+                    <p>Search saved public wallet profiles by custom name, primary ENS name, or wallet address.</p>
+                    <p className="ens-integration-note"><BadgeCheck size={16} /> ENS lookup is active for Ethereum names. When a wallet has a primary ENS name, Bounties displays it automatically unless the owner chooses a custom profile name.</p>
+                    <form className="profile-search-form" onSubmit={discoverProfiles}>
+                      <label>Profile search<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} placeholder="alice.eth, Alice, or 0x…" minLength={2} maxLength={80} required /></label>
+                      <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
+                    </form>
+                    {profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
+                    {profileSearchResults.length ? <div className="profile-search-results">{profileSearchResults.map((profile) => (
+                      <button type="button" key={profile.account_id} onClick={() => openProfile(profile.wallet_address)}>
+                        <strong>{profile.display_name || profile.ens_name || short(profile.wallet_address)}</strong>
+                        <span>{profile.display_name && profile.ens_name ? `${profile.ens_name} · ` : ""}{short(profile.wallet_address)}</span>
+                      </button>
+                    ))}</div> : null}
+                  </section>
                   {selectedProfile ? (
                     <>
-                      <section className="panel profile-hero" id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
-                        <UserRound size={28} />
-                        <div><p className="eyebrow">Public wallet profile</p><h3>{publicProfile?.display_name || short(selectedProfile.address)}</h3><code>{selectedProfile.address}</code>{publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}{publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer">Profile link <ExternalLink size={13} /></a> : null}{profileMessage ? <p className="form-hint">{profileMessage}</p> : null}</div>
+                      <section className="panel profile-card" id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
+                        <div className="profile-hero">
+                          <UserRound size={28} />
+                          <div><p className="eyebrow">Public wallet profile</p><h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>{publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}<code>{selectedProfile.address}</code>{publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}{publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}{profileMessage ? <p className="form-hint">{profileMessage}</p> : null}</div>
+                        </div>
+                        {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties" aria-label="Profile work preferences">
+                          {publicProfile.work_types?.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}
+                          {publicProfile.categories?.map((category) => <span key={`category-${category}`}>{category}</span>)}
+                          {publicProfile.custom_specialty ? <span>{publicProfile.custom_specialty}</span> : null}
+                        </div> : null}
                         {publicProfile?.account_id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
                       </section>
                       {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
@@ -1025,31 +1185,42 @@ export default function App() {
                             event.preventDefault();
                             const form = new FormData(event.currentTarget);
                             void act(async () => {
-                              const updated = await updateMyProfile({ displayName: String(form.get("displayName") ?? "") || null, profileBio: String(form.get("profileBio") ?? "") || null, profileUrl: String(form.get("profileUrl") ?? "") || null });
+                              const updated = await updateMyProfile({
+                                displayName: String(form.get("displayName") ?? "") || null,
+                                profileBio: String(form.get("profileBio") ?? "") || null,
+                                profileUrl: String(form.get("profileUrl") ?? "") || null,
+                                workTypes: form.getAll("workTypes").map(String),
+                                categories: form.getAll("categories").map(String),
+                                customSpecialty: String(form.get("customSpecialty") ?? "").trim() || null
+                              });
                               setPublicProfile(updated);
                             }, "Public profile updated.");
                           }}>
-                            <label>Display name<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /></label>
+                            <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
                             <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
                             <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
+                            <fieldset className="profile-preference-fieldset"><legend>Work types</legend><p className="form-hint">Choose the kinds of engagement you want visitors to find.</p><div className="profile-checkbox-grid">{scopes.map((scope) => <label key={scope.value}><input type="checkbox" name="workTypes" value={scope.value} defaultChecked={publicProfile?.work_types?.includes(scope.value)} />{scope.label}</label>)}</div></fieldset>
+                            <fieldset className="profile-preference-fieldset"><legend>Categories</legend><p className="form-hint">Choose the areas that best describe your work or hiring interests.</p><div className="profile-checkbox-grid">{categories.map((category) => <label key={category.value}><input type="checkbox" name="categories" value={category.value} defaultChecked={publicProfile?.categories?.includes(category.value)} />{category.label}</label>)}</div></fieldset>
+                            <label>Other specialty (optional)<input name="customSpecialty" defaultValue={publicProfile?.custom_specialty ?? ""} maxLength={120} placeholder="Add a specialty not covered above" /></label>
                             <button type="submit">Save public profile</button>
                           </form>
                         </details>
                       ) : null}
+                      <p className="rating-context">Capital-provider and labor-provider ratings stay separate so each kind of participation is easy to understand.</p>
                       <section className="profile-role-grid">
                         <article className="panel profile-role-card">
                           <div className="section-heading"><WalletCards /><h3>As a capital provider</h3></div>
-                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.capital_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.capitalReviews)}</strong><span>{publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length ?? 0} payment-experience review{(publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length) === 1 ? "" : "s"} · {selectedProfile.capitalBounties} bounties posted</span></div>
+                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.capital_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.capitalReviews)}</strong><span>{publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length ?? 0} payment-experience review{(publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length) === 1 ? "" : "s"} · {publicProfile?.activity_summary?.capital_bounties ?? selectedProfile.capitalBounties} bounties posted</span></div>
                           {publicProfile ? apiProfileReviewList("payment_received", "No labor provider has rated this wallet’s payment experience yet.") : profileReviewList(selectedProfile.capitalReviews, "No labor provider has rated this wallet’s payment experience yet.")}
                         </article>
                         <article className="panel profile-role-card">
                           <div className="section-heading"><UsersRound /><h3>As a labor provider</h3></div>
-                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.labor_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.laborReviews)}</strong><span>{publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length ?? 0} service review{(publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length) === 1 ? "" : "s"} · {selectedProfile.laborBounties} bounties worked</span></div>
+                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.labor_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.laborReviews)}</strong><span>{publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length ?? 0} service review{(publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length) === 1 ? "" : "s"} · {publicProfile?.activity_summary?.labor_bounties ?? selectedProfile.laborBounties} bounties worked</span></div>
                           {publicProfile ? apiProfileReviewList("service_received", "No capital provider has rated this wallet’s delivered work yet.") : profileReviewList(selectedProfile.laborReviews, "No capital provider has rated this wallet’s delivered work yet.")}
                         </article>
                       </section>
                     </>
-                  ) : <div className="panel empty-state-panel"><UserRound /><strong>Choose a wallet from a bounty, application, or review to view its profile.</strong></div>}
+                  ) : <div className="panel empty-state-panel"><UserRound /><strong>Search for a public profile or choose a wallet from a bounty, application, or review.</strong></div>}
                 </section>
               ) : null}
 
@@ -1104,7 +1275,7 @@ export default function App() {
                   )}
                 </section>
               ) : null}
-          <footer className="legal-footer"><a href="/terms.html">Terms</a><a href="/acceptable-use.html">Acceptable Use</a><a href="/privacy.html">Privacy</a><span>Built by Bittrees Technology</span></footer>
+          <footer className="legal-footer"><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable Use</a><a href="/privacy">Privacy</a><span>Built by Bittrees Technology</span></footer>
         </section>
       </section>
     </main>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { EscrowObservationError, verifyCanonicalEscrowObservation, type ExpectedEscrowObservation, type ReceiptEscrowObservation } from "./escrowObservation";
+import {
+  EscrowObservationError,
+  observeSettlementProposal,
+  verifyCanonicalEscrowObservation,
+  type ExpectedEscrowObservation,
+  type ReceiptEscrowObservation,
+  type SettlementProposalObservation
+} from "./escrowObservation";
 
 const expected: ExpectedEscrowObservation = {
   chainId: 84532,
@@ -23,9 +30,13 @@ const observed: ReceiptEscrowObservation = {
     amountBaseUnits: "100000000",
     deliveryDeadline: 1786465600n,
     reviewDeadline: 0n,
+    revisionDeadline: 0n,
     state: "Pending",
     evidenceHash: `0x${"00".repeat(32)}`,
-    approvalHash: `0x${"00".repeat(32)}`
+    previousEvidenceHash: `0x${"00".repeat(32)}`,
+    approvalHash: `0x${"00".repeat(32)}`,
+    revisionReasonHash: `0x${"00".repeat(32)}`,
+    revisionRequested: false
   }
 };
 
@@ -84,5 +95,44 @@ describe("canonical escrow observation verification", () => {
   it("rejects an invalid active milestone or mismatched active detail", () => {
     expectRejection({ currentMilestone: 2 }, "ESCROW_CURRENT_MILESTONE_INVALID");
     expectRejection({ currentMilestoneDetail: { ...observed.currentMilestoneDetail!, milestoneIndex: 1 } }, "ESCROW_CURRENT_MILESTONE_DETAIL_MISMATCH");
+  });
+});
+
+describe("settlement proposal observation", () => {
+  const proposal: SettlementProposalObservation = {
+    state: "Delivered",
+    requesterAddress: expected.requesterAddress,
+    providerAddress: expected.providerAddress,
+    amountBaseUnits: "250000000",
+    deliveryDeadline: 1786465600n,
+    reviewDeadline: 1787070400n,
+    settlementProposerAddress: expected.requesterAddress,
+    proposedProviderPayoutBaseUnits: "125000000",
+    settlementProposalExpiry: 1787070400n
+  };
+
+  it("distinguishes an active proposal from the exact expiry boundary", () => {
+    expect(observeSettlementProposal(proposal, proposal.settlementProposalExpiry - 1n)).toBe("active");
+    expect(observeSettlementProposal(proposal, proposal.settlementProposalExpiry)).toBe("expired");
+  });
+
+  it("recognizes a fully cleared proposal", () => {
+    expect(observeSettlementProposal({
+      ...proposal,
+      settlementProposerAddress: "0x0000000000000000000000000000000000000000",
+      proposedProviderPayoutBaseUnits: "0",
+      settlementProposalExpiry: 0n
+    }, 1780000000n)).toBe("none");
+  });
+
+  it("rejects forged proposer, amount, state, and deadline observations", () => {
+    expect(() => observeSettlementProposal({ ...proposal, settlementProposerAddress: "0x9999999999999999999999999999999999999999" }, 1n))
+      .toThrow(new EscrowObservationError("ESCROW_SETTLEMENT_PROPOSER_INVALID"));
+    expect(() => observeSettlementProposal({ ...proposal, proposedProviderPayoutBaseUnits: "250000001" }, 1n))
+      .toThrow(new EscrowObservationError("ESCROW_SETTLEMENT_AMOUNT_INVALID"));
+    expect(() => observeSettlementProposal({ ...proposal, state: "Released" }, 1n))
+      .toThrow(new EscrowObservationError("ESCROW_SETTLEMENT_STATE_INVALID"));
+    expect(() => observeSettlementProposal({ ...proposal, settlementProposalExpiry: proposal.reviewDeadline + 1n }, 1n))
+      .toThrow(new EscrowObservationError("ESCROW_SETTLEMENT_EXPIRY_INVALID"));
   });
 });

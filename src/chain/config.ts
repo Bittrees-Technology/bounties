@@ -32,7 +32,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://etherscan.io",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "ETHEREUM_MAINNET_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_1_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(1),
     enabled: globallyEnabled && Boolean(configuredAddress(1))
@@ -44,7 +44,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://sepolia.etherscan.io",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "ETHEREUM_SEPOLIA_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_11155111_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(11155111),
     enabled: globallyEnabled && Boolean(configuredAddress(11155111))
@@ -56,7 +56,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://basescan.org",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "BASE_MAINNET_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_8453_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(8453),
     enabled: globallyEnabled && Boolean(configuredAddress(8453))
@@ -68,7 +68,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://sepolia.basescan.org",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "BASE_SEPOLIA_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_84532_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(84532),
     enabled: globallyEnabled && Boolean(configuredAddress(84532))
@@ -80,7 +80,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://robinhoodchain.blockscout.com",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "ROBINHOOD_MAINNET_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_4663_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(4663),
     enabled: globallyEnabled && Boolean(configuredAddress(4663))
@@ -92,7 +92,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     nativeCurrency: "ETH",
     blockExplorer: "https://explorer.testnet.chain.robinhood.com",
     explorerContractPath: "/address/",
-    rpcUrlEnvVar: "ROBINHOOD_TESTNET_RPC_URL",
+    rpcUrlEnvVar: "CHAIN_46630_RPC_URL",
     requiredConfirmations: 12,
     escrowContractAddress: configuredAddress(46630),
     enabled: globallyEnabled && Boolean(configuredAddress(46630))

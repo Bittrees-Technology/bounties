@@ -11,9 +11,11 @@ address. Token symbols, decimals, names, and offchain prices are never read.
 
 ```text
 Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
-    |          |              |              |
-    +----------+-> Cancelled  +-> Refunded   +-> Released (at/after reviewDeadline)
-               \______________\______________-> Settled (bilateral exact split)
+    |          |              ^      |       |
+    +----------+-> Cancelled  |      |       +-> Released (at/after reviewDeadline)
+               |              +-- Revision (once, seven days to resubmit)
+               +-------------> Refunded (missed active delivery/revision deadline)
+               \__________________________________-> Settled (bilateral exact split)
 ```
 
 ## Milestone schedule
@@ -23,13 +25,20 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
 - Every milestone allocation is a positive token base-unit amount. Their exact
   sum is stored as `allocatedAmount`, and funding must equal that sum. Partial
   funding and unallocated principal are rejected.
-- Each milestone carries an absolute `uint64` Unix delivery deadline. Nonzero
-  deadlines must strictly increase. Zero disables timeout for that milestone;
-  once zero appears, every later deadline must also be zero.
+- Each milestone carries a required, positive, absolute `uint64` Unix delivery
+  deadline. Consecutive deadlines must be more than 21 days apart so a full
+  original review, revision period, and revised review cannot consume the next
+  milestone's delivery window.
 - Only `currentMilestone` can be submitted. Its evidence opens its own seven-day
   review. Buyer approval or review expiry lets anyone release exactly that
   milestone allocation to the provider. A nonfinal release advances the active
   index and active `Bounty.deliveryDeadline`; the final release terminates the bounty.
+- During that review, the requester may record one nonzero revision-reason hash
+  for the active milestone. This returns it to pending and gives the provider a
+  fixed seven days to resubmit. A second revision is impossible. Missing the
+  revision deadline lets the requester refund all unreleased principal; a revised
+  submission must use a different evidence commitment and opens the normal
+  seven-day approval or permissionless-release window.
 - The schedule hash commits exact ordered amounts and deadlines. Milestone terms
   bind that schedule to the provider and proposal, preventing substitution after
   provider acceptance.
@@ -39,10 +48,15 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
   escrowAddress, scopeHash, proposalHash, provider, scheduleHash))`.
 - Cancellation before provider acceptance refunds all outstanding principal.
   After acceptance, missing the active milestone deadline refunds only unreleased
-  principal. Bilateral settlement likewise splits only unreleased principal;
+  principal. Anyone may trigger this deterministic refund, but it always pays the
+  requester. Bilateral settlement likewise splits only unreleased principal;
   completed milestone payments remain final.
-- Settlement offers are cleared whenever provider acceptance, milestone delivery,
-  buyer approval, or milestone advancement changes the lifecycle context.
+- Settlement offers last at most `SETTLEMENT_PROPOSAL_PERIOD` (seven days) and
+  are shortened to the active delivery or review deadline. Acceptance is invalid
+  at the exact expiry boundary. The current proposer may cancel without changing
+  the bounty lifecycle, and offers are cleared whenever provider acceptance,
+  milestone delivery, buyer approval, release, cancellation, refund, settlement,
+  or milestone advancement changes the lifecycle context.
 
 ### Frontend and persistence contract
 
@@ -65,17 +79,27 @@ top-level evidence/deadline fields mirror the active milestone.
   stored terms hash is
   `keccak256(abi.encode(TERMS_DOMAIN, chainId, escrowAddress, scopeHash, proposalHash, provider))`.
 - Only that committed provider can accept the exact committed terms.
-- Only that provider can submit the immutable evidence commitment.
+- Only that provider can submit the immutable evidence commitment. Its canonical offchain
+  preimage contains both the URI hash and the provider-supplied SHA-256 digest of the exact
+  delivered file or documented canonical bundle bytes. The URI is never used as a substitute
+  for delivered content, and direct contract callers are responsible for deriving the same
+  canonical commitment before calling `submitDelivery`.
 - Delivery stores `reviewDeadline = block.timestamp + 7 days`. Anyone can
   trigger full release after buyer approval or at/after that exact deadline;
   payout always goes to the recorded provider.
-- In `Funded`, `ProviderAccepted`, or `Delivered`, either requester or provider
+- Before that review deadline, the requester may call `requestRevision` exactly
+  once for the active milestone with a nonzero reason hash. The provider then has
+  `REVISION_PERIOD` (seven days) to replace the evidence commitment. The hash and
+  deadline remain in the milestone record as an audit trail.
+- In `Funded`, `ProviderAccepted`, `Delivered`, or `BuyerApproved`, either requester or provider
   may propose an exact provider payout from zero through the full principal.
-  Only the counterparty can accept the current exact proposal. Acceptance
-  terminally pays that amount to the provider and refunds the entire remainder
-  to the requester in one atomic transaction.
-- `deliveryDeadline == 0` disables timeout. Otherwise acceptance and delivery
-  require `block.timestamp < deliveryDeadline`; refund requires
+  Only the counterparty can accept the current exact, unexpired proposal. Every
+  offer expires within seven days and cannot outlive the active delivery or
+  review window; the current proposer may cancel it. Acceptance terminally pays
+  that amount to the provider and refunds the entire remainder to the requester
+  in one atomic transaction.
+- Creation rejects zero delivery deadlines. Acceptance and delivery require
+  `block.timestamp < deliveryDeadline`; refund requires
   `block.timestamp >= deliveryDeadline`.
 - There is no adjudication or dispute dependency. The seven-day review expiry
   deterministically releases the full principal; a different split requires

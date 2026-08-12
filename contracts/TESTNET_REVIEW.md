@@ -32,8 +32,10 @@ Timestamp comparisons cover both boundaries: timeout refund is available at
 `deliveryDeadline`, while permissionless full release is available at the stored
 `reviewDeadline = delivery timestamp + 7 days`. Deadlines should use operationally
 meaningful margins rather than exact block-second assumptions. The suite also
-exercises requester/provider settlement proposals, counterparty-only acceptance,
-exact split conservation, and atomic failure/reentrancy behavior.
+exercises requester/provider settlement proposals, the fixed seven-day maximum
+expiry, shortening at delivery/review boundaries, proposer-only cancellation,
+counterparty-only acceptance of unexpired offers, exact split conservation, and
+atomic failure/reentrancy behavior.
 
 Milestone review must reconcile every emitted `MilestoneConfigured` allocation
 and deadline against the offchain schedule, prove their sum equals funding, then

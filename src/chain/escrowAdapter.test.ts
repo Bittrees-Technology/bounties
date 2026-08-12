@@ -279,7 +279,7 @@ describe("escrow adapter provider support", () => {
     const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 2500000n });
     const adapter = createViemEscrowAdapter({ chain, smartWalletProvider, integrationEnabled: true, statusPollIntervalMs: 0 });
 
-    await adapter.createEscrow(createOrder({ deliveryDeadline: 0n }), funding);
+    await adapter.createEscrow(createOrder(), funding);
 
     const sendCalls = smartWalletProvider.calls.find((call) => call.method === "wallet_sendCalls");
     const params = sendCalls?.params as Array<{ calls: unknown[] }>;
@@ -340,16 +340,33 @@ describe("escrow adapter provider support", () => {
     });
   });
 
+  it("encodes the bounded revision reason commitment", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.requestRevision(createOrder(), { reasonHash: hash })).resolves.toEqual({ state: "confirmed", txHash });
+
+    const send = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
+    const transaction = (send?.params as Array<{ data: `0x${string}` }>)[0];
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
+      functionName: "requestRevision",
+      args: [7n, hash]
+    });
+    expect(eoaProvider.calls.some((call) => call.method === "eth_getTransactionReceipt")).toBe(true);
+  });
+
   it("encodes exact bilateral settlement proposals and acceptance, including a zero payout", async () => {
     const eoaProvider = new RecordingProvider();
     const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
 
     await adapter.proposeSettlement(createOrder(), { providerPayoutBaseUnits: "1250000" });
     await adapter.acceptSettlement(createOrder(), { providerPayoutBaseUnits: "0" });
+    await adapter.cancelSettlementProposal(createOrder());
 
     const sends = eoaProvider.calls.filter((call) => call.method === "eth_sendTransaction");
     const proposed = (sends[0].params as Array<{ data: `0x${string}` }>)[0];
     const accepted = (sends[1].params as Array<{ data: `0x${string}` }>)[0];
+    const cancelled = (sends[2].params as Array<{ data: `0x${string}` }>)[0];
     expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: proposed.data })).toEqual({
       functionName: "proposeSettlement",
       args: [7n, 1250000n]
@@ -357,6 +374,10 @@ describe("escrow adapter provider support", () => {
     expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: accepted.data })).toEqual({
       functionName: "acceptSettlement",
       args: [7n, 0n]
+    });
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: cancelled.data })).toEqual({
+      functionName: "cancelSettlementProposal",
+      args: [7n]
     });
   });
 
@@ -398,6 +419,7 @@ describe("escrow adapter provider support", () => {
         approvalHash: `0x${"00".repeat(32)}`,
         settlementProposer: zeroAddress,
         proposedProviderPayout: 0n,
+        settlementProposalExpiry: 1787070400n,
         allocatedAmount: 2500000n,
         releasedAmount: 0n,
         milestoneCount: 2,
@@ -419,6 +441,7 @@ describe("escrow adapter provider support", () => {
       scopeHash: hash,
       settlementProposer: zeroAddress,
       proposedProviderPayoutBaseUnits: "0",
+      settlementProposalExpiry: 1787070400n,
       allocatedAmountBaseUnits: "2500000",
       releasedAmountBaseUnits: "0",
       milestoneCount: 2,
@@ -436,9 +459,13 @@ describe("escrow adapter provider support", () => {
         amount: 1000000n,
         deliveryDeadline: 1786465600n,
         reviewDeadline: 1787070400n,
+        revisionDeadline: 0n,
         state: 1,
         evidenceHash: hash,
-        approvalHash: `0x${"00".repeat(32)}`
+        previousEvidenceHash: `0x${"00".repeat(32)}`,
+        approvalHash: `0x${"00".repeat(32)}`,
+        revisionReasonHash: `0x${"00".repeat(32)}`,
+        revisionRequested: false
       } as never
     });
     const eoaProvider = new RecordingProvider({ ethCallResult: milestoneResult });
@@ -449,9 +476,13 @@ describe("escrow adapter provider support", () => {
       amountBaseUnits: "1000000",
       deliveryDeadline: 1786465600n,
       reviewDeadline: 1787070400n,
+      revisionDeadline: 0n,
       state: "Submitted",
       evidenceHash: hash,
-      approvalHash: `0x${"00".repeat(32)}`
+      previousEvidenceHash: `0x${"00".repeat(32)}`,
+      approvalHash: `0x${"00".repeat(32)}`,
+      revisionReasonHash: `0x${"00".repeat(32)}`,
+      revisionRequested: false
     });
     const call = eoaProvider.calls.find((entry) => entry.method === "eth_call");
     const transaction = (call?.params as Array<{ data: `0x${string}` }>)[0];

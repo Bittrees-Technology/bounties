@@ -14,6 +14,7 @@ export type {
   EscrowMilestoneRecord,
   EscrowMilestoneState,
   EscrowOrderRef,
+  EscrowRevisionInput,
   EscrowSettlementInput,
   EscrowOnchainRecord,
   EscrowOnchainState,
@@ -31,6 +32,14 @@ export { EscrowClientError, mapErrorToUserMessage, errorCodeOf } from "./errors"
 export type { EscrowErrorCode } from "./errors";
 
 export { mapEventTypeToLabel } from "./events";
+
+export { EscrowObservationError, observeSettlementProposal, verifyCanonicalEscrowObservation } from "./escrowObservation";
+export type {
+  ExpectedEscrowObservation,
+  ReceiptEscrowObservation,
+  SettlementProposalObservation,
+  SettlementProposalStatus
+} from "./escrowObservation";
 
 export { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 export type { EscrowAbiEvent, EscrowAbiFunction, EscrowAbiParameter, EscrowBoundaryAbi } from "./abi";

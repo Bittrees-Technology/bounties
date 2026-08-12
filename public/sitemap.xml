@@ -5,7 +5,7 @@
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
-  <url><loc>https://bounties.bittrees.org/terms.html</loc></url>
-  <url><loc>https://bounties.bittrees.org/acceptable-use.html</loc></url>
-  <url><loc>https://bounties.bittrees.org/privacy.html</loc></url>
+  <url><loc>https://bounties.bittrees.org/terms</loc></url>
+  <url><loc>https://bounties.bittrees.org/acceptable-use</loc></url>
+  <url><loc>https://bounties.bittrees.org/privacy</loc></url>
 </urlset>

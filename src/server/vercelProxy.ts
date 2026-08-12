@@ -51,11 +51,18 @@ export function resolveDirectRoute(requestUrl: string, method: string): DirectRo
       if (!route.methods.has(normalizedMethod)) throw new ProxyRequestError("Method not allowed.", 405);
       const queryEntries = [...url.searchParams.entries()];
       const effectiveAction = route.handler === "wallet-auth" ? "wallet-auth" : action || "snapshot";
-      const isVercelRewritePath = route.handler === "bounties"
-        && queryEntries.length === 1
-        && queryEntries[0][0] === "path"
-        && queryEntries[0][1].replace(/^\/+|\/+$/g, "") === effectiveAction;
-      if (queryEntries.length && !isVercelRewritePath) {
+      const pathEntries = queryEntries.filter(([key]) => key === "path");
+      const publicSearchEntries = queryEntries.filter(([key]) => key === "q");
+      const unexpectedEntries = queryEntries.filter(([key]) => key !== "path" && key !== "q");
+      const validRewritePath = pathEntries.length <= 1
+        && (!pathEntries.length || pathEntries[0][1].replace(/^\/+|\/+$/g, "") === effectiveAction);
+      const validPublicSearch = effectiveAction === "profiles/search"
+        && normalizedMethod === "GET"
+        && publicSearchEntries.length === 1
+        && publicSearchEntries[0][1].trim().length >= 2
+        && publicSearchEntries[0][1].trim().length <= 80;
+      if (unexpectedEntries.length || !validRewritePath || (publicSearchEntries.length ? !validPublicSearch : false)
+        || (queryEntries.length && !pathEntries.length && !validPublicSearch)) {
         throw new ProxyRequestError("Query parameters are not supported.", 400);
       }
       return {

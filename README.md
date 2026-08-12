@@ -13,14 +13,16 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Publish buyer requests across defined-task, deliverable, milestone, project,
   consultation, audit, and retainer scopes with one to 32 ordered deliverables.
 - Allocate each deliverable a positive token amount and absolute delivery date;
-  allocations must equal the exact ERC20 budget and dates must move forward.
+  allocations must equal the exact ERC20 budget and consecutive dates must be
+  more than 21 days apart to preserve all review and revision windows.
 - Capture exact ERC20 budget units, buyer/reviewer context, support, and acceptance criteria in Postgres.
 - Allow any wallet to create bounties or proposals without an allowlist or administrator approval.
 - Inspect tokens by chain and contract address, including metadata, bytecode presence, collision risks, and a direct explorer link.
-- Persist proposals, milestones, delivery evidence, verified escrow observations, and notifications.
+- Persist proposals, milestones, delivery evidence, verified escrow observations, and notifications. Evidence independently binds its location and the provider-supplied SHA-256 digest of the exact delivered file or canonical bundle bytes; the digest is never derived from the URI.
 - Expose participant wallet actions for atomic create/fund, provider acceptance,
-  delivery commitments, buyer approval, seven-day release, cancellation, timeout
-  refund, and bilateral exact-split settlement whenever a verified deployment is configured.
+  delivery commitments, one bounded requester revision per milestone, buyer
+  approval, seven-day release, cancellation, timeout refund, and bilateral
+  exact-split settlement whenever a verified deployment is configured.
 - Let signed-in users report listings and reviews, and let operations-provisioned
   moderators hide illegal or prohibited content from the hosted frontend without
   gaining any authority over escrow or onchain state.
@@ -31,8 +33,9 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported
   test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). Every
   contract address remains unset and fail-closed until separately deployed and verified.
-- Ship with live settlement fail-closed; the contract boundary defines seven-day
-  post-delivery release and bilateral exact-split settlement, while wallet
+- Ship with live settlement fail-closed; the contract boundary defines mandatory
+  delivery deadlines, one seven-day revision window per milestone, seven-day
+  post-delivery release, and bilateral exact-split settlement, while wallet
   broadcast controls remain hidden until operations enables a verified deployment
   address after the remaining approvals.
 
@@ -87,9 +90,9 @@ bootstrap can run locally. Vercel production adds CSP, HSTS, frame/cross-origin
 policy, and SPA fallback rules from `vercel.json`. Static launch-surface files live in
 `public/`:
 `robots.txt`, `sitemap.xml`, `site.webmanifest`, `favicon.svg`, and
-`social-preview.svg`. Draft product terms, acceptable-use rules, and privacy notice
-are published at `terms.html`, `acceptable-use.html`, and `privacy.html` for final
-entity/jurisdiction review. Canonical, sitemap, and social metadata use the production
+`social-preview.svg`. Effective product terms, acceptable-use rules, and privacy notice
+are published at `/terms`, `/acceptable-use`, and `/privacy`; entity and jurisdiction
+details remain subject to Operations/legal review. Canonical, sitemap, and social metadata use the production
 `https://bounties.bittrees.org/` origin.
 
 ## Suggested board columns

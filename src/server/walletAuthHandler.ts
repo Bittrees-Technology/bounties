@@ -1,8 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 import { Contract, JsonRpcProvider, getAddress, hashMessage, verifyMessage } from "ethers";
 import { createSiweMessage } from "viem/siwe";
+import { configuredServerRpcUrl } from "./chainRpc.js";
+import { requestRateLimitDigest } from "./requestRateLimit.js";
 import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } from "./vercelProxy.js";
-import { requiredServerEnv, serverEnv } from "./serverEnv.js";
+import { requiredServerEnv } from "./serverEnv.js";
 
 const encoder = new TextEncoder();
 const eip1271Abi = ["function isValidSignature(bytes32 hash, bytes signature) view returns (bytes4)"];
@@ -91,10 +93,6 @@ function headers(origin: URL): HeadersInit {
   };
 }
 
-function rpcUrl(id: number): string | undefined {
-  return serverEnv(`CHAIN_${id}_RPC_URL`) ?? (id === 84532 ? serverEnv("BASE_SEPOLIA_RPC_URL") : undefined);
-}
-
 function message(origin: URL, wallet: string, id: number, nonce: string, issuedAt: string, expirationTime: string, requestId: string) {
   try {
     return createSiweMessage({
@@ -105,7 +103,7 @@ function message(origin: URL, wallet: string, id: number, nonce: string, issuedA
       issuedAt: new Date(issuedAt),
       nonce,
       requestId,
-      resources: [`${origin.origin}/terms.html`, `${origin.origin}/privacy.html`],
+      resources: [`${origin.origin}/terms`, `${origin.origin}/privacy`],
       scheme: origin.protocol.slice(0, -1),
       statement: SIWE_STATEMENT,
       uri: origin.origin,
@@ -141,7 +139,7 @@ async function verifySignature(wallet: string, id: number, signedMessage: string
     // Fall through to EIP-1271 for contract wallets.
   }
 
-  const providerUrl = rpcUrl(id);
+  const providerUrl = configuredServerRpcUrl(id);
   if (!providerUrl) throw new AuthError("SIGNATURE_RPC_UNAVAILABLE", 503);
   const provider = new JsonRpcProvider(providerUrl);
   const network = await withTimeout(provider.getNetwork(), "SIGNATURE_RPC_TIMEOUT");
@@ -168,6 +166,7 @@ async function handle(request: Request): Promise<Response> {
   const db = rpcClient();
   const domain = origin.host;
   const uri = origin.origin;
+  const sourceDigest = await requestRateLimitDigest(request, origin);
 
   if (body.action === "nonce") {
     const wallet = address(requiredString(body, "walletAddress"));
@@ -180,6 +179,7 @@ async function handle(request: Request): Promise<Response> {
       p_chain_id: id,
       p_domain: domain,
       p_uri: uri,
+      p_source_digest: sourceDigest,
       p_nonce_digest: await digest(nonce),
       p_issued_at: issuedAt,
       p_expires_at: expirationTime
@@ -213,10 +213,29 @@ async function handle(request: Request): Promise<Response> {
     }
     if (expirationTimeMs <= Date.now()) throw new AuthError("SIGNATURE_EXPIRED", 401);
     if (requiredString(body, "message") !== signedMessage) throw new AuthError("SIWE_MESSAGE_MISMATCH", 401);
+    const nonceDigest = await digest(requiredString(body, "nonce"));
+    const { data: nonceIsValid, error: validationError } = await db.rpc("app_validate_auth_nonce", {
+      p_nonce_id: nonceId,
+      p_nonce_digest: nonceDigest,
+      p_wallet_address: wallet.toLowerCase(),
+      p_chain_id: id,
+      p_domain: domain,
+      p_uri: uri,
+      p_issued_at: issuedAt,
+      p_expires_at: expirationTime,
+      p_source_digest: sourceDigest
+    });
+    if (validationError || nonceIsValid !== true) {
+      const rateLimited = validationError?.message?.includes("RATE_LIMITED");
+      throw new AuthError(
+        safeDatabaseCode(validationError?.message, rateLimited ? "AUTH_VERIFY_RATE_LIMITED" : "NONCE_INVALID"),
+        rateLimited ? 429 : 401
+      );
+    }
     await verifySignature(wallet, id, signedMessage, requiredString(body, "signature"));
     const { data: accountId, error: consumeError } = await db.rpc("app_consume_auth_nonce", {
       p_nonce_id: nonceId,
-      p_nonce_digest: await digest(requiredString(body, "nonce")),
+      p_nonce_digest: nonceDigest,
       p_wallet_address: wallet.toLowerCase(),
       p_chain_id: id,
       p_domain: domain,

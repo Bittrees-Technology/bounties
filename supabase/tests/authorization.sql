@@ -210,16 +210,22 @@ select is(
 );
 select lives_ok(
   $$ select public.app_issue_auth_nonce(
-       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',repeat('a',64),
+       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',repeat('f',64),repeat('a',64),
        date_trunc('milliseconds',now()),date_trunc('milliseconds',now()) + interval '5 minutes') $$,
   'service auth path can issue a bound five-minute nonce'
 );
 select lives_ok(
-  $$ select public.app_consume_auth_nonce(
-       (select id from public.auth_nonces where nonce_digest = repeat('a',64)),repeat('a',64),
-       '0x3333333333333333333333333333333333333333',8453,'example.test','https://example.test',
-       (select issued_at from public.auth_nonces where nonce_digest = repeat('a',64)),
-       (select expires_at from public.auth_nonces where nonce_digest = repeat('a',64))) $$,
+  $$ do $auth$
+       declare nonce_row public.auth_nonces;
+       begin
+         select * into nonce_row from public.auth_nonces where nonce_digest = repeat('a',64);
+         perform public.app_validate_auth_nonce(
+           nonce_row.id,repeat('a',64),'0x3333333333333333333333333333333333333333',8453,
+           'example.test','https://example.test',nonce_row.issued_at,nonce_row.expires_at,repeat('f',64));
+         perform public.app_consume_auth_nonce(
+           nonce_row.id,repeat('a',64),'0x3333333333333333333333333333333333333333',8453,
+           'example.test','https://example.test',nonce_row.issued_at,nonce_row.expires_at);
+       end $auth$ $$,
   'matching nonce is consumed once and creates the wallet account identity'
 );
 select throws_ok(

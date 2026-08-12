@@ -23,7 +23,7 @@ export class SiweChallengeError extends Error {
 
 export function siweResources(origin: string): string[] {
   const url = new URL(origin);
-  return [new URL("/terms.html", url).toString(), new URL("/privacy.html", url).toString()];
+  return [new URL("/terms", url).toString(), new URL("/privacy", url).toString()];
 }
 
 function required(payload: Record<string, string>, key: keyof SiweChallenge): string {

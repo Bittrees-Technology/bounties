@@ -166,6 +166,11 @@ contract BountyEscrowHandler is Test {
             bounty.state != IBountyEscrow.State.Funded && bounty.state != IBountyEscrow.State.ProviderAccepted
                 && bounty.state != IBountyEscrow.State.Delivered
         ) return;
+        if (
+            ((bounty.state == IBountyEscrow.State.Funded || bounty.state == IBountyEscrow.State.ProviderAccepted)
+                    && block.timestamp >= bounty.deliveryDeadline)
+                || (bounty.state == IBountyEscrow.State.Delivered && block.timestamp >= bounty.reviewDeadline)
+        ) return;
 
         uint256 providerPayout = bound(uint256(rawProviderPayout), 0, bounty.amount);
         vm.prank(providerProposes ? tracked.provider : requester);
@@ -182,10 +187,22 @@ contract BountyEscrowHandler is Test {
                 && bounty.state != IBountyEscrow.State.Delivered
         ) return;
         if (bounty.settlementProposer == address(0)) return;
+        if (block.timestamp >= bounty.settlementProposalExpiry) return;
 
         address acceptor = bounty.settlementProposer == requester ? tracked.provider : requester;
         vm.prank(acceptor);
         escrow.acceptSettlement(tracked.id, bounty.proposedProviderPayout);
+    }
+
+    function cancelSettlementProposal(uint256 rawIndex) external {
+        if (_tracked.length == 0) return;
+        uint256 index = rawIndex % _tracked.length;
+        TrackedBounty storage tracked = _tracked[index];
+        BountyEscrow.Bounty memory bounty = escrow.getBounty(tracked.id);
+        if (bounty.settlementProposer == address(0)) return;
+
+        vm.prank(bounty.settlementProposer);
+        escrow.cancelSettlementProposal(tracked.id);
     }
 
     function cancel(uint256 rawIndex) external {
@@ -384,6 +401,16 @@ contract BountyEscrowInvariantTest is StdInvariant, Test {
             if (bounty.settlementProposer != address(0)) {
                 assertTrue(bounty.settlementProposer == requester || bounty.settlementProposer == provider);
                 assertLe(bounty.proposedProviderPayout, amount);
+                assertGt(bounty.settlementProposalExpiry, 0);
+                if (bounty.state == IBountyEscrow.State.Funded || bounty.state == IBountyEscrow.State.ProviderAccepted)
+                {
+                    assertLe(bounty.settlementProposalExpiry, bounty.deliveryDeadline);
+                } else if (bounty.state == IBountyEscrow.State.Delivered) {
+                    assertLe(bounty.settlementProposalExpiry, bounty.reviewDeadline);
+                }
+            } else {
+                assertEq(bounty.proposedProviderPayout, 0);
+                assertEq(bounty.settlementProposalExpiry, 0);
             }
 
             if (state == IBountyEscrow.State.Created) {
@@ -418,6 +445,8 @@ contract BountyEscrowInvariantTest is StdInvariant, Test {
                     || state == IBountyEscrow.State.Settled
             ) {
                 assertEq(bounty.amount, 0);
+                assertEq(bounty.settlementProposer, address(0));
+                assertEq(bounty.settlementProposalExpiry, 0);
             } else if (state == IBountyEscrow.State.Cancelled) {
                 assertEq(bounty.amount, 0);
                 assertEq(bounty.acceptedTermsHash, bytes32(0));

@@ -8,6 +8,7 @@ const EVENT_LABELS: Record<EscrowEventType, string> = {
   DeliveryAccepted: "Delivery accepted",
   PaymentReleased: "Payment released",
   SettlementProposed: "Bilateral settlement proposed",
+  SettlementProposalCancelled: "Settlement proposal cancelled",
   BilateralSettlementCompleted: "Bilateral settlement completed",
   EscrowCancelled: "Escrow cancelled",
   TimeoutRefundClaimed: "Timeout refund claimed"

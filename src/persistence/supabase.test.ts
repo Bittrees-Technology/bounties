@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createBounty, loadMarketplace, loadPublicProfile, mapBounty, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { createBounty, loadMarketplace, loadPublicProfile, mapBounty, searchPublicProfiles, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -148,8 +148,10 @@ describe("Supabase marketplace mapping", () => {
       profile_url: "https://example.test/profile",
       profile_moderation_status: "visible",
       profile_updated_at: "2026-08-12T00:00:00.000Z",
+      ens_name: "dual.eth",
       member_since: "2026-08-11T00:00:00.000Z",
       roles: ["buyer", "provider"],
+      activity_summary: { capital_bounties: 3, labor_bounties: 2 },
       rating_summaries: {
         capital_provider: { average_rating: 4, review_count: 2, rating_counts: { "1": 0, "2": 0, "3": 1, "4": 0, "5": 1 } },
         labor_provider: { average_rating: 5, review_count: 1, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 1 } }
@@ -169,6 +171,10 @@ describe("Supabase marketplace mapping", () => {
       profileBio: "Builds and funds useful work.",
       profileUrl: "https://example.test/profile"
     });
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results: [profile] }));
+    await expect(searchPublicProfiles("dual.eth")).resolves.toEqual({ results: [profile] });
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/search?q=dual.eth");
   });
 
   it("requires legacy multi-milestone drafts to be recreated with explicit schedule terms", async () => {
@@ -188,6 +194,29 @@ describe("Supabase marketplace mapping", () => {
     };
 
     await expect(createBounty(draft, token)).rejects.toThrow(/recreate.*structured milestone editor/i);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it("sends an explicit normalized delivered-byte digest and rejects malformed values locally", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ok: true }));
+    await submitEvidence(
+      "00000000-0000-4000-8000-000000000035",
+      "https://example.test/delivery",
+      `0x${"AB".repeat(32)}`
+    );
+    const request = vi.mocked(fetch).mock.calls.at(-1)?.[1];
+    expect(JSON.parse(String(request?.body))).toEqual({
+      milestoneId: "00000000-0000-4000-8000-000000000035",
+      uri: "https://example.test/delivery",
+      contentHash: `0x${"ab".repeat(32)}`
+    });
+
+    vi.mocked(fetch).mockClear();
+    await expect(submitEvidence(
+      "00000000-0000-4000-8000-000000000035",
+      "https://example.test/delivery",
+      "0x1234"
+    )).rejects.toThrow(/sha-256 digest.*64 hexadecimal/i);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 });

@@ -26,6 +26,12 @@ describe("resolveDirectRoute", () => {
       method: "GET"
     });
     expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties", "GET").action).toBe("snapshot");
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=alice.eth", "GET")).toEqual({
+      action: "profiles/search",
+      handler: "bounties",
+      method: "GET"
+    });
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?path=profiles%2Fsearch&q=Alice", "GET").action).toBe("profiles/search");
   });
 
   it("rejects unknown paths, query strings, traversal, and methods", () => {
@@ -34,6 +40,8 @@ describe("resolveDirectRoute", () => {
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/../admin", "POST")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties?debug=1", "GET")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/snapshot?path=admin", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=a", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=alice&debug=1", "GET")).toThrow(ProxyRequestError);
   });
 });
 
@@ -91,9 +99,17 @@ describe("Vercel deployment boundary", () => {
       expect.arrayContaining([
         { source: "/api/wallet-auth", destination: "/api/proxy" },
         { source: "/api/bounties/:path*", destination: "/api/proxy" },
+        { source: "/terms", destination: "/terms.html" },
+        { source: "/acceptable-use", destination: "/acceptable-use.html" },
+        { source: "/privacy", destination: "/privacy.html" },
         { source: "/:path((?!api(?:/|$)).*)", destination: "/index.html" }
       ])
     );
+    expect(vercelConfig.redirects).toEqual(expect.arrayContaining([
+      { source: "/terms.html", destination: "/terms", permanent: true },
+      { source: "/acceptable-use.html", destination: "/acceptable-use", permanent: true },
+      { source: "/privacy.html", destination: "/privacy", permanent: true }
+    ]));
 
     const headers = Object.fromEntries(vercelConfig.headers[0].headers.map(({ key, value }) => [key, value]));
     expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
