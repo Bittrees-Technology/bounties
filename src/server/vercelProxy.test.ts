@@ -20,6 +20,11 @@ describe("resolveDirectRoute", () => {
       handler: "bounties",
       method: "POST"
     });
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/snapshot?path=snapshot", "GET")).toEqual({
+      action: "snapshot",
+      handler: "bounties",
+      method: "GET"
+    });
     expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties", "GET").action).toBe("snapshot");
   });
 
@@ -28,6 +33,7 @@ describe("resolveDirectRoute", () => {
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/wallet-auth", "GET")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/../admin", "POST")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties?debug=1", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/snapshot?path=admin", "GET")).toThrow(ProxyRequestError);
   });
 });
 

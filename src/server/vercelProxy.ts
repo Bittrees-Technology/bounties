@@ -43,16 +43,24 @@ function normalizeExtraPath(pathname: string, prefix: string, allowSubpaths: boo
 
 export function resolveDirectRoute(requestUrl: string, method: string): DirectRoute {
   const url = new URL(requestUrl);
-  if (url.search) throw new ProxyRequestError("Query parameters are not supported.", 400);
   const normalizedMethod = method.toUpperCase();
 
   for (const route of routeDefinitions) {
     try {
       const action = normalizeExtraPath(url.pathname, route.prefix, route.allowSubpaths);
       if (!route.methods.has(normalizedMethod)) throw new ProxyRequestError("Method not allowed.", 405);
+      const queryEntries = [...url.searchParams.entries()];
+      const effectiveAction = route.handler === "wallet-auth" ? "wallet-auth" : action || "snapshot";
+      const isVercelRewritePath = route.handler === "bounties"
+        && queryEntries.length === 1
+        && queryEntries[0][0] === "path"
+        && queryEntries[0][1].replace(/^\/+|\/+$/g, "") === effectiveAction;
+      if (queryEntries.length && !isVercelRewritePath) {
+        throw new ProxyRequestError("Query parameters are not supported.", 400);
+      }
       return {
         handler: route.handler,
-        action: route.handler === "wallet-auth" ? "wallet-auth" : action || "snapshot",
+        action: effectiveAction,
         method: normalizedMethod
       };
     } catch (error) {
