@@ -105,21 +105,24 @@ describe("App", () => {
     expect(order.getByText(/API validates required confirmations, the receipt, and canonical create\/fund logs/i)).toBeInTheDocument();
   });
 
-  it("shows app-only moderation controls only to provisioned staff", async () => {
-    configureMockStaff("admin", [{
+  it("shows consumer-ready report decisions only to shared-role moderators", async () => {
+    configureMockStaff("moderator", [{
       id: "00000000-0000-4000-8000-000000000888",
       entity_type: "bounty",
       entity_id: "00000000-0000-4000-8000-000000000123",
       reason: "Potentially illegal service",
       status: "open",
+      version: 1,
       created_at: new Date().toISOString()
     }]);
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
 
-    expect(screen.getByRole("heading", { name: /moderation admin/i })).toBeInTheDocument();
-    expect(screen.getByText(/app-only visibility control/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /content reports/i })).toBeInTheDocument();
+    expect(screen.getByText(/do not affect escrow, payment, or blockchain records/i)).toBeInTheDocument();
     expect(screen.getByText(/potentially illegal service/i)).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /keep visible.*no action/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/message to reporter/i)).toBeInTheDocument();
   });
 });

@@ -5,7 +5,6 @@ import {
   BriefcaseBusiness,
   CheckCircle2,
   ClipboardList,
-  Eye,
   EyeOff,
   ExternalLink,
   Flag,
@@ -27,10 +26,10 @@ import {
   createBounty,
   createParticipantReview,
   createProposal,
+  decideContentReport,
   inspectToken,
   loadMarketplace,
   markNotificationRead,
-  moderateContent,
   recordEscrowObservation,
   refreshEscrowState,
   reportContent,
@@ -40,6 +39,7 @@ import {
   submitEvidence,
   toBase,
   type MarketplaceSnapshot,
+  type ModerationDecision,
   type TokenRecord
 } from "./persistence/supabase";
 import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
@@ -100,6 +100,7 @@ export default function App() {
   const [draft, setDraft] = useState(emptyDraft);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [inspectChain, setInspectChain] = useState("84532");
@@ -135,14 +136,16 @@ export default function App() {
     }
   }
 
-  async function act(action: () => Promise<unknown>) {
+  async function act(action: () => Promise<unknown>, successMessage?: string) {
     if (actionPending.current) return;
     try {
       actionPending.current = true;
       setLoading(true);
       setError(null);
+      setNotice(null);
       await action();
       await refresh();
+      if (successMessage) setNotice(successMessage);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Marketplace action failed.";
       setError(message);
@@ -311,40 +314,37 @@ export default function App() {
     );
   }
 
-  function moderationButton(entityType: "bounty" | "review", entityId: string, hidden: boolean) {
-    if (!session?.staffRole) return null;
-    return (
-      <form
-        className="compact-action-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const reason = String(new FormData(event.currentTarget).get("reason") ?? "");
-          void act(() => moderateContent(entityType, entityId, hidden ? "restore" : "hide", reason));
-        }}
-      >
-        <label>
-          {hidden ? "Restore reason" : "Moderation reason"}
-          <input name="reason" minLength={3} maxLength={500} defaultValue={hidden ? "Restored after moderator review" : "Illegal or prohibited service listing"} required />
-        </label>
-        <button type="submit">{hidden ? <Eye size={15} /> : <EyeOff size={15} />}{hidden ? "Restore" : "Hide from site"}</button>
-      </form>
-    );
-  }
-
   function reportForm(entityType: "bounty" | "review", entityId: string) {
     return (
       <details className="report-control">
-        <summary><Flag size={14} /> Report</summary>
+        <summary><Flag size={14} /> Report this {entityType === "bounty" ? "listing" : "review"}</summary>
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            const reason = String(new FormData(event.currentTarget).get("reason") ?? "");
-            void act(() => reportContent(entityType, entityId, reason));
+            const form = new FormData(event.currentTarget);
+            const category = String(form.get("category") ?? "Other safety concern");
+            const details = String(form.get("details") ?? "").trim();
+            const reason = details ? `${category}: ${details}` : category;
+            void act(
+              () => reportContent(entityType, entityId, reason),
+              "Report received. A moderator will review it."
+            );
             event.currentTarget.reset();
           }}
         >
-          <label>Reason<input name="reason" minLength={3} maxLength={500} required /></label>
-          <button type="submit">Send report</button>
+          <label>
+            Concern
+            <select name="category" defaultValue="Fraud or misleading content" required>
+              <option>Illegal or prohibited activity</option>
+              <option>Fraud or misleading content</option>
+              <option>Harassment or personal information</option>
+              <option>Spam</option>
+              <option>Intellectual-property concern</option>
+              <option>Other safety concern</option>
+            </select>
+          </label>
+          <label>Details (optional)<textarea name="details" maxLength={430} /></label>
+          <button type="submit">Submit report</button>
         </form>
       </details>
     );
@@ -357,7 +357,7 @@ export default function App() {
       <section className="review-panel" aria-label={`Reviews for ${order.title}`}>
         <div className="review-heading"><Star size={17} /><h5>Participant reviews</h5></div>
         {participantReviews.length ? participantReviews.map((review) => (
-          <article className={`review-row ${review.moderation_status === "hidden" ? "content-hidden" : ""}`} key={review.id}>
+          <article id={`review-${review.id}`} className={`review-row ${review.moderation_status === "hidden" ? "content-hidden" : ""}`} key={review.id}>
             <div>
               <strong>{"★".repeat(review.rating)}{"☆".repeat(5 - review.rating)}</strong>
               <span>{review.direction === "service_received" ? "Service received" : "Payment received"} · {short(review.author_wallet_address)}</span>
@@ -365,7 +365,6 @@ export default function App() {
             </div>
             <div className="review-actions">
               {reportForm("review", review.id)}
-              {moderationButton("review", review.id, review.moderation_status === "hidden")}
             </div>
           </article>
         )) : <p>No participant reviews yet.</p>}
@@ -552,6 +551,7 @@ export default function App() {
 
           {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Sign in with Ethereum again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
+          {notice ? <p className="form-success" role="status">{notice}</p> : null}
           {loading ? <p className="loading-state"><Loader2 className="spin" /> Updating Bounties…</p> : null}
 
           {!wallet ? (
@@ -644,7 +644,7 @@ export default function App() {
                     </div>
                   ) : session?.orders.length ? (
                     session.orders.map((order) => (
-                      <article className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
+                      <article id={`bounty-${order.id}`} className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
                         <div className="bounty-card-header">
                           <div><span className="scope">{order.scope}</span><h4>{order.title}</h4></div>
                           <strong>{order.budgetDisplay ?? order.budget} {order.tokenRecord ? tokenLabel(order.tokenRecord) : order.token}</strong>
@@ -653,7 +653,7 @@ export default function App() {
                         {order.tokenRecord ? <p className="token-identity">{chains[order.tokenRecord.chain_id as keyof typeof chains]?.name ?? `Chain ${order.tokenRecord.chain_id}`} · {short(order.tokenRecord.checksum_address)} · <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? ` · Risks: ${order.tokenRecord.risk_flags.join(", ")}` : ""}</p> : null}
                         <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You are buyer" : "Marketplace bounty"}</span></div>
                         {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
-                        <div className="content-actions">{reportForm("bounty", order.id)}{moderationButton("bounty", order.id, order.moderationStatus === "hidden")}</div>
+                        <div className="content-actions">{reportForm("bounty", order.id)}</div>
                         {lifecycle(order)}
                         {reviews(order)}
                       </article>
@@ -664,17 +664,71 @@ export default function App() {
                 </section>
               </section>
 
+              {session?.myReports.length ? (
+                <section id="my-reports" className="panel my-reports-panel">
+                  <div className="section-heading"><Flag /><h3>My reports</h3></div>
+                  <p>Track the reports you submitted and read moderator responses.</p>
+                  <div className="my-reports-list">
+                    {session.myReports.map((report) => (
+                      <article className="my-report-row" key={report.id}>
+                        <div>
+                          <strong>{report.entity_type === "bounty" ? "Listing" : "Review"} report</strong>
+                          <span>{report.status === "open" ? "Under review" : report.decision === "no_action" ? "Reviewed · no action" : report.decision === "hide" ? "Reviewed · hidden" : "Reviewed · restored"}</span>
+                        </div>
+                        <p>{report.reason}</p>
+                        {report.moderator_response ? <blockquote><strong>Moderator response</strong><span>{report.moderator_response}</span></blockquote> : null}
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              ) : null}
+
               {session?.staffRole ? (
                 <section id="moderation" className="panel moderation-panel">
-                  <div className="section-heading"><EyeOff /><h3>Moderation admin</h3></div>
-                  <p>App-only visibility control. This cannot alter escrow, token balances, contract state, or onchain history.</p>
-                  <p>{session.staffRole} wallet · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
-                  {session.moderationReports.map((report) => (
+                  <div className="section-heading"><EyeOff /><h3>Content reports</h3></div>
+                  <p>Review reported listings and reviews, choose a visibility decision, and respond to the reporter.</p>
+                  <p className="moderation-safety-note"><ShieldCheck size={16} /> These actions change visibility on Bounties only. They do not affect escrow, payment, or blockchain records.</p>
+                  <p>{session.staffRole} access · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
+                  {session.moderationReports.length ? session.moderationReports.map((report) => (
                     <article className="report-row" key={report.id}>
-                      <div><strong>{report.entity_type} · {short(report.entity_id)}</strong><p>{report.reason}</p></div>
-                      {moderationButton(report.entity_type, report.entity_id, false)}
+                      <div className="report-summary">
+                        <strong>{report.entity_type === "bounty" ? "Listing" : "Review"} report · {report.entity_title || short(report.entity_id)}</strong>
+                        <p>{report.reason}</p>
+                        <span>Reported {new Date(report.created_at).toLocaleString()} · <a href={`#${report.entity_type}-${report.entity_id}`}>View reported content</a></span>
+                      </div>
+                      <form
+                        className="moderation-decision-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const form = new FormData(event.currentTarget);
+                          void act(
+                            () => decideContentReport(
+                              report.id,
+                              String(form.get("decision")) as ModerationDecision,
+                              String(form.get("publicResponse") ?? ""),
+                              String(form.get("internalNote") ?? ""),
+                              report.version ?? 1
+                            ),
+                            "Report resolved and the reporter has been notified."
+                          );
+                        }}
+                      >
+                        <label>
+                          Decision
+                          <select name="decision" defaultValue="no_action" required>
+                            <option value="no_action">Keep visible — no action</option>
+                            <option value="hide">Hide from marketplace</option>
+                            <option value="restore">Restore to marketplace</option>
+                          </select>
+                        </label>
+                        <label>Message to reporter<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Explain the outcome in clear, neutral language." required /></label>
+                        <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
+                        <button type="submit">Resolve report</button>
+                      </form>
                     </article>
-                  ))}
+                  )) : (
+                    <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open reports</strong><span>New reports will appear here for moderator review.</span></div>
+                  )}
                 </section>
               ) : null}
           <footer className="legal-footer"><a href="/terms.html">Terms</a><a href="/acceptable-use.html">Acceptable Use</a><a href="/privacy.html">Privacy</a><span>Built by Bittrees Technology</span></footer>

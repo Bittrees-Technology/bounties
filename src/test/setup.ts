@@ -96,6 +96,7 @@ beforeEach(() => {
       tokens,
       bounties,
       notifications: [],
+      myReports: [],
       moderationReports: snapshotModerationReports
     });
     if (url.endsWith("/api/bounties/logout")) {

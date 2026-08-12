@@ -113,13 +113,26 @@ export type ParticipantReview = {
   direction: "service_received" | "payment_received"; rating: number; body: string;
   moderation_status: "visible" | "hidden"; moderation_reason?: string | null; created_at: string;
 };
-export type ModerationReport = { id: string; entity_type: "bounty" | "review"; entity_id: string; reason: string; status: string; created_at: string };
+export type ModerationDecision = "hide" | "restore" | "no_action";
+export type ModerationReport = {
+  id: string;
+  entity_type: "bounty" | "review";
+  entity_id: string;
+  reason: string;
+  status: "open" | "resolved" | "dismissed";
+  version?: number;
+  decision?: ModerationDecision | null;
+  moderator_response?: string | null;
+  current_moderation_status?: "visible" | "hidden";
+  entity_title?: string | null;
+  created_at: string;
+};
 type Evidence = { id: string; uri: string; content_hash: string; evidence_hash: string; revision: number };
 type ApiMilestone = { id: string; ordinal: number; title: string; amount_base_units: string; status: string; evidence?: Evidence[]; scope_source?: { criteria?: string[] } };
 export type ApiProposal = { id: string; provider_id: string; provider_wallet_address: string; proposal_hash: string | null; note: string; proposed_total_base_units: string; status: string };
 export type BountyRow = { id: string; creator_id: string; title: string; description: string; scope_source: Record<string, unknown>; scope_hash: `0x${string}`; chain_id: number; token_id: string; token_decimals: number; budget_base_units: string; status: string; moderation_status?: "visible" | "hidden"; moderation_reason?: string | null; created_at: string; accepted_proposal_id?: string; token: TokenRecord; milestones: ApiMilestone[]; proposals: ApiProposal[]; escrow?: EscrowObservation | null; reviews?: ParticipantReview[] };
-export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; moderationReports: ModerationReport[] };
-type RawSnapshot = { account: MarketplaceSnapshot["account"]; roles?: Role[]; staffRole?: MarketplaceSnapshot["staffRole"]; tokens?: TokenRecord[]; bounties?: BountyRow[]; notifications?: Notification[]; moderationReports?: ModerationReport[] };
+export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; myReports: ModerationReport[]; moderationReports: ModerationReport[] };
+type RawSnapshot = { account: MarketplaceSnapshot["account"]; roles?: Role[]; staffRole?: MarketplaceSnapshot["staffRole"]; tokens?: TokenRecord[]; bounties?: BountyRow[]; notifications?: Notification[]; myReports?: ModerationReport[]; moderationReports?: ModerationReport[] };
 
 const fromBase = (value: string, decimals: number) => Number(value) / 10 ** decimals;
 export const formatBase = (value: string, decimals: number) => formatUnits(BigInt(value), decimals);
@@ -162,7 +175,7 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
 
 export async function loadMarketplace(): Promise<MarketplaceSnapshot> {
   const raw = await request<RawSnapshot>("/snapshot", { method: "GET" });
-  return { account: raw.account, roles: raw.roles ?? [], staffRole: raw.staffRole ?? null, tokens: raw.tokens ?? [], orders: (raw.bounties ?? []).map(mapBounty), notifications: raw.notifications ?? [], moderationReports: raw.moderationReports ?? [] };
+  return { account: raw.account, roles: raw.roles ?? [], staffRole: raw.staffRole ?? null, tokens: raw.tokens ?? [], orders: (raw.bounties ?? []).map(mapBounty), notifications: raw.notifications ?? [], myReports: raw.myReports ?? [], moderationReports: raw.moderationReports ?? [] };
 }
 
 async function sha256(value: string) { const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)); return `0x${Array.from(new Uint8Array(bytes), b => b.toString(16).padStart(2, "0")).join("")}`; }
@@ -213,5 +226,14 @@ export const recordEscrowObservation = (bountyId: string, txHash: string) => req
 export const refreshEscrowState = (bountyId: string) => request<EscrowObservation>("/escrow/state", { method: "POST", body: JSON.stringify({ bountyId }) });
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });
 export const reportContent = (entityType: "bounty" | "review", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
-export const moderateContent = (entityType: "bounty" | "review", entityId: string, action: "hide" | "restore", reason: string) => request("/admin/moderation", { method: "POST", body: JSON.stringify({ entityType, entityId, action, reason }) });
+export const decideContentReport = (
+  reportId: string,
+  decision: ModerationDecision,
+  publicResponse: string,
+  internalNote: string,
+  expectedVersion: number
+) => request("/admin/reports/decision", {
+  method: "POST",
+  body: JSON.stringify({ reportId, decision, publicResponse, internalNote: internalNote || null, expectedVersion })
+});
 export const markNotificationRead = (notificationId: string) => request("/notifications/read", { method: "POST", body: JSON.stringify({ notificationId }) });
