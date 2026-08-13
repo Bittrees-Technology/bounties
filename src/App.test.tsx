@@ -142,6 +142,30 @@ describe("App", () => {
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
   });
 
+  it("closes an open listing report after a click outside its controls", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    const order = await publishBounty(user, "Report interaction boundary");
+    const reportSummary = order.getByText(/report this listing/i);
+    const reportControl = reportSummary.closest("details") as HTMLDetailsElement;
+
+    await user.click(reportSummary);
+    expect(reportControl.open).toBe(true);
+
+    await user.click(within(reportControl).getByLabelText(/^concern$/i));
+    expect(reportControl.open).toBe(true);
+    await user.click(within(reportControl).getByLabelText(/details \(optional\)/i));
+    expect(reportControl.open).toBe(true);
+
+    await user.click(within(reportControl).getByText(/details \(optional\)/i));
+    expect(reportControl.open).toBe(false);
+
+    await user.click(reportSummary);
+    await user.click(order.getByText(/open request/i));
+    expect(reportControl.open).toBe(false);
+  });
+
   it("shows a legible, descriptive empty notification state", async () => {
     const user = userEvent.setup();
     render(<App />);

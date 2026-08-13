@@ -696,6 +696,22 @@ export default function App() {
   }, [notificationsOpen]);
 
   useEffect(() => {
+    const dismissReportsOutsideActiveControl = (event: PointerEvent) => {
+      const target = event.target;
+      const activeControl = target instanceof Element
+        ? target.closest(".report-control summary, .report-control select, .report-control textarea, .report-control input, .report-control button")
+        : null;
+      const activeReport = activeControl?.closest(".report-control") ?? null;
+      document.querySelectorAll<HTMLDetailsElement>(".report-control[open]").forEach((report) => {
+        if (report !== activeReport) report.open = false;
+      });
+    };
+
+    document.addEventListener("pointerdown", dismissReportsOutsideActiveControl);
+    return () => document.removeEventListener("pointerdown", dismissReportsOutsideActiveControl);
+  }, []);
+
+  useEffect(() => {
     if (!profileEditorOpen) return;
 
     const dismissUnsavedProfile = (event: PointerEvent) => {
