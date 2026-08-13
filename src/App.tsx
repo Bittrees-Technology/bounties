@@ -29,6 +29,7 @@ import type { EscrowClient, EscrowOrderRef, SupportedChainId } from "./chain/typ
 import {
   acceptEvidence,
   acceptProposal,
+  browsePublicProfiles,
   createBounty,
   createParticipantReview,
   createReviewResponse,
@@ -257,6 +258,11 @@ export default function App() {
   const [profileSearchResults, setProfileSearchResults] = useState<PublicWalletProfile[]>([]);
   const [profileSearchMessage, setProfileSearchMessage] = useState<string | null>(null);
   const [profileSearching, setProfileSearching] = useState(false);
+  const [profileSearchApplied, setProfileSearchApplied] = useState(false);
+  const [profileDirectory, setProfileDirectory] = useState<PublicWalletProfile[]>([]);
+  const [profileDirectoryLoaded, setProfileDirectoryLoaded] = useState(false);
+  const [profileDirectoryLoading, setProfileDirectoryLoading] = useState(false);
+  const [profileDirectoryMessage, setProfileDirectoryMessage] = useState<string | null>(null);
   const actionPending = useRef(false);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
@@ -375,6 +381,7 @@ export default function App() {
     if (query.length < 2) return setProfileSearchMessage("Enter a custom name, ENS name, or wallet address.");
     try {
       setProfileSearching(true);
+      setProfileSearchApplied(true);
       setProfileSearchMessage(null);
       const { results } = await searchPublicProfiles(query);
       setProfileSearchResults(results);
@@ -442,6 +449,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (activePage !== "profile" || !wallet || selectedProfileAddress || profileDirectoryLoaded) return;
+    let cancelled = false;
+    setProfileDirectoryLoading(true);
+    setProfileDirectoryMessage(null);
+    void browsePublicProfiles()
+      .then(({ results }) => {
+        if (cancelled) return;
+        setProfileDirectory(results);
+        setProfileDirectoryLoaded(true);
+        setProfileDirectoryMessage(results.length ? null : "No public profiles are available yet.");
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setProfileDirectory([]);
+        setProfileDirectoryLoaded(true);
+        setProfileDirectoryMessage(caught instanceof Error ? caught.message : "The profile directory is temporarily unavailable.");
+      })
+      .finally(() => {
+        if (!cancelled) setProfileDirectoryLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [activePage, profileDirectoryLoaded, selectedProfileAddress, wallet]);
+
+  useEffect(() => {
     const handlePopState = () => {
       setSelectedProfileAddress(null);
       setPublicProfile(null);
@@ -467,6 +498,10 @@ export default function App() {
     } finally {
       setSession(null);
       setExpired(false);
+      setProfileDirectory([]);
+      setProfileDirectoryLoaded(false);
+      setProfileSearchResults([]);
+      setProfileSearchApplied(false);
     }
   }
 
@@ -1007,7 +1042,42 @@ export default function App() {
     )) : <p className="empty-profile-copy">{emptyMessage}</p>;
   }
 
+  function profileDirectoryCard(profile: PublicWalletProfile) {
+    const identity = profile.display_name || profile.ens_name || short(profile.wallet_address);
+    const specialties = [
+      ...(profile.work_types ?? []).map((workType) => scopes.find((scope) => scope.value === workType)?.label ?? workType),
+      ...(profile.categories ?? []),
+      ...(profile.custom_specialty ? [profile.custom_specialty] : [])
+    ].slice(0, 3);
+    const capitalRating = profile.rating_summaries.capital_provider;
+    const laborRating = profile.rating_summaries.labor_provider;
+    const totalActivity = profile.activity_summary.capital_bounties + profile.activity_summary.labor_bounties;
+    return (
+      <article className="profile-directory-card" key={profile.account_id}>
+        <div className="profile-directory-identity">
+          <span className="profile-avatar" aria-hidden="true"><UserRound size={20} /></span>
+          <div>
+            <div className="profile-name-line"><h3>{identity}</h3>{wallet?.toLowerCase() === profile.wallet_address.toLowerCase() ? <span>You</span> : null}</div>
+            {profile.display_name && profile.ens_name ? <p>{profile.ens_name}</p> : null}
+            <code>{short(profile.wallet_address)}</code>
+          </div>
+        </div>
+        <p className="profile-directory-bio">{profile.profile_bio || "Public marketplace activity and participant reputation."}</p>
+        {specialties.length ? <div className="profile-directory-specialties" aria-label={`${identity} specialties`}>{specialties.map((specialty, index) => <span key={`${specialty}-${index}`}>{specialty}</span>)}</div> : null}
+        <div className="profile-directory-reputation">
+          <div><WalletCards size={16} /><span>Capital provider</span><strong>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 · ${capitalRating.review_count} review${capitalRating.review_count === 1 ? "" : "s"}` : "No ratings"}</strong></div>
+          <div><UsersRound size={16} /><span>Labor provider</span><strong>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 · ${laborRating.review_count} review${laborRating.review_count === 1 ? "" : "s"}` : "No ratings"}</strong></div>
+        </div>
+        <div className="profile-directory-footer">
+          <span>{totalActivity} bount{totalActivity === 1 ? "y" : "ies"} posted or worked</span>
+          <button type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
+        </div>
+      </article>
+    );
+  }
+
   const visiblePage = activePage === "moderator" && !session?.staffRole ? "marketplace" : activePage;
+  const displayedProfiles = profileSearchApplied ? profileSearchResults : profileDirectory;
 
   return (
     <main>
@@ -1239,22 +1309,38 @@ export default function App() {
               {visiblePage === "profile" ? (
                 <section className="page-stack profile-page" aria-label="Wallet profile">
                   <section className="panel profile-discovery">
-                    <div className="section-heading"><Search /><h2>Discover profiles</h2></div>
-                    <p>Search saved public wallet profiles by custom name, primary ENS name, or wallet address.</p>
-                    <p className="ens-integration-note"><BadgeCheck size={16} /> ENS lookup is active for Ethereum names. When a wallet has a primary ENS name, Bounties displays it automatically unless the owner chooses a custom profile name.</p>
-                    <form className="profile-search-form" onSubmit={discoverProfiles}>
-                      <label>Profile search<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} placeholder="alice.eth, Alice, or 0x…" minLength={2} maxLength={80} required /></label>
-                      <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
-                    </form>
-                    {profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
-                    {profileSearchResults.length ? <div className="profile-search-results">{profileSearchResults.map((profile) => (
-                      <button type="button" key={profile.account_id} onClick={() => openProfile(profile.wallet_address)}>
-                        <strong>{profile.display_name || profile.ens_name || short(profile.wallet_address)}</strong>
-                        <span>{profile.display_name && profile.ens_name ? `${profile.ens_name} · ` : ""}{short(profile.wallet_address)}</span>
-                      </button>
-                    ))}</div> : null}
+                    {!wallet ? (
+                      <div className="profile-directory-access">
+                        <UserRound size={30} aria-hidden="true" />
+                        <div><strong>Connect your wallet to browse profiles.</strong><span>Explore public work preferences, verified marketplace activity, and separate capital-provider and labor-provider ratings.</span></div>
+                        <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
+                      </div>
+                    ) : selectedProfile ? (
+                      <div className="profile-directory-toolbar">
+                        <div><strong>Viewing a public profile</strong><span>Return to the directory to continue browsing participants.</span></div>
+                        <button type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setProfileMessage(null); }}>Back to profiles</button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="section-heading"><UsersRound /><h2>Profile directory</h2></div>
+                        <p>Browse saved public profiles, compare each participant’s marketplace history, or search by name, ENS identity, specialty, or wallet address.</p>
+                        <p className="ens-integration-note"><BadgeCheck size={16} /> ENS names are resolved from Ethereum when available. A custom profile name takes priority when its owner provides one.</p>
+                        <form className="profile-search-form" onSubmit={discoverProfiles}>
+                          <label>Search profiles<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} placeholder="Name, specialty, alice.eth, or 0x…" minLength={2} maxLength={80} required /></label>
+                          <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search"}</button>
+                        </form>
+                        <div className="profile-directory-heading">
+                          <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
+                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={() => { setProfileSearchApplied(false); setProfileSearchQuery(""); setProfileSearchResults([]); setProfileSearchMessage(null); }}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
+                        </div>
+                        {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
+                        {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
+                        {!profileSearchApplied && profileDirectoryMessage ? <p className="form-hint" role="status">{profileDirectoryMessage}</p> : null}
+                        {!profileSearching && !profileDirectoryLoading && displayedProfiles.length ? <div className="profile-directory-grid">{displayedProfiles.map(profileDirectoryCard)}</div> : null}
+                      </>
+                    )}
                   </section>
-                  {selectedProfile ? (
+                  {wallet && selectedProfile ? (
                     <>
                       <section className="panel profile-card" id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
                         <div className="profile-hero">
@@ -1310,7 +1396,7 @@ export default function App() {
                         </article>
                       </section>
                     </>
-                  ) : <div className="panel empty-state-panel"><UserRound /><strong>Search for a public profile or choose a wallet from a bounty, application, or review.</strong></div>}
+                  ) : null}
                 </section>
               ) : null}
 

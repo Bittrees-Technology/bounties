@@ -177,7 +177,7 @@ beforeEach(() => {
     }
 
     const publicProfileRead = String(init?.method ?? "GET").toUpperCase() === "GET"
-      && (url.includes("/api/bounties/profiles/search") || url.includes("/api/bounties/profiles/"));
+      && (url.includes("/api/bounties/profiles/search") || /\/api\/bounties\/profiles\/0x[0-9a-f]{40}$/i.test(url));
     if (!authenticated && url.includes("/api/bounties") && !publicProfileRead) return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
     if (url.endsWith("/snapshot")) return Response.json({
       account: { id: "00000000-0000-4000-8000-000000000111", wallet_address: testWallet },
@@ -212,6 +212,33 @@ beforeEach(() => {
         },
         reviews_received: []
       });
+    }
+    if (url.endsWith("/api/bounties/profiles/directory")) {
+      const profile = (accountId: string, walletAddress: string, displayName: string, ensName: string | null, role: "buyer" | "provider") => ({
+        account_id: accountId,
+        wallet_address: walletAddress,
+        display_name: displayName,
+        profile_bio: role === "provider" ? "Builds and audits verifiable products." : "Funds clearly scoped public work.",
+        profile_url: "https://example.test/profile",
+        profile_moderation_status: "visible" as const,
+        profile_updated_at: new Date().toISOString(),
+        ens_name: ensName,
+        work_types: role === "provider" ? ["audit"] : ["project"],
+        categories: role === "provider" ? ["Smart Contracts & Web3"] : ["Operations & Support"],
+        custom_specialty: null,
+        member_since: new Date().toISOString(),
+        roles: [role],
+        activity_summary: role === "provider" ? { capital_bounties: 0, labor_bounties: 3 } : { capital_bounties: 2, labor_bounties: 0 },
+        rating_summaries: {
+          capital_provider: { average_rating: role === "buyer" ? 4.8 : null, review_count: role === "buyer" ? 5 : 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 1, "5": 4 } },
+          labor_provider: { average_rating: role === "provider" ? 5 : null, review_count: role === "provider" ? 3 : 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 3 } }
+        },
+        reviews_received: []
+      });
+      return Response.json({ results: [
+        profile("00000000-0000-4000-8000-000000000111", testWallet, "Test participant", "testparticipant.eth", "provider"),
+        profile("00000000-0000-4000-8000-000000000222", "0x2222222222222222222222222222222222222222", "Capital guide", null, "buyer")
+      ] });
     }
     if (url.includes("/api/bounties/profiles/search")) {
       return Response.json({

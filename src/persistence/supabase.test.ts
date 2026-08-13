@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createBounty, loadMarketplace, loadPublicProfile, mapBounty, searchPublicProfiles, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { browsePublicProfiles, createBounty, loadMarketplace, loadPublicProfile, mapBounty, searchPublicProfiles, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -171,6 +171,10 @@ describe("Supabase marketplace mapping", () => {
       profileBio: "Builds and funds useful work.",
       profileUrl: "https://example.test/profile"
     });
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results: [profile] }));
+    await expect(browsePublicProfiles()).resolves.toEqual({ results: [profile] });
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/directory");
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results: [profile] }));
     await expect(searchPublicProfiles("dual.eth")).resolves.toEqual({ results: [profile] });

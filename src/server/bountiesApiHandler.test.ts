@@ -287,6 +287,30 @@ describe("public profile discovery", () => {
     await expect(response.json()).resolves.toEqual({ code: "RATE_LIMITED" });
     expect(rpcMock).not.toHaveBeenCalledWith("app_search_public_wallet_profiles", expect.anything());
   });
+
+  it("serves a bounded profile directory only to a verified wallet session", async () => {
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : name === "app_browse_public_wallet_profiles"
+        ? { data: [{ account_id: session.account_id, wallet_address: session.wallet_address, display_name: "Test participant" }], error: null }
+        : { data: null, error: null }));
+
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/directory",
+      { headers: { cookie: "bounties_session=opaque-session" } }
+    ), "profiles/directory");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ results: [{ display_name: "Test participant" }] });
+    expect(rpcMock).toHaveBeenCalledWith("app_resolve_wallet_session", expect.objectContaining({ p_require_csrf: false }));
+    expect(rpcMock).toHaveBeenCalledWith("app_browse_public_wallet_profiles", { p_actor_id: session.account_id, p_limit: 18 });
+
+    const disconnected = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/directory"
+    ), "profiles/directory");
+    expect(disconnected.status).toBe(401);
+    await expect(disconnected.json()).resolves.toEqual({ code: "SESSION_EXPIRED" });
+  });
 });
 
 describe("profile specialties and review responses", () => {
