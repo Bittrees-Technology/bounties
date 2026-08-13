@@ -502,20 +502,26 @@ describe("App", () => {
     expect(profilePreferenceGroups).toHaveLength(2);
     expect(profilePreferenceGroups[0]).toHaveAttribute("aria-label", "Work types");
     expect(profilePreferenceGroups[1]).toHaveAttribute("aria-label", "Categories");
-    const editControl = screen.getByText(/^edit profile$/i);
-    const profileEditor = editControl.closest(".profile-editor") as HTMLElement;
-    expect(profileEditor).toBeInTheDocument();
-    const deactivateControl = within(profileEditor).getByText(/deactivate public profile/i);
-    expect(deactivateControl.closest(".profile-visibility-control")).toBeInTheDocument();
-    expect(profileEditor).not.toHaveAttribute("open");
+    const editControl = within(profileCard).getByRole("button", { name: /^edit profile$/i });
+    expect(within(profileCard).queryByRole("button", { name: /save public profile/i })).not.toBeInTheDocument();
+    expect(within(profileCard).queryByText(/deactivate public profile/i)).not.toBeInTheDocument();
     await user.click(editControl);
-    expect(profileEditor).toHaveAttribute("open");
+    expect(within(profileCard).queryByRole("button", { name: /^edit profile$/i })).not.toBeInTheDocument();
+    expect(within(profileCard).getByRole("button", { name: /save public profile/i })).toBeInTheDocument();
     expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
-    await user.click(editControl);
-    expect(profileEditor).not.toHaveAttribute("open");
+    expect(within(profileCard).getByText(/deactivate public profile/i).closest(".profile-visibility-control")).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText(/custom profile name/i));
+    await user.type(screen.getByLabelText(/custom profile name/i), "Unsaved participant");
+    await user.click(screen.getByRole("heading", { name: /as a capital provider/i }));
+    expect(within(profileCard).queryByRole("button", { name: /save public profile/i })).not.toBeInTheDocument();
+    expect(within(profileCard).getByRole("button", { name: /^edit profile$/i })).toBeInTheDocument();
+    expect(within(profileCard).getByRole("heading", { name: /test participant/i })).toBeInTheDocument();
     expect(within(profileCard).getByLabelText(/profile work preferences/i)).toBeInTheDocument();
-    await user.click(editControl);
-    expect(profileEditor).toHaveAttribute("open");
+    expect(vi.mocked(fetch).mock.calls.filter(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST")).toHaveLength(0);
+
+    await user.click(within(profileCard).getByRole("button", { name: /^edit profile$/i }));
+    expect(screen.getByLabelText(/custom profile name/i)).toHaveValue("Test participant");
     expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText(/custom profile name/i));
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
@@ -537,6 +543,9 @@ describe("App", () => {
     await user.type(within(categoriesGroup).getByLabelText(/other category 2/i), "Developer education");
     await user.click(screen.getByRole("button", { name: /save public profile/i }));
     expect(await screen.findByRole("heading", { name: /updated participant/i })).toBeInTheDocument();
+    expect(within(profileCard).queryByRole("button", { name: /save public profile/i })).not.toBeInTheDocument();
+    expect(within(profileCard).getByRole("button", { name: /^edit profile$/i })).toBeInTheDocument();
+    expect(within(profileCard).getByLabelText(/profile work preferences/i)).toBeInTheDocument();
 
     const profileUpdateCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST");
     expect(JSON.parse(String(profileUpdateCall?.[1]?.body))).toMatchObject({
@@ -545,6 +554,7 @@ describe("App", () => {
       customSpecialty: null
     });
 
+    await user.click(within(profileCard).getByRole("button", { name: /^edit profile$/i }));
     await user.click(screen.getByText(/deactivate public profile/i));
     await user.click(screen.getByRole("button", { name: /hide my profile/i }));
     expect((await screen.findAllByText(/your public profile is hidden/i)).length).toBeGreaterThan(0);
@@ -555,6 +565,7 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /reactivate profile/i }));
     expect(await screen.findByText(/public profile is active again/i)).toBeInTheDocument();
+    await user.click(within(profileCard).getByRole("button", { name: /^edit profile$/i }));
     expect(screen.getByText(/deactivate public profile/i)).toBeInTheDocument();
     const visibilityCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/profiles/visibility"));
     expect(JSON.parse(String(visibilityCalls.at(-1)?.[1]?.body))).toEqual({ visible: true });

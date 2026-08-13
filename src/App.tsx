@@ -332,6 +332,7 @@ export default function App() {
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const profileCardRef = useRef<HTMLElement | null>(null);
   const [otherWorkTypesEnabled, setOtherWorkTypesEnabled] = useState(false);
   const [otherCategoriesEnabled, setOtherCategoriesEnabled] = useState(false);
   const [customProfileWorkTypes, setCustomProfileWorkTypes] = useState<string[]>([]);
@@ -350,7 +351,7 @@ export default function App() {
   const actionPending = useRef(false);
   const initialProfileSearchHydrated = useRef(false);
 
-  useEffect(() => {
+  const resetProfileEditorDraft = useCallback(() => {
     const customWorkTypes = uniqueProfileSelections((publicProfile?.work_types ?? []).filter((value) => !standardWorkTypeValues.has(value)));
     const legacySpecialty = publicProfile?.custom_specialty?.trim();
     const customCategories = uniqueProfileSelections([
@@ -362,6 +363,10 @@ export default function App() {
     setOtherWorkTypesEnabled(customWorkTypes.length > 0);
     setOtherCategoriesEnabled(customCategories.length > 0);
   }, [publicProfile]);
+
+  useEffect(() => {
+    resetProfileEditorDraft();
+  }, [resetProfileEditorDraft]);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -574,6 +579,7 @@ export default function App() {
     await act(async () => {
       const updated = await setMyProfileVisibility(visible);
       setPublicProfile(updated);
+      setProfileEditorOpen(false);
       setProfileDirectoryLoaded(false);
     }, visible ? "Your public profile is active again." : "Your public profile is hidden. Your data has been retained.");
   }
@@ -655,6 +661,20 @@ export default function App() {
       document.removeEventListener("keydown", dismissOnEscape);
     };
   }, [notificationsOpen]);
+
+  useEffect(() => {
+    if (!profileEditorOpen) return;
+
+    const dismissUnsavedProfile = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || profileCardRef.current?.contains(target)) return;
+      setProfileEditorOpen(false);
+      resetProfileEditorDraft();
+    };
+
+    document.addEventListener("pointerdown", dismissUnsavedProfile);
+    return () => document.removeEventListener("pointerdown", dismissUnsavedProfile);
+  }, [profileEditorOpen, resetProfileEditorDraft]);
 
   useEffect(() => {
     if (activePage !== "profile" || !wallet || selectedProfileAddress || profileSearchApplied || profileDirectoryLoaded) return;
@@ -1702,7 +1722,7 @@ export default function App() {
                   </section>
                   {wallet && selectedProfile ? (
                     <>
-                      <section className={`panel profile-card ${wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? "editable-profile-card" : ""}`} id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
+                      <section ref={profileCardRef} className={`panel profile-card ${wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? "editable-profile-card" : ""}`} id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
                         <div className="profile-hero">
                           <ProfileAvatar profile={publicProfile} />
                           <div>
@@ -1717,9 +1737,15 @@ export default function App() {
                           </div>
                         </div>
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
-                          <details className="profile-editor" onToggle={(event) => setProfileEditorOpen(event.currentTarget.open)}>
-                            <summary>Edit profile</summary>
-                            <form key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
+                          profileEditorOpen ? (
+                            <button className="profile-editor-action" type="submit" form="public-profile-form" disabled={loading}>Save public profile</button>
+                          ) : (
+                            <button className="profile-editor-action" type="button" onClick={() => setProfileEditorOpen(true)}>Edit profile</button>
+                          )
+                        ) : null}
+                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
+                          profileEditorOpen ? <div className="profile-editor">
+                            <form id="public-profile-form" key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
                               event.preventDefault();
                               const form = new FormData(event.currentTarget);
                               void act(async () => {
@@ -1738,6 +1764,7 @@ export default function App() {
                                   customSpecialty: null
                                 });
                                 setPublicProfile(updated);
+                                setProfileEditorOpen(false);
                               }, "Public profile updated.");
                             }}>
                               <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
@@ -1783,7 +1810,6 @@ export default function App() {
                                   <button className="secondary-button profile-add-custom" type="button" disabled={customProfileCategories.length >= maxCustomProfileSelections} onClick={() => setCustomProfileCategories((current) => [...current, ""])}>Add another category</button>
                                 </div> : null}
                               </fieldset>
-                              <button type="submit">Save public profile</button>
                             </form>
                             {publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (
                               <details className="profile-visibility-control">
@@ -1794,7 +1820,7 @@ export default function App() {
                                 </div>
                               </details>
                             ) : null}
-                          </details>
+                          </div> : null
                         ) : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile?.profile_moderation_status === "hidden" ? (
                           <div className={`profile-visibility-status ${publicProfile.visibility_source === "moderation" ? "moderated" : "owner-hidden"}`}>
