@@ -161,6 +161,43 @@ describe("delivery content digest boundary", () => {
   });
 });
 
+describe("profile report ownership boundary", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+  });
+
+  it("rejects a forged report against the caller's own profile before consuming moderation capacity", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/reports",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          entityType: "profile",
+          entityId: session.account_id,
+          reason: "Other safety concern"
+        })
+      }
+    ), "reports");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "SELF_REPORT_NOT_ALLOWED" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_consume_rate_limit", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("app_report_content", expect.anything());
+  });
+});
+
 describe("optional shared moderation projection", () => {
   beforeEach(() => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");

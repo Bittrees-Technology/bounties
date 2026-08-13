@@ -48,6 +48,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
   if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters or choose a valid profile filter.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
+  if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
   }

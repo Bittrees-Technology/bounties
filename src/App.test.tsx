@@ -302,12 +302,11 @@ describe("App", () => {
     expect(within(identityMeta).queryByText(/0x1111/i)).not.toBeInTheDocument();
     expect(identityMeta.firstElementChild).toHaveTextContent("testparticipant.eth");
     expect(identityMeta.lastElementChild).toHaveTextContent(/website/i);
+    expect(within(profileCard).queryByText(/report this profile/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
-    const reportControl = within(profileCard).getByText(/report this profile/i);
     const deactivateControl = within(profileCard).getByText(/deactivate public profile/i);
-    expect(reportControl.compareDocumentPosition(deactivateControl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(profileCard.querySelector(".profile-report-action")?.nextElementSibling).toBe(deactivateControl.closest(".profile-visibility-control"));
+    expect(deactivateControl.closest(".profile-visibility-control")).toBeInTheDocument();
     const editControl = screen.getByText(/^edit profile$/i);
     expect(editControl.closest(".profile-card")).toBeInTheDocument();
     await user.click(editControl);
@@ -343,18 +342,6 @@ describe("App", () => {
     const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
     expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 
-    await user.click(screen.getByText(/report this profile/i));
-    await user.selectOptions(screen.getByLabelText(/^concern$/i), "Illegal or prohibited activity");
-    await user.type(screen.getByLabelText(/details.*optional/i), "Prohibited service promotion");
-    await user.click(screen.getByRole("button", { name: /submit report/i }));
-    expect(await screen.findByText(/report received/i)).toBeInTheDocument();
-    const reportCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/reports"));
-    expect(JSON.parse(String(reportCall?.[1]?.body))).toMatchObject({
-      entityType: "profile",
-      entityId: "00000000-0000-4000-8000-000000000111"
-    });
-    await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
-    expect(screen.getByText(/^Profile report$/i)).toBeInTheDocument();
   });
 
   it("falls back to the wallet address when a public profile has no ENS name", async () => {
@@ -370,6 +357,16 @@ describe("App", () => {
     const profileCard = walletIdentity.closest(".profile-card") as HTMLElement;
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
     expect(within(identityMeta).getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
+    await user.click(within(profileCard).getByText(/report this profile/i));
+    await user.selectOptions(within(profileCard).getByLabelText(/^concern$/i), "Illegal or prohibited activity");
+    await user.type(within(profileCard).getByLabelText(/details.*optional/i), "Prohibited service promotion");
+    await user.click(within(profileCard).getByRole("button", { name: /submit report/i }));
+    expect(await screen.findByText(/report received/i)).toBeInTheDocument();
+    const reportCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/reports"));
+    expect(JSON.parse(String(reportCall?.[1]?.body))).toMatchObject({
+      entityType: "profile",
+      entityId: "00000000-0000-4000-8000-000000000222"
+    });
   });
 
   it("publishes safe clickable links and privacy-conscious contact preferences", async () => {
