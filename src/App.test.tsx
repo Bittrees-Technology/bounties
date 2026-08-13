@@ -420,6 +420,17 @@ describe("App", () => {
     expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 
     expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
+    const orderFilter = screen.getByLabelText(/^order$/i);
+    const activityFilter = screen.getByLabelText(/^last completed$/i);
+    expect(orderFilter).toHaveValue("name-asc");
+    expect(activityFilter).toHaveValue("any");
+    expect(Array.from(document.querySelectorAll(".profile-directory-card h3")).map((heading) => heading.textContent)).toEqual(["Capital guide", "Test participant"]);
+    await user.selectOptions(orderFilter, "name-desc");
+    expect(Array.from(document.querySelectorAll(".profile-directory-card h3")).map((heading) => heading.textContent)).toEqual(["Test participant", "Capital guide"]);
+    await user.selectOptions(activityFilter, "30-days");
+    expect(screen.getByText(/1 public profile/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /view capital guide profile/i })).not.toBeInTheDocument();
+    await user.selectOptions(activityFilter, "any");
     expect(screen.queryByRole("button", { name: /^refresh$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/compare each participant.s marketplace history/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ENS names are resolved from Ethereum/i)).not.toBeInTheDocument();

@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(14);
 
 insert into public.wallet_accounts (id, wallet_address, display_name, profile_moderation_status) values
   ('21000000-0000-4000-8000-000000000001','0x1111111111111111111111111111111111111111','Alice Builder','visible'),
@@ -61,6 +61,15 @@ where bounty_id='21000000-0000-4000-8000-000000000020';
 select is(
   public.app_public_wallet_profile('0x1111111111111111111111111111111111111111')#>>'{activity_summary,labor_bounties}',
   '1','released work is counted as completed labor activity'
+);
+select ok(
+  (public.app_public_wallet_profile('0x1111111111111111111111111111111111111111')#>>'{last_completed_activity_at}') is not null,
+  'released work records the provider last-completed activity timestamp'
+);
+select is(
+  public.app_public_wallet_profile('0x2222222222222222222222222222222222222222')#>>'{last_completed_activity_at}',
+  public.app_public_wallet_profile('0x1111111111111111111111111111111111111111')#>>'{last_completed_activity_at}',
+  'the same terminal bounty records requester last-completed activity'
 );
 select is(
   public.app_search_public_wallet_profiles('alice',12)#>>'{0,display_name}',

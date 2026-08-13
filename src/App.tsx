@@ -61,6 +61,12 @@ import {
   type TokenRecord
 } from "./persistence/supabase";
 import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
+import {
+  orderAndFilterProfiles,
+  profileLastCompletedLabel,
+  type ProfileActivityWindow,
+  type ProfileDirectoryOrder
+} from "./profileDirectory";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -385,6 +391,8 @@ export default function App() {
   const [profileDirectoryLoading, setProfileDirectoryLoading] = useState(false);
   const [profileDirectoryMessage, setProfileDirectoryMessage] = useState<string | null>(null);
   const [profileDirectoryView, setProfileDirectoryView] = useState<"tiles" | "list">("tiles");
+  const [profileDirectoryOrder, setProfileDirectoryOrder] = useState<ProfileDirectoryOrder>("name-asc");
+  const [profileActivityWindow, setProfileActivityWindow] = useState<ProfileActivityWindow>("any");
   const actionPending = useRef(false);
   const initialProfileSearchHydrated = useRef(false);
 
@@ -1498,6 +1506,7 @@ export default function App() {
         <div className="profile-directory-reputation">
           <div aria-label={`Capital provider: ${capitalSummary}`}><WalletCards size={15} /><strong>Capital</strong><span>{capitalSummary}</span></div>
           <div aria-label={`Labor provider: ${laborSummary}`}><UsersRound size={15} /><strong>Labor</strong><span>{laborSummary}</span></div>
+          <span className="profile-directory-last-active">{profileLastCompletedLabel(profile)}</span>
         </div>
         {profileDirectoryView === "list" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button> : null}
       </article>
@@ -1522,6 +1531,10 @@ export default function App() {
 
   const visiblePage = activePage === "moderator" && !session?.staffRole ? "marketplace" : activePage;
   const displayedProfiles = profileSearchApplied ? profileSearchResults : profileDirectory;
+  const orderedProfiles = useMemo(
+    () => orderAndFilterProfiles(displayedProfiles, profileDirectoryOrder, profileActivityWindow),
+    [displayedProfiles, profileActivityWindow, profileDirectoryOrder]
+  );
 
   return (
     <main>
@@ -1859,8 +1872,22 @@ export default function App() {
                           <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
                         </form>
                         <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
+                        <div className="profile-directory-filters" aria-label="Profile directory ordering and activity filters">
+                          <label>Order<select value={profileDirectoryOrder} onChange={(event) => setProfileDirectoryOrder(event.target.value as ProfileDirectoryOrder)}>
+                            <option value="name-asc">Named A–Z</option>
+                            <option value="name-desc">Named Z–A</option>
+                            <option value="recent-activity">Recently completed</option>
+                          </select></label>
+                          <label>Last completed<select value={profileActivityWindow} onChange={(event) => setProfileActivityWindow(event.target.value as ProfileActivityWindow)}>
+                            <option value="any">Any time</option>
+                            <option value="30-days">Past 30 days</option>
+                            <option value="90-days">Past 90 days</option>
+                            <option value="1-year">Past year</option>
+                            <option value="no-completed-activity">No completed activity</option>
+                          </select></label>
+                        </div>
                         <div className="profile-directory-heading">
-                          <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
+                          <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{orderedProfiles.length} public profile{orderedProfiles.length === 1 ? "" : "s"}</span></div>
                           <div className="profile-directory-heading-actions">
                             {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
                             <div className="profile-view-toggle" role="group" aria-label="Profile view">
@@ -1872,7 +1899,8 @@ export default function App() {
                         {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
                         {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
                         {!profileSearchApplied && profileDirectoryMessage ? <p className="form-hint" role="status">{profileDirectoryMessage}</p> : null}
-                        {!profileSearching && !profileDirectoryLoading && displayedProfiles.length ? <div className={`profile-directory-grid profile-directory-grid--${profileDirectoryView}`}>{displayedProfiles.map(profileDirectoryCard)}</div> : null}
+                        {!profileSearching && !profileDirectoryLoading && orderedProfiles.length ? <div className={`profile-directory-grid profile-directory-grid--${profileDirectoryView}`}>{orderedProfiles.map(profileDirectoryCard)}</div> : null}
+                        {!profileSearching && !profileDirectoryLoading && displayedProfiles.length > 0 && orderedProfiles.length === 0 ? <p className="profile-directory-empty" role="status">No profiles have completed marketplace activity in that period.</p> : null}
                       </>
                     )}
                   </section>

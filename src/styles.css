@@ -1174,6 +1174,17 @@ li {
 .profile-view-toggle button:hover:not(:disabled) { background: #f7fbf9; color: #0b5b4b; }
 
 .profile-directory-loading { align-items: center; color: #5a6862; display: flex; gap: 8px; margin: 0; }
+.profile-directory-empty { color: #5a6862; margin: 0; padding: 8px 0; }
+
+.profile-directory-filters {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(180px, 240px));
+  justify-content: end;
+}
+
+.profile-directory-filters label { min-width: 0; }
 
 .profile-directory-grid {
   display: grid;
@@ -1249,6 +1260,12 @@ li {
 .profile-directory-reputation svg { color: #0f6b57; }
 .profile-directory-reputation strong { font-size: .72rem; }
 .profile-directory-reputation span { color: #5a6862; font-size: .7rem; grid-column: 2; line-height: 1.35; text-align: left; }
+.profile-directory-reputation .profile-directory-last-active {
+  flex-basis: 100%;
+  font-size: .7rem;
+  grid-column: auto;
+  padding-top: 2px;
+}
 
 .profile-directory-view-action {
   justify-self: start;
@@ -1260,11 +1277,14 @@ li {
 @media (min-width: 980px) {
   .profile-directory-card--list {
     align-items: center;
+    grid-template-areas: "identity specialties reputation action";
     grid-template-columns: minmax(200px, .8fr) minmax(270px, 1.2fr) minmax(260px, 1fr) auto;
   }
 
-  .profile-directory-card--list .profile-directory-reputation { border-left: 1px solid #e1e9e4; border-top: 0; padding-left: 16px; padding-top: 0; }
-  .profile-directory-card--list .profile-directory-view-action { justify-self: end; white-space: nowrap; }
+  .profile-directory-card--list .profile-directory-card-header { grid-area: identity; }
+  .profile-directory-card--list .profile-directory-specialties { grid-area: specialties; }
+  .profile-directory-card--list .profile-directory-reputation { border-left: 1px solid #e1e9e4; border-top: 0; grid-area: reputation; padding-left: 16px; padding-top: 0; }
+  .profile-directory-card--list .profile-directory-view-action { grid-area: action; justify-self: end; margin-left: auto; white-space: nowrap; }
 }
 
 .profile-role-grid {
@@ -2959,6 +2979,7 @@ textarea {
   .profile-directory-heading { align-items: stretch; }
   .profile-directory-heading .secondary-button { width: 100%; }
   .profile-directory-heading-actions { align-items: stretch; flex-direction: column; }
+  .profile-directory-filters { grid-template-columns: 1fr; justify-content: stretch; }
   .profile-view-toggle { align-self: stretch; }
   .profile-view-toggle button { flex: 1; width: auto; }
   .profile-directory-card { padding: 18px; }
