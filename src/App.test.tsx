@@ -199,9 +199,9 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: /view test participant profile/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /view capital guide profile/i })).toBeInTheDocument();
     expect(screen.getByText(/2 public profiles/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/search within/i)).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^keywords$/i), "testparticipant.eth");
-    await user.selectOptions(screen.getByLabelText(/search within/i), "identity");
     await user.selectOptions(screen.getByLabelText(/^work type$/i), "audit");
     await user.selectOptions(screen.getByLabelText(/^category$/i), "Smart Contracts & Web3");
     await user.click(screen.getByRole("button", { name: /^search profiles$/i }));
@@ -210,7 +210,6 @@ describe("App", () => {
     const searchUrl = new URL(String(searchCall?.[0]), "https://bounties.bittrees.org");
     expect(Object.fromEntries(searchUrl.searchParams)).toEqual({
       q: "testparticipant.eth",
-      field: "identity",
       workType: "audit",
       category: "Smart Contracts & Web3"
     });
