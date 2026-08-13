@@ -8,6 +8,8 @@ import {
   parseCriteria,
   parseMilestones,
   parseSupport,
+  resolvedCategory,
+  resolvedWorkType,
   stageEscrow,
   submitDelivery,
   submitProposal
@@ -121,6 +123,52 @@ describe("marketplace model", () => {
       milestones: "Discovery\nBuild",
       support: "",
       criteria: "Accepted by reviewer"
+    })).toBe(false);
+  });
+
+  it("accepts and normalizes custom work types and categories", () => {
+    const draft = {
+      title: "Map urban biodiversity",
+      scope: "__custom__" as const,
+      customScope: "  Field research  ",
+      category: "__custom__" as const,
+      customCategory: "  Ecology   and conservation ",
+      project: "Survey the target area.",
+      budget: 100,
+      token: "USDC",
+      buyer: "Research team",
+      deliveryDeadline: "2099-01-01",
+      providerPreference: "",
+      milestones: "Survey",
+      support: "Site map",
+      criteria: "Documented observations"
+    };
+
+    expect(resolvedWorkType(draft)).toBe("Field research");
+    expect(resolvedCategory(draft)).toBe("Ecology and conservation");
+    expect(isDraftValid(draft)).toBe(true);
+    expect(createMarketplaceOrder(draft, 0)).toMatchObject({
+      scope: "Field research",
+      category: "Ecology and conservation"
+    });
+  });
+
+  it("rejects empty custom classifications", () => {
+    expect(isDraftValid({
+      title: "Custom bounty",
+      scope: "__custom__",
+      customScope: " ",
+      category: "__custom__",
+      customCategory: "Ecology",
+      project: "Survey the target area.",
+      budget: 100,
+      token: "USDC",
+      buyer: "Research team",
+      deliveryDeadline: "2099-01-01",
+      providerPreference: "",
+      milestones: "Survey",
+      support: "Site map",
+      criteria: "Documented observations"
     })).toBe(false);
   });
 

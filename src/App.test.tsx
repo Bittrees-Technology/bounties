@@ -105,6 +105,30 @@ describe("App", () => {
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
   });
 
+  it("publishes user-defined work types and categories instead of an Other placeholder", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.selectOptions(screen.getByLabelText(/^work type$/i), "__custom__");
+    await user.type(screen.getByLabelText(/^custom work type$/i), "Field research");
+    await user.selectOptions(screen.getByLabelText(/^category$/i), "__custom__");
+    await user.type(screen.getByLabelText(/^custom category$/i), "Ecology and conservation");
+    await completeCreateForm(user, "Map urban biodiversity");
+    await user.click(screen.getByRole("button", { name: /publish bounty/i }));
+
+    const request = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/bounties") && init?.method === "POST");
+    const body = JSON.parse(String(request?.[1]?.body ?? "{}"));
+    expect(body.scopeSource).toMatchObject({
+      scope: "Field research",
+      category: "Ecology and conservation"
+    });
+    const order = within((await screen.findByRole("heading", { name: "Map urban biodiversity" })).closest("article") as HTMLElement);
+    expect(order.getByText(/Field research · Ecology and conservation/i)).toBeInTheDocument();
+    expect(order.queryByText(/^Other$/i)).not.toBeInTheDocument();
+  });
+
   it("routes the participation choices to hiring and work destinations", async () => {
     const user = userEvent.setup();
     render(<App />);

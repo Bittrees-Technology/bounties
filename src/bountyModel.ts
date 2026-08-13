@@ -1,5 +1,26 @@
 import type { AcceptanceCriterion, MarketplaceOrder, Milestone, OrderStatus, RequestDraft } from "./types";
 
+export const CUSTOM_CLASSIFICATION_VALUE = "__custom__";
+
+function normalizeClassification(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export function resolvedWorkType(draft: RequestDraft): string {
+  return normalizeClassification(draft.scope === CUSTOM_CLASSIFICATION_VALUE ? draft.customScope ?? "" : draft.scope);
+}
+
+export function resolvedCategory(draft: RequestDraft): string {
+  return normalizeClassification(draft.category === CUSTOM_CLASSIFICATION_VALUE ? draft.customCategory ?? "" : draft.category);
+}
+
+function validClassification(value: string): boolean {
+  return value.length >= 2 && value.length <= 80 && ![...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+}
+
 export const launchGates = [
   "Payments and escrow readiness approval",
   "Wallet, account, and release-control security review",
@@ -123,8 +144,8 @@ export function createMarketplaceOrder(draft: RequestDraft, existingCount: numbe
   return {
     id: `ord-${String(existingCount + 1).padStart(3, "0")}`,
     title: draft.title.trim(),
-    scope: draft.scope,
-    category: draft.category,
+    scope: resolvedWorkType(draft),
+    category: resolvedCategory(draft),
     project: draft.project.trim(),
     budget: numericBudget,
     budgetDisplay: String(draft.budget),
@@ -156,6 +177,8 @@ export function isDraftValid(draft: RequestDraft): boolean {
   const numericBudget = Number(draft.budget);
   return Boolean(
     draft.title.trim() &&
+      validClassification(resolvedWorkType(draft)) &&
+      validClassification(resolvedCategory(draft)) &&
       draft.project.trim() &&
       draft.buyer.trim() &&
       /^\d{4}-\d{2}-\d{2}$/.test(draft.deliveryDeadline) &&
