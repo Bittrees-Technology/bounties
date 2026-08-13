@@ -32,6 +32,8 @@ describe("resolveDirectRoute", () => {
       method: "GET"
     });
     expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?path=profiles%2Fsearch&q=Alice", "GET").action).toBe("profiles/search");
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?field=bio&q=protocol&workType=audit&category=Smart%20Contracts%20%26%20Web3", "GET").action).toBe("profiles/search");
+    expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?workType=project", "GET").action).toBe("profiles/search");
     expect(resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/directory", "GET")).toEqual({
       action: "profiles/directory",
       handler: "bounties",
@@ -47,6 +49,9 @@ describe("resolveDirectRoute", () => {
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/snapshot?path=admin", "GET")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=a", "GET")).toThrow(ProxyRequestError);
     expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=alice&debug=1", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?field=bio", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?q=alice&field=private", "GET")).toThrow(ProxyRequestError);
+    expect(() => resolveDirectRoute("https://bounties.bittrees.org/api/bounties/profiles/search?workType=unknown", "GET")).toThrow(ProxyRequestError);
   });
 });
 

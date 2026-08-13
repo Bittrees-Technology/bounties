@@ -243,7 +243,9 @@ describe("public profile discovery", () => {
     await expect(response.json()).resolves.toMatchObject({
       results: [{ wallet_address: session.wallet_address, display_name: "Test participant" }]
     });
-    expect(rpcMock).toHaveBeenCalledWith("app_search_public_wallet_profiles", { p_query: "Test participant", p_limit: 12 });
+    expect(rpcMock).toHaveBeenCalledWith("app_filter_public_wallet_profiles", {
+      p_query: "Test participant", p_search_field: "all", p_work_type: null, p_category: null, p_limit: 12
+    });
     expect(rpcMock).toHaveBeenCalledWith("app_consume_anonymous_rate_limit", {
       p_bucket_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
       p_action: "public_profile_discovery",
@@ -263,6 +265,18 @@ describe("public profile discovery", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 
+  it("supports structured profile filters without requiring keywords", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/search?workType=audit&category=Smart%20Contracts%20%26%20Web3"
+    ), "profiles/search");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_filter_public_wallet_profiles", {
+      p_query: null, p_search_field: "all", p_work_type: "audit", p_category: "Smart Contracts & Web3", p_limit: 12
+    });
+  });
+
   it("fails closed with an actionable error when ENS search lacks mainnet RPC", async () => {
     rpcMock.mockResolvedValue({ data: [], error: null });
     const response = await handleBountiesApi(new Request(
@@ -271,7 +285,9 @@ describe("public profile discovery", () => {
 
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toEqual({ code: "ENS_RPC_UNAVAILABLE" });
-    expect(rpcMock).toHaveBeenCalledWith("app_search_public_wallet_profiles", { p_query: "alice.eth", p_limit: 12 });
+    expect(rpcMock).toHaveBeenCalledWith("app_filter_public_wallet_profiles", {
+      p_query: "alice.eth", p_search_field: "all", p_work_type: null, p_category: null, p_limit: 12
+    });
   });
 
   it("stops a rate-limited anonymous source before profile or ENS discovery", async () => {
@@ -285,7 +301,7 @@ describe("public profile discovery", () => {
 
     expect(response.status).toBe(429);
     await expect(response.json()).resolves.toEqual({ code: "RATE_LIMITED" });
-    expect(rpcMock).not.toHaveBeenCalledWith("app_search_public_wallet_profiles", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("app_filter_public_wallet_profiles", expect.anything());
   });
 
   it("does not expose a hidden profile through its direct public URL", async () => {

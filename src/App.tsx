@@ -54,6 +54,7 @@ import {
   updateMyProfile,
   type MarketplaceSnapshot,
   type ModerationDecision,
+  type ProfileSearchField,
   type PublicWalletProfile,
   type TokenRecord
 } from "./persistence/supabase";
@@ -257,6 +258,9 @@ export default function App() {
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileSearchQuery, setProfileSearchQuery] = useState("");
+  const [profileSearchField, setProfileSearchField] = useState<ProfileSearchField>("all");
+  const [profileWorkTypeFilter, setProfileWorkTypeFilter] = useState("");
+  const [profileCategoryFilter, setProfileCategoryFilter] = useState("");
   const [profileSearchResults, setProfileSearchResults] = useState<PublicWalletProfile[]>([]);
   const [profileSearchMessage, setProfileSearchMessage] = useState<string | null>(null);
   const [profileSearching, setProfileSearching] = useState(false);
@@ -381,12 +385,17 @@ export default function App() {
   async function discoverProfiles(event: FormEvent) {
     event.preventDefault();
     const query = profileSearchQuery.trim();
-    if (query.length < 2) return setProfileSearchMessage("Enter a custom name, ENS name, or wallet address.");
+    if (query && query.length < 2) return setProfileSearchMessage("Enter at least two characters, or use a work type or category filter.");
+    if (!query && !profileWorkTypeFilter && !profileCategoryFilter) return setProfileSearchMessage("Enter keywords or choose at least one profile filter.");
     try {
       setProfileSearching(true);
       setProfileSearchApplied(true);
       setProfileSearchMessage(null);
-      const { results } = await searchPublicProfiles(query);
+      const { results } = await searchPublicProfiles(query, {
+        field: profileSearchField,
+        workType: profileWorkTypeFilter,
+        category: profileCategoryFilter
+      });
       setProfileSearchResults(results);
       setProfileSearchMessage(results.length ? null : "No public profiles matched that search.");
     } catch (caught) {
@@ -1337,12 +1346,27 @@ export default function App() {
                         <p>Browse saved public profiles, compare each participant’s marketplace history, or search by name, ENS identity, specialty, or wallet address.</p>
                         <p className="ens-integration-note"><BadgeCheck size={16} /> ENS names are resolved from Ethereum when available. A custom profile name takes priority when its owner provides one.</p>
                         <form className="profile-search-form" onSubmit={discoverProfiles}>
-                          <label>Search profiles<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} placeholder="Name, specialty, alice.eth, or 0x…" minLength={2} maxLength={80} required /></label>
-                          <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search"}</button>
+                          <label className="profile-keyword-field">Keywords<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} placeholder="Name, bio, alice.eth, or 0x…" minLength={2} maxLength={80} /></label>
+                          <label>Search within<select value={profileSearchField} onChange={(event) => setProfileSearchField(event.target.value as ProfileSearchField)}>
+                            <option value="all">All profile text</option>
+                            <option value="identity">Name, ENS, or wallet</option>
+                            <option value="bio">Bio</option>
+                            <option value="specialty">Work type or specialty</option>
+                          </select></label>
+                          <label>Work type<select value={profileWorkTypeFilter} onChange={(event) => setProfileWorkTypeFilter(event.target.value)}>
+                            <option value="">Any work type</option>
+                            {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
+                          </select></label>
+                          <label>Category<select value={profileCategoryFilter} onChange={(event) => setProfileCategoryFilter(event.target.value)}>
+                            <option value="">Any category</option>
+                            {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                          </select></label>
+                          <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
                         </form>
+                        <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
-                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={() => { setProfileSearchApplied(false); setProfileSearchQuery(""); setProfileSearchResults([]); setProfileSearchMessage(null); }}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
+                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={() => { setProfileSearchApplied(false); setProfileSearchQuery(""); setProfileSearchField("all"); setProfileWorkTypeFilter(""); setProfileCategoryFilter(""); setProfileSearchResults([]); setProfileSearchMessage(null); }}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
                         </div>
                         {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
                         {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}

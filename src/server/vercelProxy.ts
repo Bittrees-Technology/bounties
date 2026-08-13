@@ -1,4 +1,10 @@
 const SEGMENT_PATTERN = /^[a-z0-9-]+$/i;
+const PROFILE_SEARCH_FIELDS = new Set(["all", "identity", "bio", "specialty"]);
+const PROFILE_WORK_TYPES = new Set(["task", "deliverable", "milestone", "project", "consultation", "audit", "retainer"]);
+const PROFILE_CATEGORIES = new Set([
+  "Software Engineering", "Smart Contracts & Web3", "Product & UX Design", "Data & Analytics", "Research & Writing",
+  "Marketing & Growth", "Legal & Compliance", "Finance & Accounting", "Operations & Support", "Media & Creative"
+]);
 
 export type DirectRoute = {
   handler: "wallet-auth" | "bounties";
@@ -52,15 +58,24 @@ export function resolveDirectRoute(requestUrl: string, method: string): DirectRo
       const queryEntries = [...url.searchParams.entries()];
       const effectiveAction = route.handler === "wallet-auth" ? "wallet-auth" : action || "snapshot";
       const pathEntries = queryEntries.filter(([key]) => key === "path");
-      const publicSearchEntries = queryEntries.filter(([key]) => key === "q");
-      const unexpectedEntries = queryEntries.filter(([key]) => key !== "path" && key !== "q");
+      const searchKeys = new Set(["q", "field", "workType", "category"]);
+      const publicSearchEntries = queryEntries.filter(([key]) => searchKeys.has(key));
+      const unexpectedEntries = queryEntries.filter(([key]) => key !== "path" && !searchKeys.has(key));
       const validRewritePath = pathEntries.length <= 1
         && (!pathEntries.length || pathEntries[0][1].replace(/^\/+|\/+$/g, "") === effectiveAction);
+      const values = (key: string) => publicSearchEntries.filter(([entryKey]) => entryKey === key).map(([, value]) => value.trim());
+      const queryValues = values("q");
+      const fieldValues = values("field");
+      const workTypeValues = values("workType");
+      const categoryValues = values("category");
+      const queryValid = queryValues.length <= 1 && (!queryValues.length || (queryValues[0].length >= 2 && queryValues[0].length <= 80));
+      const fieldValid = fieldValues.length <= 1 && (!fieldValues.length || PROFILE_SEARCH_FIELDS.has(fieldValues[0]));
+      const workTypeValid = workTypeValues.length <= 1 && (!workTypeValues.length || PROFILE_WORK_TYPES.has(workTypeValues[0]));
+      const categoryValid = categoryValues.length <= 1 && (!categoryValues.length || PROFILE_CATEGORIES.has(categoryValues[0]));
       const validPublicSearch = effectiveAction === "profiles/search"
         && normalizedMethod === "GET"
-        && publicSearchEntries.length === 1
-        && publicSearchEntries[0][1].trim().length >= 2
-        && publicSearchEntries[0][1].trim().length <= 80;
+        && queryValid && fieldValid && workTypeValid && categoryValid
+        && Boolean(queryValues[0] || workTypeValues[0] || categoryValues[0]);
       if (unexpectedEntries.length || !validRewritePath || (publicSearchEntries.length ? !validPublicSearch : false)
         || (queryEntries.length && !pathEntries.length && !validPublicSearch)) {
         throw new ProxyRequestError("Query parameters are not supported.", 400);
