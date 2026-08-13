@@ -1142,10 +1142,6 @@ export default function App() {
             {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
             {session?.staffRole ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
           </nav>
-          <div className="gate-callout">
-            <ShieldCheck size={18} />
-            <span>You can explore and prepare bounties now. Token escrow will be enabled after the contracts are deployed.</span>
-          </div>
         </aside>
 
         <section className={`content content-${visiblePage}`}>
