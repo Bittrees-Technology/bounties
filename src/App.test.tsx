@@ -295,6 +295,7 @@ describe("App", () => {
     expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 
     expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^refresh$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/compare each participant.s marketplace history/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/ENS names are resolved from Ethereum/i)).not.toBeInTheDocument();
     const ownProfileButton = await screen.findByRole("button", { name: /view test participant profile/i });

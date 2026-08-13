@@ -1625,7 +1625,7 @@ export default function App() {
                         <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
-                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
+                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
                         </div>
                         {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
                         {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
