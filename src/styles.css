@@ -2891,6 +2891,20 @@ textarea {
   width: 100%;
 }
 
+.escrow-creation-pending {
+  align-items: start;
+  background: #fffdf5;
+  border: 1px solid #d7c982;
+  border-radius: 12px;
+  display: grid;
+  gap: 7px;
+  padding: 12px;
+}
+
+.escrow-creation-pending span { color: #5a6862; font-size: .86rem; }
+.escrow-creation-pending a { align-items: center; display: inline-flex; font-weight: 800; gap: 4px; width: fit-content; }
+.escrow-creation-pending button { justify-self: start; }
+
 .escrow-transaction-link {
   align-items: center;
   color: #5a6862;

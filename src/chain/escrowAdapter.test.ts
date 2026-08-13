@@ -56,6 +56,8 @@ interface RecordingOptions {
   rejectMethod?: string;
   chainId?: string;
   ethCallResult?: unknown;
+  existingBountyId?: bigint;
+  receipts?: unknown[];
 }
 
 class RecordingProvider implements Eip1193Provider {
@@ -63,6 +65,7 @@ class RecordingProvider implements Eip1193Provider {
   private statusIndex = 0;
   private transactionIndex = 0;
   private allowanceIndex = 0;
+  private receiptIndex = 0;
 
   constructor(private readonly options: RecordingOptions = {}) {}
 
@@ -78,6 +81,15 @@ class RecordingProvider implements Eip1193Provider {
     if (args.method === "eth_call") {
       if (this.options.ethCallResult !== undefined) return this.options.ethCallResult;
       const call = (args.params as Array<{ data?: `0x${string}` }> | undefined)?.[0];
+      if (call?.data) {
+        try {
+          if (decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: call.data }).functionName === "bountyIdByRequesterAndTermsHash") {
+            return toAbiWord(this.options.existingBountyId ?? 0n);
+          }
+        } catch {
+          // Continue with ERC20 reads.
+        }
+      }
       if (call?.data && decodeFunctionData({ abi: erc20Abi, data: call.data }).functionName === "balanceOf") {
         return toAbiWord(this.options.balance ?? 10_000_000n);
       }
@@ -93,7 +105,10 @@ class RecordingProvider implements Eip1193Provider {
       const hashes = this.options.transactionHashes ?? [txHash];
       return hashes[Math.min(this.transactionIndex++, hashes.length - 1)];
     }
-    if (args.method === "eth_getTransactionReceipt") return { status: "0x1", transactionHash: approvalTxHash };
+    if (args.method === "eth_getTransactionReceipt") {
+      const receipts = this.options.receipts ?? [{ status: "0x1", transactionHash: approvalTxHash }];
+      return receipts[Math.min(this.receiptIndex++, receipts.length - 1)];
+    }
     throw new Error(`unexpected method ${args.method}`);
   }
 }
@@ -205,6 +220,17 @@ describe("escrow adapter provider support", () => {
     await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
       code: "INSUFFICIENT_BALANCE",
       message: "Your wallet has 0 USDC, but this escrow requires 2.5 USDC. Add the tokens to this wallet before funding."
+    });
+    expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_requestAccounts", "eth_chainId", "eth_call", "eth_call"]);
+  });
+
+  it("rejects a duplicate committed bounty before balance, approval, or wallet submission", async () => {
+    const eoaProvider = new RecordingProvider({ existingBountyId: 2n });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "DUPLICATE_ESCROW",
+      message: "This committed bounty already exists onchain as bounty 2."
     });
     expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_requestAccounts", "eth_chainId", "eth_call"]);
   });
@@ -342,6 +368,39 @@ describe("escrow adapter provider support", () => {
     });
 
     await expect(adapter.fundEscrow(createOrder(), funding)).resolves.toEqual({ state: "submitted", bundleId: "bundle-1" });
+  });
+
+  it("reports a creation bundle immediately even when confirmation polling times out", async () => {
+    const submissions: Array<{ txHash?: string; bundleId?: string }> = [];
+    const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 2500000n, statuses: [{ status: 100 }] });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      smartWalletProvider,
+      integrationEnabled: true,
+      statusPollAttempts: 1,
+      statusPollIntervalMs: 0,
+      onSubmission: (submission) => submissions.push(submission)
+    });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).resolves.toEqual({ state: "submitted", bundleId: "bundle-1" });
+    expect(submissions).toEqual([{ bundleId: "bundle-1" }]);
+  });
+
+  it("reports an EOA creation hash before receipt polling times out", async () => {
+    const submissions: Array<{ txHash?: string; bundleId?: string }> = [];
+    const eoaProvider = new RecordingProvider({ allowance: 2500000n, transactionHashes: [txHash], receipts: [null] });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      eoaProvider,
+      preferSmartWallet: false,
+      integrationEnabled: true,
+      statusPollAttempts: 1,
+      statusPollIntervalMs: 0,
+      onSubmission: (submission) => submissions.push(submission)
+    });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({ code: "UNKNOWN" });
+    expect(submissions).toEqual([{ txHash }]);
   });
 
   it("uses the immutable approval hash instead of reusing the terms hash", async () => {

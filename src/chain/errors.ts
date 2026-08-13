@@ -6,6 +6,7 @@ export type EscrowErrorCode =
   | "WALLET_NOT_CONNECTED"
   | "INSUFFICIENT_BALANCE"
   | "INSUFFICIENT_ALLOWANCE"
+  | "DUPLICATE_ESCROW"
   | "CONTRACT_REVERTED"
   | "USER_REJECTED"
   | "UNKNOWN";
@@ -28,6 +29,7 @@ const USER_MESSAGES: Record<EscrowErrorCode, string> = {
   WALLET_NOT_CONNECTED: "Connect a wallet to continue.",
   INSUFFICIENT_BALANCE: "Your wallet does not hold enough of the selected token to fund this escrow.",
   INSUFFICIENT_ALLOWANCE: "Spending approval is required before funds can move.",
+  DUPLICATE_ESCROW: "This bounty already has an escrow record. Its principal cannot be funded again.",
   CONTRACT_REVERTED: "The escrow contract rejected this action.",
   USER_REJECTED: "The request was cancelled.",
   UNKNOWN: "Something went wrong with this escrow action."

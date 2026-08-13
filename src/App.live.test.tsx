@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockMilestoneEscrow, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockMilestoneEscrow, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -11,6 +11,7 @@ afterEach(() => {
 
 async function renderConfiguredEscrow() {
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
   vi.resetModules();
   const { default: App } = await import("./App");
@@ -27,6 +28,7 @@ async function renderConfiguredEscrow() {
 
 it("enables participant escrow creation only when a deployment is configured", async () => {
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
   vi.resetModules();
   const { default: App } = await import("./App");
@@ -48,6 +50,46 @@ it("enables participant escrow creation only when a deployment is configured", a
   const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));
   expect(order.getByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
   expect(order.queryByRole("button", { name: /verify escrow observation/i })).not.toBeInTheDocument();
+});
+
+it("keeps new creation paused without hiding existing escrow lifecycle actions", async () => {
+  configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const card = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  const order = within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
+  expect(order.queryByText(/new escrow funding is temporarily paused/i)).not.toBeInTheDocument();
+  expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
+});
+
+it("hydrates a persisted creation lock and safely clears a reverted receipt", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockEscrowRecordOutcome("reverted");
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
+    "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
+  }));
+  window.history.replaceState({}, "", "/marketplace");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  expect(await screen.findByText(/locked against another funding attempt/i)).toBeInTheDocument();
+  await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
+  expect(await screen.findByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
+  expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
 });
 
 it("uses the exact active tranche for approval and release controls", async () => {
@@ -87,6 +129,7 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
 it("shows selected providers why proof submission is locked before funding", async () => {
   configureMockSelectedUnfundedProvider();
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
   vi.resetModules();
   const { default: App } = await import("./App");
