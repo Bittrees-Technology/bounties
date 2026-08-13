@@ -718,6 +718,16 @@ li {
 .inspected-token-card a,
 .token-identity-card a { color: #0f6b57; font-weight: 700; justify-self: start; }
 
+.selected-token-card .report-control {
+  border-top: 1px solid #cfe0d6;
+  margin-top: 4px;
+  padding-top: 10px;
+}
+
+.selected-token-card .report-control form {
+  grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr) auto;
+}
+
 .payment-token-note { margin-top: -2px; }
 
 .milestone-builder {
@@ -2729,6 +2739,7 @@ textarea {
   }
 
   .report-control form,
+  .selected-token-card .report-control form,
   .compact-action-form,
   .review-form,
   .escrow-actions form {

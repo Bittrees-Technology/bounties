@@ -23,7 +23,7 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
   delivery commitments, one bounded requester revision per milestone, buyer
   approval, seven-day release, cancellation, timeout refund, and bilateral
   exact-split settlement whenever a verified deployment is configured.
-- Let signed-in users report listings and reviews, and let operations-provisioned
+- Let signed-in users report listings, reviews, profiles, and suspected scam tokens, and let operations-provisioned
   moderators hide illegal or prohibited content from the hosted frontend without
   gaining any authority over escrow or onchain state.
 - Let each participant publish one directional rating and review after the API
