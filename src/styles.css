@@ -1045,8 +1045,7 @@ li {
 .profile-owner-badge { background: #dceee7; border-radius: 999px; color: #0b5b4b; font-size: .68rem; font-weight: 800; margin-bottom: 9px; padding: 3px 7px; text-transform: uppercase; }
 
 .profile-directory-bio { color: #4f5f57; line-height: 1.5; margin: 0; }
-.profile-directory-specialties { display: flex; flex-wrap: wrap; gap: 7px; }
-.profile-directory-specialties span { background: #e7f3ef; border-radius: 999px; color: #0b5b4b; font-size: .8rem; font-weight: 700; max-width: 100%; overflow-wrap: anywhere; padding: 6px 9px; }
+.profile-directory-specialties { display: grid; gap: 9px; }
 
 .profile-directory-reputation {
   border-bottom: 1px solid #e1e9e4;
@@ -1163,13 +1162,34 @@ li {
 .profile-card > * { min-width: 0; }
 
 .profile-specialties {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
+  display: grid;
+  gap: 9px;
   margin-top: 16px;
 }
 
-.profile-specialties span {
+.profile-specialty-group {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 84px minmax(0, 1fr);
+}
+
+.profile-specialty-group > strong {
+  color: #5a6862;
+  font-size: .72rem;
+  letter-spacing: .035em;
+  padding-top: 6px;
+  text-transform: uppercase;
+}
+
+.profile-specialty-values {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  min-width: 0;
+}
+
+.profile-specialty-values span {
   background: #e7f3ef;
   border-radius: 999px;
   color: #0b5b4b;
@@ -2602,6 +2622,8 @@ textarea {
   .profile-directory-card-header > button { width: 100%; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }
   .profile-visibility-status button { width: 100%; }
+  .profile-specialty-group { gap: 5px; grid-template-columns: 1fr; }
+  .profile-specialty-group > strong { padding-top: 0; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
   .profile-editor > summary { right: 18px; top: 18px; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }

@@ -313,6 +313,10 @@ describe("App", () => {
     expect(within(ownSpecialties).getByText(/smart contracts & web3/i)).toBeInTheDocument();
     expect(within(ownSpecialties).getByText(/research & writing/i)).toBeInTheDocument();
     expect(within(ownSpecialties).getByText(/operations & support/i)).toBeInTheDocument();
+    const directoryPreferenceGroups = ownSpecialties.querySelectorAll(".profile-specialty-group");
+    expect(directoryPreferenceGroups).toHaveLength(2);
+    expect(directoryPreferenceGroups[0]).toHaveAttribute("aria-label", "Work types");
+    expect(directoryPreferenceGroups[1]).toHaveAttribute("aria-label", "Categories");
     expect(within(ownDirectoryCard).getByText(/^capital provider$/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/^labor provider$/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/5\.0 \/ 5 average · 3 ratings · 3 bounties worked/i)).toBeInTheDocument();
@@ -369,6 +373,11 @@ describe("App", () => {
     expect(within(profileCard).queryByText(/report this profile/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
+    const profilePreferences = within(profileCard).getByLabelText(/profile work preferences/i);
+    const profilePreferenceGroups = profilePreferences.querySelectorAll(".profile-specialty-group");
+    expect(profilePreferenceGroups).toHaveLength(2);
+    expect(profilePreferenceGroups[0]).toHaveAttribute("aria-label", "Work types");
+    expect(profilePreferenceGroups[1]).toHaveAttribute("aria-label", "Categories");
     const editControl = screen.getByText(/^edit profile$/i);
     const profileEditor = editControl.closest(".profile-editor") as HTMLElement;
     expect(profileEditor).toBeInTheDocument();
