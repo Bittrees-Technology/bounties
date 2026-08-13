@@ -229,6 +229,7 @@ export type PublicWalletProfile = {
   categories?: string[];
   custom_specialty?: string | null;
   member_since: string;
+  last_completed_activity_at?: string | null;
   roles: Role[];
   activity_summary: { capital_bounties: number; labor_bounties: number };
   rating_summaries: { capital_provider: RatingSummary; labor_provider: RatingSummary };

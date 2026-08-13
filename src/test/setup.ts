@@ -346,6 +346,7 @@ beforeEach(() => {
         categories: role === "provider" ? ["Smart Contracts & Web3", "Research & Writing", "Operations & Support"] : ["Operations & Support"],
         custom_specialty: null,
         member_since: new Date().toISOString(),
+        last_completed_activity_at: new Date(Date.now() - (role === "provider" ? 10 : 120) * 24 * 60 * 60 * 1_000).toISOString(),
         roles: [role],
         activity_summary: role === "provider" ? { capital_bounties: 0, labor_bounties: 3 } : { capital_bounties: 2, labor_bounties: 0 },
         rating_summaries: {
