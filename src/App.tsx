@@ -9,6 +9,8 @@ import {
   EyeOff,
   ExternalLink,
   Flag,
+  LayoutGrid,
+  List,
   Loader2,
   PlusCircle,
   RefreshCw,
@@ -381,6 +383,7 @@ export default function App() {
   const [profileDirectoryLoaded, setProfileDirectoryLoaded] = useState(false);
   const [profileDirectoryLoading, setProfileDirectoryLoading] = useState(false);
   const [profileDirectoryMessage, setProfileDirectoryMessage] = useState<string | null>(null);
+  const [profileDirectoryView, setProfileDirectoryView] = useState<"tiles" | "list">("tiles");
   const actionPending = useRef(false);
   const initialProfileSearchHydrated = useRef(false);
 
@@ -1427,36 +1430,39 @@ export default function App() {
     const hasSpecialties = workTypes.length || profileCategories.length || profile.custom_specialty;
     const capitalRating = profile.rating_summaries.capital_provider;
     const laborRating = profile.rating_summaries.labor_provider;
+    const visibleWorkTypes = (profile.work_types ?? []).slice(0, 2);
+    const visibleCategories = profileCategories.slice(0, 2);
+    const hiddenWorkTypeCount = Math.max(0, workTypes.length - visibleWorkTypes.length);
+    const hiddenCategoryCount = Math.max(0, profileCategories.length - visibleCategories.length);
+    const capitalSummary = `${capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} (${capitalRating.review_count})` : "Unrated"} · ${profile.activity_summary.capital_bounties} posted`;
+    const laborSummary = `${laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} (${laborRating.review_count})` : "Unrated"} · ${profile.activity_summary.labor_bounties} worked`;
     return (
-      <article className="profile-directory-card" key={profile.account_id}>
+      <article className={`profile-directory-card profile-directory-card--${profileDirectoryView}`} key={profile.account_id}>
         <header className="profile-directory-card-header">
           <div className="profile-hero profile-directory-profile-hero">
             <ProfileAvatar profile={profile} />
             <div>
-              <div className="profile-directory-eyebrow-line">
-                <p className="eyebrow">Public wallet profile</p>
-                {isOwnProfile ? <span className="profile-owner-badge">You</span> : null}
-              </div>
+              {isOwnProfile ? <div className="profile-directory-eyebrow-line"><span className="profile-owner-badge">You</span></div> : null}
               <h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : !profile.display_name ? walletExplorerLink(profile.wallet_address) : identity}</h3>
               <div className="profile-identity-meta">
                 {profile.display_name && profile.ens_name ? ensExplorerLink(profile, "ens-name") : null}
                 {profile.display_name && !profile.ens_name ? walletExplorerLink(profile.wallet_address) : null}
                 {profile.profile_url ? <a href={profile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
               </div>
+              {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
             </div>
           </div>
-          <button type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
         </header>
-        {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
         {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
-          {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{(profile.work_types ?? []).map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}</div></div> : null}
-          {profileCategories.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{profileCategories.map((category) => <a key={category} href={profileSearchPath({ query: "", workType: "", category })} onClick={(event) => openProfilesByPreference(event, "category", category)}>{category}</a>)}</div></div> : null}
+          {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{visibleWorkTypes.map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}{hiddenWorkTypeCount ? <span className="profile-specialty-overflow">+{hiddenWorkTypeCount}</span> : null}</div></div> : null}
+          {profileCategories.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{visibleCategories.map((category) => <a key={category} href={profileSearchPath({ query: "", workType: "", category })} onClick={(event) => openProfilesByPreference(event, "category", category)}>{category}</a>)}{hiddenCategoryCount ? <span className="profile-specialty-overflow">+{hiddenCategoryCount}</span> : null}</div></div> : null}
           {profile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{profile.custom_specialty}</span></div></div> : null}
         </div> : null}
         <div className="profile-directory-reputation">
-          <div><WalletCards size={16} /><strong>Capital provider</strong><span>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 average · ${capitalRating.review_count} rating${capitalRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.capital_bounties} bount{profile.activity_summary.capital_bounties === 1 ? "y" : "ies"} posted</span></div>
-          <div><UsersRound size={16} /><strong>Labor provider</strong><span>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 average · ${laborRating.review_count} rating${laborRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.labor_bounties} bount{profile.activity_summary.labor_bounties === 1 ? "y" : "ies"} worked</span></div>
+          <div aria-label={`Capital provider: ${capitalSummary}`}><WalletCards size={15} /><strong>Capital</strong><span>{capitalSummary}</span></div>
+          <div aria-label={`Labor provider: ${laborSummary}`}><UsersRound size={15} /><strong>Labor</strong><span>{laborSummary}</span></div>
         </div>
+        <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
       </article>
     );
   }
@@ -1800,12 +1806,18 @@ export default function App() {
                         <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
-                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
+                          <div className="profile-directory-heading-actions">
+                            {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
+                            <div className="profile-view-toggle" role="group" aria-label="Profile view">
+                              <button type="button" aria-pressed={profileDirectoryView === "tiles"} onClick={() => setProfileDirectoryView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
+                              <button type="button" aria-pressed={profileDirectoryView === "list"} onClick={() => setProfileDirectoryView("list")}><List size={15} aria-hidden="true" />List</button>
+                            </div>
+                          </div>
                         </div>
                         {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
                         {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
                         {!profileSearchApplied && profileDirectoryMessage ? <p className="form-hint" role="status">{profileDirectoryMessage}</p> : null}
-                        {!profileSearching && !profileDirectoryLoading && displayedProfiles.length ? <div className="profile-directory-grid">{displayedProfiles.map(profileDirectoryCard)}</div> : null}
+                        {!profileSearching && !profileDirectoryLoading && displayedProfiles.length ? <div className={`profile-directory-grid profile-directory-grid--${profileDirectoryView}`}>{displayedProfiles.map(profileDirectoryCard)}</div> : null}
                       </>
                     )}
                   </section>
