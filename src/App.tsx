@@ -301,6 +301,7 @@ export default function App() {
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
+  const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const [profileSearchQuery, setProfileSearchQuery] = useState(initialProfileSearch?.query ?? "");
   const [profileWorkTypeFilter, setProfileWorkTypeFilter] = useState(initialProfileSearch?.workType ?? "");
   const [profileCategoryFilter, setProfileCategoryFilter] = useState(initialProfileSearch?.category ?? "");
@@ -397,6 +398,7 @@ export default function App() {
   function navigateToPage(page: ProductPage) {
     const target = pageRoutes[page];
     if (window.location.pathname !== target) window.history.pushState({}, "", target);
+    setProfileEditorOpen(false);
     setNotice(null);
     setActivePage(page);
   }
@@ -480,6 +482,7 @@ export default function App() {
     setSelectedProfileAddress(null);
     setPublicProfile(null);
     setProfileMessage(null);
+    setProfileEditorOpen(false);
     setNotice(null);
     setActivePage("profile");
     void runProfileSearch(selection);
@@ -1561,7 +1564,7 @@ export default function App() {
                     ) : selectedProfile ? (
                       <div className="profile-directory-toolbar">
                         <div><strong>Viewing a public profile</strong><span>Return to the directory to continue browsing participants.</span></div>
-                        <button type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setProfileMessage(null); }}>Back to profiles</button>
+                        <button type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setProfileMessage(null); setProfileEditorOpen(false); }}>Back to profiles</button>
                       </div>
                     ) : (
                       <>
@@ -1608,7 +1611,7 @@ export default function App() {
                           </div>
                         </div>
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
-                          <details className="profile-editor">
+                          <details className="profile-editor" onToggle={(event) => setProfileEditorOpen(event.currentTarget.open)}>
                             <summary>Edit profile</summary>
                             <form onSubmit={(event) => {
                               event.preventDefault();
@@ -1654,7 +1657,7 @@ export default function App() {
                             {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
                           </div>
                         ) : null}
-                        {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties profile-specialty-groups" aria-label="Profile work preferences">
+                        {!profileEditorOpen && (publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty) ? <div className="profile-specialties profile-specialty-groups" aria-label="Profile work preferences">
                           {publicProfile.work_types?.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{publicProfile.work_types.map((workType) => <a key={`work-${workType}`} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</a>)}</div></div> : null}
                           {publicProfile.categories?.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{publicProfile.categories.map((category) => <a key={`category-${category}`} href={profileSearchPath({ query: "", workType: "", category })} onClick={(event) => openProfilesByPreference(event, "category", category)}>{category}</a>)}</div></div> : null}
                           {publicProfile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{publicProfile.custom_specialty}</span></div></div> : null}

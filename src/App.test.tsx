@@ -423,6 +423,13 @@ describe("App", () => {
     expect(profileEditor).not.toHaveAttribute("open");
     await user.click(editControl);
     expect(profileEditor).toHaveAttribute("open");
+    expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
+    await user.click(editControl);
+    expect(profileEditor).not.toHaveAttribute("open");
+    expect(within(profileCard).getByLabelText(/profile work preferences/i)).toBeInTheDocument();
+    await user.click(editControl);
+    expect(profileEditor).toHaveAttribute("open");
+    expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText(/custom profile name/i));
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
     await user.click(screen.getByLabelText(/defined task/i));
