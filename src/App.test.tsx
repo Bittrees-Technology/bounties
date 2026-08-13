@@ -432,10 +432,12 @@ describe("App", () => {
     expect(tilesButton).toHaveAttribute("aria-pressed", "true");
     expect(listButton).toHaveAttribute("aria-pressed", "false");
     expect(ownDirectoryCard).toHaveClass("profile-directory-card--tiles");
+    expect(ownProfileButton.closest(".profile-directory-card-header")).toBe(ownDirectoryCard.querySelector(".profile-directory-card-header"));
     await user.click(listButton);
     expect(listButton).toHaveAttribute("aria-pressed", "true");
     expect(tilesButton).toHaveAttribute("aria-pressed", "false");
     expect(ownDirectoryCard).toHaveClass("profile-directory-card--list");
+    expect(within(ownDirectoryCard).getByRole("button", { name: /view test participant profile/i }).closest(".profile-directory-card-header")).toBeNull();
     expect(ownDirectoryCard.querySelector(".profile-hero")).toBeInTheDocument();
     expect(ownDirectoryCard.querySelector(".profile-identity-meta")).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/^you$/i)).toBeInTheDocument();
