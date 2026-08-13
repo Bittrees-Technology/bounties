@@ -440,6 +440,53 @@ li {
   box-shadow: 0 0 0 2px rgba(15, 107, 87, 0.1);
 }
 
+.funded-escrow-summary {
+  align-items: center;
+  background: #0f6b57;
+  border: 1px solid #084c3f;
+  border-radius: 16px;
+  color: #fff;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+}
+
+.funded-escrow-summary > svg { color: #bfe8db; }
+.funded-escrow-summary > div { display: grid; gap: 2px; min-width: 0; }
+.funded-escrow-summary span { color: #d8f1e9; font-size: .72rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.funded-escrow-summary strong { font-family: "Fraunces", Georgia, serif; font-size: 1.42rem; overflow-wrap: anywhere; }
+.funded-escrow-summary small { color: #d8f1e9; }
+.funded-escrow-summary a { align-items: center; background: #fff; border-radius: 10px; color: #0f6b57; display: inline-flex; font-weight: 800; gap: 5px; padding: 10px 12px; text-decoration: none; }
+
+.submit-work-shortcut {
+  align-items: center;
+  background: #0f6b57;
+  border-radius: 10px;
+  color: #fff;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 10px 13px;
+  text-decoration: none;
+}
+
+.delivery-submission-form {
+  background: #f1f8f4;
+  border: 1px solid #bdd8c7;
+  border-radius: 12px;
+  display: grid;
+  gap: 10px;
+  max-width: 520px;
+  padding: 14px;
+}
+
+.delivery-submission-heading { align-items: flex-start; display: flex; gap: 9px; }
+.delivery-submission-heading > div { display: grid; gap: 3px; }
+.delivery-submission-heading span { color: #5a6862; font-size: .82rem; line-height: 1.4; }
+
 .active-milestone-badge {
   background: #dcebe3;
   border-radius: 999px;
@@ -1196,6 +1243,13 @@ li {
 .profile-editor-action:focus-visible { outline: 3px solid rgba(15, 107, 87, .3); outline-offset: 2px; }
 .profile-editor form { border-top: 1px solid #dce5df; display: grid; gap: 12px; margin-top: 20px; padding-top: 20px; }
 .profile-editor form button { justify-self: start; }
+
+.profile-timezone { color: #5a6862; font-size: .88rem; margin: 7px 0 0; }
+.profile-timezone-editor { align-items: end; display: grid; gap: 14px; grid-template-columns: minmax(220px, 1fr) minmax(280px, 1.2fr); }
+.timezone-visibility { align-items: flex-start; background: #f1f8f4; border: 1px solid #c9dfd2; border-radius: 12px; display: flex; gap: 9px; padding: 12px; }
+.timezone-visibility input { flex: 0 0 auto; margin-top: 3px; min-height: auto; width: auto; }
+.timezone-visibility span { display: grid; gap: 3px; }
+.timezone-visibility small { color: #5a6862; font-weight: 500; line-height: 1.4; }
 
 .profile-visibility-control {
   border-top: 1px solid #dce5df;
@@ -2802,6 +2856,9 @@ textarea {
   .profile-add-custom { width: 100%; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
   .profile-editor-action { right: 18px; top: 18px; }
+  .profile-timezone-editor,
+  .funded-escrow-summary { grid-template-columns: 1fr; }
+  .funded-escrow-summary a { justify-content: center; width: 100%; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }
   .landing-hero h1 { font-size: clamp(2.6rem, 13vw, 3.6rem); }
   .landing-actions { align-items: stretch; flex-direction: column; }

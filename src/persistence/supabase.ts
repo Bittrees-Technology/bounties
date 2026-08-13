@@ -77,6 +77,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RPC_CHAIN_MISMATCH") return "ENS search is unavailable because the configured endpoint is not Ethereum mainnet.";
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
   if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters or choose a valid profile filter.";
+  if (serverCode === "INVALID_TIMEZONE") return "Choose a valid timezone.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
   if (serverCode === "TOKEN_MODERATOR_HIDDEN") return "This token has been hidden from Bounties after moderation review. Choose another payment token.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
@@ -217,6 +218,8 @@ export type PublicWalletProfile = {
   display_name: string | null;
   profile_bio: string | null;
   profile_url: string | null;
+  timezone?: string | null;
+  timezone_public?: boolean;
   profile_moderation_status: "visible" | "hidden";
   visibility_source?: "owner" | "moderation" | null;
   profile_updated_at: string;
@@ -269,7 +272,14 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
     const evidence = m.evidence?.at(-1);
     return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryRevision: evidence?.revision, revisionReason: m.revision_request?.reason, revisionReasonHash: m.revision_request?.reason_hash, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
   });
-  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", fundOnApplicantAcceptance: source.fundOnApplicantAcceptance !== false, dueDate: typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString().slice(0, 10), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
+  const canonicalDeadline = milestones.at(-1)?.deliveryDeadline;
+  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", fundOnApplicantAcceptance: source.fundOnApplicantAcceptance !== false, dueDate: canonicalDeadline ?? (typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString()), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
+}
+
+function canonicalDeadline(value: string): string {
+  const parsed = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
+  if (!Number.isFinite(parsed)) throw new PersistenceError("Enter a valid delivery date and time.");
+  return new Date(parsed).toISOString();
 }
 
 export async function loadMarketplace(): Promise<MarketplaceSnapshot> {
@@ -302,9 +312,7 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
     if (!milestone.deliveryDeadline) {
       throw new PersistenceError(`Milestone ${index + 1} requires a delivery deadline.`);
     }
-    const deadline = /^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline)
-      ? Date.parse(`${milestone.deliveryDeadline}T23:59:59.999Z`)
-      : Date.parse(milestone.deliveryDeadline);
+    const deadline = Date.parse(canonicalDeadline(milestone.deliveryDeadline));
     if (!Number.isFinite(deadline) || deadline <= Date.now() || (previousDeadline !== 0 && deadline <= previousDeadline + 21 * 24 * 60 * 60 * 1000)) {
       throw new PersistenceError(`Milestone ${index + 1} must have a future deadline more than 21 days after the previous milestone so its review and revision windows remain usable.`);
     }
@@ -331,8 +339,9 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
       throw new PersistenceError("The budget must provide at least one token base unit per milestone.");
     }
   }
-  const scopeSource = { scope: resolvedWorkType(draft), category: resolvedCategory(draft), project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label), fundOnApplicantAcceptance: draft.fundOnApplicantAcceptance !== false };
-  const row = await request<BountyRow>("/bounties", { method: "POST", body: JSON.stringify({ title: draft.title.trim(), description: draft.project.trim(), scopeSource, scopeHash: hashSourceJson(scopeSource).value, chainId: token.chain_id, tokenId: token.id, budgetBaseUnits, milestones: milestones.map((milestone, index) => ({ ordinal: milestone.ordinal, title: milestone.title, amount_base_units: milestoneAmounts[index], delivery_deadline: milestone.deliveryDeadline ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline) ? `${milestone.deliveryDeadline}T23:59:59.999Z` : milestone.deliveryDeadline).toISOString() : null, scope_source: { criteria: criteria.map(c => c.label), deliveryDeadline: milestone.deliveryDeadline }, evidence_requirements: {} })) }) });
+  const canonicalMilestones = milestones.map((milestone) => ({ ...milestone, deliveryDeadline: canonicalDeadline(milestone.deliveryDeadline) }));
+  const scopeSource = { scope: resolvedWorkType(draft), category: resolvedCategory(draft), project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: canonicalMilestones.at(-1)!.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label), fundOnApplicantAcceptance: draft.fundOnApplicantAcceptance !== false };
+  const row = await request<BountyRow>("/bounties", { method: "POST", body: JSON.stringify({ title: draft.title.trim(), description: draft.project.trim(), scopeSource, scopeHash: hashSourceJson(scopeSource).value, chainId: token.chain_id, tokenId: token.id, budgetBaseUnits, milestones: canonicalMilestones.map((milestone, index) => ({ ordinal: milestone.ordinal, title: milestone.title, amount_base_units: milestoneAmounts[index], delivery_deadline: milestone.deliveryDeadline, scope_source: { criteria: criteria.map(c => c.label), deliveryDeadline: milestone.deliveryDeadline }, evidence_requirements: {} })) }) });
   return mapBounty(row);
 }
 export const selectRole = (role: Role) => request("/roles", { method: "POST", body: JSON.stringify({ role }) });
@@ -377,7 +386,7 @@ export function searchPublicProfiles(query: string, filters: ProfileSearchFilter
   if (filters.category) params.set("category", filters.category);
   return request<{ results: PublicWalletProfile[] }>(`/profiles/search?${params.toString()}`, { method: "GET" });
 }
-export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
+export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null; timezone?: string | null; timezonePublic?: boolean }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
 export const reportContent = (entityType: "bounty" | "review" | "profile" | "token", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
 export const decideContentReport = (

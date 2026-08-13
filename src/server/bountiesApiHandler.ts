@@ -256,6 +256,27 @@ function optionalString(body: Record<string, unknown>, field: string): string | 
   return value;
 }
 
+function optionalBoolean(body: Record<string, unknown>, field: string, fallback = false): boolean {
+  const value = body[field];
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "boolean") throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
+  return value;
+}
+
+function optionalTimeZone(body: Record<string, unknown>, field: string): string | null {
+  const value = optionalString(body, field)?.trim() ?? null;
+  if (!value) return null;
+  if (value.length > 64 || !/^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(value)) {
+    throw new ApiError("INVALID_TIMEZONE", 400);
+  }
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: value }).format();
+  } catch {
+    throw new ApiError("INVALID_TIMEZONE", 400);
+  }
+  return value;
+}
+
 function optionalStringArray(body: Record<string, unknown>, field: string): string[] {
   const value = body[field];
   if (value === undefined || value === null) return [];
@@ -1299,7 +1320,9 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_profile_url: optionalString(body, "profileUrl"),
       p_work_types: optionalStringArray(body, "workTypes"),
       p_categories: optionalStringArray(body, "categories"),
-      p_custom_specialty: optionalString(body, "customSpecialty")
+      p_custom_specialty: optionalString(body, "customSpecialty"),
+      p_timezone: optionalTimeZone(body, "timezone"),
+      p_timezone_public: optionalBoolean(body, "timezonePublic")
     });
     return Response.json(await enrichPublicProfile(data), { headers });
   }

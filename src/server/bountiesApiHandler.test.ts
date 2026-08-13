@@ -516,6 +516,8 @@ describe("profile specialties and review responses", () => {
           workTypes: ["Project", "Audit", "Incident response", "Protocol documentation"],
           categories: ["Engineering", "Smart Contracts & Web3", "Public goods", "Developer education"],
           customSpecialty: null,
+          timezone: "Europe/Lisbon",
+          timezonePublic: false,
           accountId: "forged-account-id"
         })
       }
@@ -529,8 +531,30 @@ describe("profile specialties and review responses", () => {
       p_profile_url: "https://example.test/alice",
       p_work_types: ["Project", "Audit", "Incident response", "Protocol documentation"],
       p_categories: ["Engineering", "Smart Contracts & Web3", "Public goods", "Developer education"],
-      p_custom_specialty: null
+      p_custom_specialty: null,
+      p_timezone: "Europe/Lisbon",
+      p_timezone_public: false
     });
+  });
+
+  it("rejects malformed timezones before profile persistence", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/me",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ timezone: "Not/A_Timezone", timezonePublic: true })
+      }
+    ), "profiles/me");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_TIMEZONE" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_update_public_profile", expect.anything());
   });
 
   it("reads retained owner data and changes only the verified owner's profile visibility", async () => {
