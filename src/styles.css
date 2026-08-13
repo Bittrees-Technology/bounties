@@ -974,40 +974,41 @@ li {
   border: 1px solid #d7e5dc;
   border-radius: 16px;
   display: grid;
-  gap: 14px;
+  gap: 16px;
   min-width: 0;
-  padding: 16px;
+  padding: 22px;
 }
 
-.profile-directory-identity {
-  align-items: flex-start;
-  display: flex;
-  gap: 11px;
+.profile-directory-card-header {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
 }
 
-.profile-avatar {
+.profile-directory-card-header > button {
+  min-height: 44px;
+  padding: 9px 14px;
+  white-space: nowrap;
+}
+
+.profile-directory-profile-hero { align-items: flex-start; }
+.profile-directory-profile-hero > svg { flex: 0 0 auto; margin-top: 23px; }
+
+.profile-directory-eyebrow-line {
   align-items: center;
-  background: #e2f0ea;
-  border-radius: 12px;
-  color: #0f6b57;
-  display: inline-flex;
-  flex: 0 0 auto;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
 }
 
-.profile-directory-identity > div { min-width: 0; }
-.profile-name-line { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
-.profile-name-line h3 { font-size: 1.08rem; line-height: 1.25; margin: 0; overflow-wrap: anywhere; }
-.profile-name-line > span { background: #dceee7; border-radius: 999px; color: #0b5b4b; font-size: .68rem; font-weight: 800; padding: 3px 7px; text-transform: uppercase; }
-.profile-directory-identity p { color: #0f6b57; font-size: .8rem; font-weight: 700; margin: 3px 0 0; }
-.profile-directory-identity code { color: #5a6862; display: block; font-size: .76rem; margin-top: 3px; overflow-wrap: anywhere; }
+.profile-directory-eyebrow-line .eyebrow { margin: 0 0 9px; }
+.profile-owner-badge { background: #dceee7; border-radius: 999px; color: #0b5b4b; font-size: .68rem; font-weight: 800; margin-bottom: 9px; padding: 3px 7px; text-transform: uppercase; }
 
 .profile-directory-bio { color: #4f5f57; line-height: 1.5; margin: 0; }
-.profile-directory-specialties { display: flex; flex-wrap: wrap; gap: 6px; }
-.profile-directory-specialties span { background: #e7f3ef; border-radius: 999px; color: #0b5b4b; font-size: .74rem; font-weight: 700; padding: 5px 8px; }
+.profile-directory-specialties { display: flex; flex-wrap: wrap; gap: 7px; }
+.profile-directory-specialties span { background: #e7f3ef; border-radius: 999px; color: #0b5b4b; font-size: .8rem; font-weight: 700; max-width: 100%; overflow-wrap: anywhere; padding: 6px 9px; }
 
 .profile-directory-reputation {
   border-bottom: 1px solid #e1e9e4;
@@ -1017,12 +1018,14 @@ li {
   padding: 11px 0;
 }
 
-.profile-directory-reputation > div { align-items: center; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr) auto; }
+.profile-directory-reputation > div { align-items: start; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr); }
 .profile-directory-reputation svg { color: #0f6b57; }
 .profile-directory-reputation span { color: #5a6862; font-size: .78rem; }
-.profile-directory-reputation strong { font-size: .78rem; text-align: right; }
-.profile-directory-footer > span { color: #5a6862; font-size: .76rem; }
-.profile-directory-footer button { min-height: 40px; padding: 9px 13px; }
+.profile-directory-reputation strong { font-size: .78rem; }
+.profile-directory-reputation small { color: #5a6862; font-size: .76rem; }
+.profile-directory-reputation strong,
+.profile-directory-reputation small { grid-column: 2; text-align: left; }
+.profile-directory-activity-total { color: #5a6862; font-size: .76rem; margin: 0; }
 
 .profile-role-grid {
   display: grid;
@@ -2558,6 +2561,9 @@ textarea {
   .profile-directory-toolbar button { width: 100%; }
   .profile-directory-heading { align-items: stretch; }
   .profile-directory-heading .secondary-button { width: 100%; }
+  .profile-directory-card { padding: 18px; }
+  .profile-directory-card-header { grid-template-columns: 1fr; }
+  .profile-directory-card-header > button { width: 100%; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }
   .profile-visibility-status button { width: 100%; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }

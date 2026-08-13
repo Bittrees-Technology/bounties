@@ -107,6 +107,10 @@ function ensExplorerLink(profile: PublicWalletProfile, className?: string) {
   return <a className={className} href={ethereumExplorerUrl(profile.wallet_address)} target="_blank" rel="noreferrer noopener" aria-label={`View ${profile.ens_name} on Etherscan`}>{profile.ens_name}<ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
+function walletExplorerLink(walletAddress: string) {
+  return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
+}
+
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
@@ -1073,34 +1077,42 @@ export default function App() {
 
   function profileDirectoryCard(profile: PublicWalletProfile) {
     const identity = profile.display_name || profile.ens_name || short(profile.wallet_address);
+    const isOwnProfile = wallet?.toLowerCase() === profile.wallet_address.toLowerCase();
     const specialties = [
       ...(profile.work_types ?? []).map((workType) => scopes.find((scope) => scope.value === workType)?.label ?? workType),
       ...(profile.categories ?? []),
       ...(profile.custom_specialty ? [profile.custom_specialty] : [])
-    ].slice(0, 3);
+    ];
     const capitalRating = profile.rating_summaries.capital_provider;
     const laborRating = profile.rating_summaries.labor_provider;
     const totalActivity = profile.activity_summary.capital_bounties + profile.activity_summary.labor_bounties;
     return (
       <article className="profile-directory-card" key={profile.account_id}>
-        <div className="profile-directory-identity">
-          <span className="profile-avatar" aria-hidden="true"><UserRound size={20} /></span>
-          <div>
-            <div className="profile-name-line"><h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : identity}</h3>{wallet?.toLowerCase() === profile.wallet_address.toLowerCase() ? <span>You</span> : null}</div>
-            {profile.display_name && profile.ens_name ? ensExplorerLink(profile, "directory-ens-link") : null}
-            <code>{short(profile.wallet_address)}</code>
+        <header className="profile-directory-card-header">
+          <div className="profile-hero profile-directory-profile-hero">
+            <UserRound size={28} aria-hidden="true" />
+            <div>
+              <div className="profile-directory-eyebrow-line">
+                <p className="eyebrow">Public wallet profile</p>
+                {isOwnProfile ? <span className="profile-owner-badge">You</span> : null}
+              </div>
+              <h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : !profile.display_name ? walletExplorerLink(profile.wallet_address) : identity}</h3>
+              <div className="profile-identity-meta">
+                {profile.display_name && profile.ens_name ? ensExplorerLink(profile, "ens-name") : null}
+                {profile.display_name && !profile.ens_name ? walletExplorerLink(profile.wallet_address) : null}
+                {profile.profile_url ? <a href={profile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
+              </div>
+            </div>
           </div>
-        </div>
+          <button type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
+        </header>
         {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
         {specialties.length ? <div className="profile-directory-specialties" aria-label={`${identity} specialties`}>{specialties.map((specialty, index) => <span key={`${specialty}-${index}`}>{specialty}</span>)}</div> : null}
         <div className="profile-directory-reputation">
-          <div><WalletCards size={16} /><span>Capital provider</span><strong>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 · ${capitalRating.review_count} review${capitalRating.review_count === 1 ? "" : "s"}` : "No ratings"}</strong></div>
-          <div><UsersRound size={16} /><span>Labor provider</span><strong>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 · ${laborRating.review_count} review${laborRating.review_count === 1 ? "" : "s"}` : "No ratings"}</strong></div>
+          <div><WalletCards size={16} /><span>As a capital provider</span><strong>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 · ${capitalRating.review_count} payment-experience review${capitalRating.review_count === 1 ? "" : "s"}` : "No payment-experience ratings"}</strong><small>{profile.activity_summary.capital_bounties} bount{profile.activity_summary.capital_bounties === 1 ? "y" : "ies"} posted</small></div>
+          <div><UsersRound size={16} /><span>As a labor provider</span><strong>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 · ${laborRating.review_count} service review${laborRating.review_count === 1 ? "" : "s"}` : "No service ratings"}</strong><small>{profile.activity_summary.labor_bounties} bount{profile.activity_summary.labor_bounties === 1 ? "y" : "ies"} worked</small></div>
         </div>
-        <div className="profile-directory-footer">
-          <span>{totalActivity} bount{totalActivity === 1 ? "y" : "ies"} posted or worked</span>
-          <button type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
-        </div>
+        <p className="profile-directory-activity-total">{totalActivity} total bount{totalActivity === 1 ? "y" : "ies"} posted or worked</p>
       </article>
     );
   }
@@ -1460,10 +1472,10 @@ export default function App() {
                           <UserRound size={28} />
                           <div>
                             <p className="eyebrow">Public wallet profile</p>
-                            <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || short(selectedProfile.address)}</h3>
+                            <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || walletExplorerLink(publicProfile?.wallet_address ?? selectedProfile.address)}</h3>
                             <div className="profile-identity-meta">
                               {publicProfile?.display_name && publicProfile.ens_name ? ensExplorerLink(publicProfile, "ens-name") : null}
-                              {!publicProfile?.ens_name ? <a className="wallet-explorer-link" href={ethereumExplorerUrl(publicProfile?.wallet_address ?? selectedProfile.address)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(publicProfile?.wallet_address ?? selectedProfile.address)}</code><ExternalLink size={13} aria-hidden="true" /></a> : null}
+                              {publicProfile?.display_name && !publicProfile.ens_name ? walletExplorerLink(publicProfile.wallet_address) : null}
                               {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
                             </div>
                             {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
