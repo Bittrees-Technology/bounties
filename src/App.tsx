@@ -1109,11 +1109,9 @@ export default function App() {
   function profileDirectoryCard(profile: PublicWalletProfile) {
     const identity = profile.display_name || profile.ens_name || short(profile.wallet_address);
     const isOwnProfile = wallet?.toLowerCase() === profile.wallet_address.toLowerCase();
-    const specialties = [
-      ...(profile.work_types ?? []).map((workType) => scopes.find((scope) => scope.value === workType)?.label ?? workType),
-      ...(profile.categories ?? []),
-      ...(profile.custom_specialty ? [profile.custom_specialty] : [])
-    ];
+    const workTypes = (profile.work_types ?? []).map((workType) => scopes.find((scope) => scope.value === workType)?.label ?? workType);
+    const profileCategories = profile.categories ?? [];
+    const hasSpecialties = workTypes.length || profileCategories.length || profile.custom_specialty;
     const capitalRating = profile.rating_summaries.capital_provider;
     const laborRating = profile.rating_summaries.labor_provider;
     return (
@@ -1137,7 +1135,11 @@ export default function App() {
           <button type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
         </header>
         {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
-        {specialties.length ? <div className="profile-directory-specialties" aria-label={`${identity} specialties`}>{specialties.map((specialty, index) => <span key={`${specialty}-${index}`}>{specialty}</span>)}</div> : null}
+        {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
+          {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{workTypes.map((workType) => <span key={workType}>{workType}</span>)}</div></div> : null}
+          {profileCategories.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{profileCategories.map((category) => <span key={category}>{category}</span>)}</div></div> : null}
+          {profile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{profile.custom_specialty}</span></div></div> : null}
+        </div> : null}
         <div className="profile-directory-reputation">
           <div><WalletCards size={16} /><strong>Capital provider</strong><span>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 average · ${capitalRating.review_count} rating${capitalRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.capital_bounties} bount{profile.activity_summary.capital_bounties === 1 ? "y" : "ies"} posted</span></div>
           <div><UsersRound size={16} /><strong>Labor provider</strong><span>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 average · ${laborRating.review_count} rating${laborRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.labor_bounties} bount{profile.activity_summary.labor_bounties === 1 ? "y" : "ies"} worked</span></div>
@@ -1558,10 +1560,10 @@ export default function App() {
                             {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
                           </div>
                         ) : null}
-                        {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties" aria-label="Profile work preferences">
-                          {publicProfile.work_types?.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}
-                          {publicProfile.categories?.map((category) => <span key={`category-${category}`}>{category}</span>)}
-                          {publicProfile.custom_specialty ? <span>{publicProfile.custom_specialty}</span> : null}
+                        {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties profile-specialty-groups" aria-label="Profile work preferences">
+                          {publicProfile.work_types?.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{publicProfile.work_types.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}</div></div> : null}
+                          {publicProfile.categories?.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{publicProfile.categories.map((category) => <span key={`category-${category}`}>{category}</span>)}</div></div> : null}
+                          {publicProfile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{publicProfile.custom_specialty}</span></div></div> : null}
                         </div> : null}
                         {publicProfile?.account_id && publicProfile.account_id !== session?.account.id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
                       </section>
