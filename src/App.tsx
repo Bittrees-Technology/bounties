@@ -1188,28 +1188,28 @@ export default function App() {
             <section className="landing-page" aria-label="Bounties product overview">
               <header className="landing-hero">
                 <div className="landing-hero-copy">
-                  <p className="eyebrow">Clear terms. Visible progress.</p>
-                  <h1>Clear work. Token‑funded bounties.</h1>
-                  <p>Bounties gives capital providers and labor providers one shared workflow for scope, applications, milestones, delivery evidence, and reputation.</p>
+                  <p className="eyebrow">Token-funded work</p>
+                  <h1>Fund work. Deliver results.</h1>
+                  <p>Create or complete bounties with clear terms, milestones, and payment records.</p>
                   <div className="landing-actions">
                     <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
                     <a className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
                   </div>
                   <ul className="landing-assurances" aria-label="Product foundations">
-                    <li><WalletCards size={16} />Wallet-based access</li>
-                    <li><Search size={16} />Inspectable ERC20 contracts</li>
-                    <li><FileCheck2 size={16} />Milestone-ready terms</li>
+                    <li><WalletCards size={16} />Wallet sign-in</li>
+                    <li><Search size={16} />Inspectable ERC20 tokens</li>
+                    <li><FileCheck2 size={16} />Milestone payments</li>
                   </ul>
                 </div>
                 <aside className="landing-overview" aria-label="What stays visible">
-                  <p className="eyebrow">One shared record</p>
-                  <h2>Know the terms before work begins.</h2>
+                  <p className="eyebrow">Simple by design</p>
+                  <h2>One bounty. One shared record.</h2>
                   <ul>
-                    <li><BadgeCheck size={17} /><span><strong>Defined outcomes</strong>Scope, acceptance criteria, and deadlines stay attached to the bounty.</span></li>
-                    <li><UsersRound size={17} /><span><strong>Deliberate selection</strong>Applicants propose a plan before a capital provider chooses who delivers.</span></li>
-                    <li><Star size={17} /><span><strong>Relevant reputation</strong>Payment and service ratings remain separate and easier to interpret.</span></li>
+                    <li><BadgeCheck size={17} /><span><strong>Set the terms</strong>Define scope, deadlines, and acceptance criteria.</span></li>
+                    <li><UsersRound size={17} /><span><strong>Choose a provider</strong>Review applications before work begins.</span></li>
+                    <li><Star size={17} /><span><strong>Track reputation</strong>Work and payment ratings stay separate.</span></li>
                   </ul>
-                  <p className="landing-wallet-note">Connecting proves wallet ownership. It does not authorize a transaction or token spending.</p>
+                  <p className="landing-wallet-note">Connecting a wallet proves ownership only. It never authorizes token spending.</p>
                 </aside>
               </header>
 
