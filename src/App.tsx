@@ -618,6 +618,7 @@ export default function App() {
   }
 
   async function choosePaymentToken(value: string) {
+    setNotice(null);
     if (!value) {
       setDraft((current) => ({ ...current, token: "" }));
       return;
@@ -625,10 +626,7 @@ export default function App() {
     const standard = standardPaymentOptions.find((option) => option.value === value);
     if (standard && !standard.token) {
       if (!wallet) return void connect();
-      await act(
-        () => inspectContract(Number(inspectChain), standard.preset.contractAddress),
-        `${standard.preset.symbol} is ready to use.`
-      );
+      await act(() => inspectContract(Number(inspectChain), standard.preset.contractAddress));
       return;
     }
     setDraft((current) => ({ ...current, token: value }));

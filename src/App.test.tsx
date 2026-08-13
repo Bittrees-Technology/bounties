@@ -275,9 +275,9 @@ describe("App", () => {
 
     await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC.*USD Coin/i }));
 
-    expect(await screen.findByText(/USDC is ready to use/i)).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /inspect contract/i })).toHaveAttribute("href", expect.stringContaining("0x036cbd"));
+    expect(screen.queryByText(/is ready to use/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/USD Coin \(USDC\)/i).length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: /inspect contract/i })).toHaveAttribute("href", expect.stringContaining("0x036cbd"));
   });
 
   it("discovers public profiles by custom or ENS identity", async () => {
