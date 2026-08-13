@@ -124,6 +124,15 @@ function walletExplorerLink(walletAddress: string) {
   return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
+function ProfileAvatar({ profile }: { profile: PublicWalletProfile | null }) {
+  const avatarUrl = profile?.ens_avatar_url ?? null;
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
+  if (avatarUrl && failedUrl !== avatarUrl) {
+    return <img className="profile-avatar" src={avatarUrl} alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(avatarUrl)} />;
+  }
+  return <UserRound size={28} aria-hidden="true" />;
+}
+
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
@@ -1245,7 +1254,7 @@ export default function App() {
       <article className="profile-directory-card" key={profile.account_id}>
         <header className="profile-directory-card-header">
           <div className="profile-hero profile-directory-profile-hero">
-            <UserRound size={28} aria-hidden="true" />
+            <ProfileAvatar profile={profile} />
             <div>
               <div className="profile-directory-eyebrow-line">
                 <p className="eyebrow">Public wallet profile</p>
@@ -1629,7 +1638,7 @@ export default function App() {
                     <>
                       <section className={`panel profile-card ${wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? "editable-profile-card" : ""}`} id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
                         <div className="profile-hero">
-                          <UserRound size={28} />
+                          <ProfileAvatar profile={publicProfile} />
                           <div>
                             <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || walletExplorerLink(publicProfile?.wallet_address ?? selectedProfile.address)}</h3>
                             <div className="profile-identity-meta">
