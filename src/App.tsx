@@ -67,6 +67,11 @@ import {
   type ProfileActivityWindow,
   type ProfileDirectoryOrder
 } from "./profileDirectory";
+import {
+  filterAndOrderBounties,
+  type BountyDirectoryOrder,
+  type BountyStatusFilter
+} from "./marketplaceDirectory";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -175,11 +180,20 @@ const pageRoutes: Record<ProductPage, string> = {
 };
 
 function pageFromPath(pathname: string): ProductPage {
-  if (pathname === "/marketplace") return "marketplace";
+  if (pathname === "/marketplace" || pathname.startsWith("/bounties/")) return "marketplace";
   if (pathname === "/create") return "create";
   if (pathname === "/profiles" || pathname.startsWith("/profiles/")) return "profile";
   if (pathname === "/moderator") return "moderator";
   return "home";
+}
+
+function bountyIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/bounties\/([0-9a-f-]{36})\/?$/i);
+  return match?.[1] ?? null;
+}
+
+function bountyPath(bountyId: string): string {
+  return `/bounties/${bountyId}`;
 }
 
 function profileSearchSelectionFromLocation(): ProfileSearchSelection | null {
@@ -393,6 +407,14 @@ export default function App() {
   const [profileDirectoryView, setProfileDirectoryView] = useState<"tiles" | "list">("tiles");
   const [profileDirectoryOrder, setProfileDirectoryOrder] = useState<ProfileDirectoryOrder>("name-asc");
   const [profileActivityWindow, setProfileActivityWindow] = useState<ProfileActivityWindow>("any");
+  const [selectedBountyId, setSelectedBountyId] = useState<string | null>(() => bountyIdFromPath(window.location.pathname));
+  const [marketplaceQuery, setMarketplaceQuery] = useState("");
+  const [marketplaceWorkType, setMarketplaceWorkType] = useState("");
+  const [marketplaceCategory, setMarketplaceCategory] = useState("");
+  const [marketplaceStatus, setMarketplaceStatus] = useState<BountyStatusFilter>("");
+  const [marketplaceChain, setMarketplaceChain] = useState("");
+  const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
+  const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
   const actionPending = useRef(false);
   const initialProfileSearchHydrated = useRef(false);
 
@@ -532,6 +554,7 @@ export default function App() {
   function navigateToPage(page: ProductPage) {
     const target = pageRoutes[page];
     if (window.location.pathname !== target) window.history.pushState({}, "", target);
+    if (page === "marketplace") setSelectedBountyId(null);
     setProfileEditorOpen(false);
     setNotice(null);
     setActivePage(page);
@@ -573,24 +596,24 @@ export default function App() {
   function openBountyFromProfile(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    const target = `${pageRoutes.marketplace}#bounty-${bountyId}`;
-    if (`${window.location.pathname}${window.location.hash}` !== target) window.history.pushState({}, "", target);
+    const target = bountyPath(bountyId);
+    if (window.location.pathname !== target) window.history.pushState({}, "", target);
     setProfileEditorOpen(false);
     setNotice(null);
+    setSelectedBountyId(bountyId);
     setActivePage("marketplace");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  useEffect(() => {
-    if (activePage !== "marketplace" || !session?.orders.length || !window.location.hash.startsWith("#bounty-")) return;
-    const targetId = window.location.hash.slice(1);
-    if (!/^bounty-[0-9a-f-]{36}$/i.test(targetId)) return;
-    const frame = window.requestAnimationFrame(() => {
-      const target = document.getElementById(targetId);
-      target?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-      target?.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [activePage, session?.orders]);
+  function openBounty(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
+    openBountyFromProfile(event, bountyId);
+  }
+
+  function closeBountyDetail() {
+    setSelectedBountyId(null);
+    if (window.location.pathname !== pageRoutes.marketplace) window.history.pushState({}, "", pageRoutes.marketplace);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   const runProfileSearch = useCallback(async (selection: ProfileSearchSelection) => {
     setProfileSearchQuery(selection.query);
@@ -807,6 +830,7 @@ export default function App() {
     const handlePopState = () => {
       setSelectedProfileAddress(null);
       setPublicProfile(null);
+      setSelectedBountyId(bountyIdFromPath(window.location.pathname));
       setNotice(null);
       const page = pageFromPath(window.location.pathname);
       const selection = page === "profile" ? profileSearchSelectionFromLocation() : null;
@@ -867,11 +891,14 @@ export default function App() {
     };
     if (!isDraftValid(scheduledDraft) || !scheduleValid) return setError("Complete each deliverable and make sure its amounts total the budget and its deadlines move forward.");
     await act(async () => {
-      await createBounty(scheduledDraft, selectedToken);
+      const created = await createBounty(scheduledDraft, selectedToken);
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
-      navigateToPage("marketplace");
+      setSelectedBountyId(created.id);
+      if (window.location.pathname !== bountyPath(created.id)) window.history.pushState({}, "", bountyPath(created.id));
+      setActivePage("marketplace");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     });
   }
 
@@ -1443,6 +1470,57 @@ export default function App() {
     );
   }
 
+  function bountyDetail(order: MarketplaceOrder) {
+    return (
+      <>
+        <div className="bounty-detail-toolbar">
+          <div><strong>Viewing a bounty</strong><span>Review the complete terms, progress, and participant actions.</span></div>
+          <button type="button" onClick={closeBountyDetail}>Back to marketplace</button>
+        </div>
+        <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card bounty-detail-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`}>
+          <div className="bounty-card-header">
+            <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h2>{order.title}</h2></div>
+            <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
+          </div>
+          <p className="bounty-description">{linkedDescription(order.project)}</p>
+          <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
+          <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
+          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
+          {cardProgress(order)}
+          <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
+          {providerNextAction(order)}
+          {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
+          <div className="content-actions">{reportForm("bounty", order.id)}</div>
+          {lifecycle(order)}
+          {reviews(order)}
+        </article>
+      </>
+    );
+  }
+
+  function bountyDirectoryCard(order: MarketplaceOrder) {
+    const chain = order.tokenRecord ? chains[order.tokenRecord.chain_id as SupportedChainId] : null;
+    return (
+      <article className={`bounty-directory-card bounty-directory-card--${marketplaceView}`} key={order.id}>
+        <div className="bounty-directory-card-main">
+          <div className="bounty-directory-identity">
+            <span className="scope">{workTypeLabel(order.scope)} · {order.category}</span>
+            <h3>{order.title}</h3>
+            <span>{displayedOrderStatus(order)}</span>
+          </div>
+          <strong className="bounty-directory-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
+        </div>
+        <div className="bounty-directory-meta">
+          <span>Due {formatDeadline(order.dueDate)}</span>
+          <span>{chain?.name ?? "Supported network"}</span>
+          <span>{order.milestones?.length ?? 1} milestone{(order.milestones?.length ?? 1) === 1 ? "" : "s"}</span>
+          <span>{order.proposals?.length ?? 0} application{(order.proposals?.length ?? 0) === 1 ? "" : "s"}</span>
+        </div>
+        <a className="bounty-directory-view-action" href={bountyPath(order.id)} onClick={(event) => openBounty(event, order.id)}>View bounty</a>
+      </article>
+    );
+  }
+
   function profileReviewList(reviewsForRole: MarketplaceOrder["reviews"], emptyMessage: string) {
     return reviewsForRole?.length ? reviewsForRole.map((review) => (
       <article className="profile-review" key={review.id}>
@@ -1519,7 +1597,7 @@ export default function App() {
       <section className="profile-role-bounties" aria-label={heading}>
         <strong>{heading}</strong>
         {orders.length ? <div className="profile-role-bounty-list">{orders.map((order) => (
-          <a className="profile-role-bounty-row" href={`${pageRoutes.marketplace}#bounty-${order.id}`} onClick={(event) => openBountyFromProfile(event, order.id)} key={`${role}-${order.id}`}>
+          <a className="profile-role-bounty-row" href={bountyPath(order.id)} onClick={(event) => openBountyFromProfile(event, order.id)} key={`${role}-${order.id}`}>
             <span><strong>{order.title}</strong><small>{displayedOrderStatus(order)}</small></span>
             <span className="profile-role-bounty-payment">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</span>
             <ChevronRight size={17} aria-hidden="true" />
@@ -1535,6 +1613,18 @@ export default function App() {
     () => orderAndFilterProfiles(displayedProfiles, profileDirectoryOrder, profileActivityWindow),
     [displayedProfiles, profileActivityWindow, profileDirectoryOrder]
   );
+  const selectedBounty = selectedBountyId ? session?.orders.find((order) => order.id === selectedBountyId) ?? null : null;
+  const marketplaceOrders = useMemo(() => filterAndOrderBounties(session?.orders ?? [], {
+    query: marketplaceQuery,
+    workType: marketplaceWorkType,
+    category: marketplaceCategory,
+    status: marketplaceStatus,
+    chainId: marketplaceChain,
+    order: marketplaceOrder
+  }), [marketplaceCategory, marketplaceChain, marketplaceOrder, marketplaceQuery, marketplaceStatus, marketplaceWorkType, session?.orders]);
+  const marketplaceWorkTypes = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.scope))).sort((left, right) => workTypeLabel(left).localeCompare(workTypeLabel(right))), [session?.orders]);
+  const marketplaceCategories = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.category))).sort((left, right) => left.localeCompare(right)), [session?.orders]);
+  const marketplaceChains = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.tokenRecord?.chain_id).filter((chainId): chainId is number => Boolean(chainId)))).sort((left, right) => (chains[left as SupportedChainId]?.name ?? "").localeCompare(chains[right as SupportedChainId]?.name ?? "")), [session?.orders]);
 
   return (
     <main>
@@ -1596,8 +1686,8 @@ export default function App() {
             <header className="topbar">
               <div className="topbar-copy">
                 {visiblePage === "moderator" ? <p className="eyebrow">Authorized workspace</p> : null}
-                <h1>{visiblePage === "marketplace" ? "Marketplace" : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
-                <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
+                <h1>{visiblePage === "marketplace" ? selectedBountyId ? "Bounty details" : "Marketplace" : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
+                <p>{visiblePage === "marketplace" ? selectedBountyId ? "Review the complete terms, participants, escrow state, milestones, evidence, and next actions." : "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
               </div>
             </header>
           ) : null}
@@ -1794,26 +1884,28 @@ export default function App() {
                       </div>
                       <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect to marketplace</button>
                     </div>
+                  ) : selectedBountyId ? (
+                    selectedBounty ? bountyDetail(selectedBounty) : <div className="empty-state-panel"><Search /><strong>Bounty not found</strong><span>This bounty is unavailable or no longer visible.</span><button type="button" onClick={closeBountyDetail}>Back to marketplace</button></div>
                   ) : session?.orders.length ? (
-                    session.orders.map((order) => (
-                      <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
-                        <div className="bounty-card-header">
-                          <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h4>{order.title}</h4></div>
-                          <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
+                    <>
+                      <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace directory</h2></div>
+                      <div className="bounty-directory-filters">
+                        <label className="bounty-keyword-field">Keywords<input value={marketplaceQuery} onChange={(event) => setMarketplaceQuery(event.target.value)} placeholder="Title, description, token, or requester" /></label>
+                        <label>Work type<select value={marketplaceWorkType} onChange={(event) => setMarketplaceWorkType(event.target.value)}><option value="">Any work type</option>{marketplaceWorkTypes.map((scope) => <option key={scope} value={scope}>{workTypeLabel(scope)}</option>)}</select></label>
+                        <label>Category<select value={marketplaceCategory} onChange={(event) => setMarketplaceCategory(event.target.value)}><option value="">Any category</option>{marketplaceCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
+                        <label>Status<select value={marketplaceStatus} onChange={(event) => setMarketplaceStatus(event.target.value as BountyStatusFilter)}><option value="">Any status</option><option value="open">Open for applications</option><option value="active">In progress</option><option value="review">In review</option><option value="completed">Completed</option><option value="closed">Cancelled or refunded</option></select></label>
+                        <label>Network<select value={marketplaceChain} onChange={(event) => setMarketplaceChain(event.target.value)}><option value="">Any network</option>{marketplaceChains.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId as SupportedChainId]?.name ?? chainId}</option>)}</select></label>
+                        <label>Order<select value={marketplaceOrder} onChange={(event) => setMarketplaceOrder(event.target.value as BountyDirectoryOrder)}><option value="deadline-asc">Deadline soonest</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="budget-desc">Budget high to low</option></select></label>
+                      </div>
+                      <div className="bounty-directory-heading">
+                        <div><h3>Browse bounties</h3><span>{marketplaceOrders.length} bount{marketplaceOrders.length === 1 ? "y" : "ies"}</span></div>
+                        <div className="profile-view-toggle" role="group" aria-label="Bounty view">
+                          <button type="button" aria-pressed={marketplaceView === "tiles"} onClick={() => setMarketplaceView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
+                          <button type="button" aria-pressed={marketplaceView === "list"} onClick={() => setMarketplaceView("list")}><List size={15} aria-hidden="true" />List</button>
                         </div>
-                        <p className="bounty-description">{linkedDescription(order.project)}</p>
-                        <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
-                        <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
-                        {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
-                        {cardProgress(order)}
-                        <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Open marketplace bounty"}</span></div>
-                        {providerNextAction(order)}
-                        {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
-                        <div className="content-actions">{reportForm("bounty", order.id)}</div>
-                        {lifecycle(order)}
-                        {reviews(order)}
-                      </article>
-                    ))
+                      </div>
+                      {marketplaceOrders.length ? <div className={`bounty-directory-grid bounty-directory-grid--${marketplaceView}`}>{marketplaceOrders.map(bountyDirectoryCard)}</div> : <div className="empty-state-panel"><Search /><strong>No matching bounties</strong><span>Adjust the filters to see more opportunities.</span></div>}
+                    </>
                   ) : (
                     <div className="empty-state-panel"><CheckCircle2 /><strong>No bounties are available yet</strong><span>New work will appear here when it is published.</span></div>
                   )}
