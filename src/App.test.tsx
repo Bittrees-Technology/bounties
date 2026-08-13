@@ -367,11 +367,14 @@ describe("App", () => {
     expect(within(profileCard).queryByText(/report this profile/i)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
-    const deactivateControl = within(profileCard).getByText(/deactivate public profile/i);
-    expect(deactivateControl.closest(".profile-visibility-control")).toBeInTheDocument();
     const editControl = screen.getByText(/^edit profile$/i);
-    expect(editControl.closest(".profile-card")).toBeInTheDocument();
+    const profileEditor = editControl.closest(".profile-editor") as HTMLElement;
+    expect(profileEditor).toBeInTheDocument();
+    const deactivateControl = within(profileEditor).getByText(/deactivate public profile/i);
+    expect(deactivateControl.closest(".profile-visibility-control")).toBeInTheDocument();
+    expect(profileEditor).not.toHaveAttribute("open");
     await user.click(editControl);
+    expect(profileEditor).toHaveAttribute("open");
     await user.clear(screen.getByLabelText(/custom profile name/i));
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
     await user.click(screen.getByLabelText(/defined task/i));

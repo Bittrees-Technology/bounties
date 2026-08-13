@@ -1101,7 +1101,9 @@ li {
 .profile-editor form button { justify-self: start; }
 
 .profile-visibility-control {
+  border-top: 1px solid #dce5df;
   margin-top: 10px;
+  padding-top: 18px;
 }
 
 .profile-visibility-control > summary {
