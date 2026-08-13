@@ -52,6 +52,8 @@ describe("wallet authentication abuse resistance", () => {
     }));
 
     expect(response.status).toBe(200);
+    const challenge = await response.json() as Record<string, string>;
+    expect(Date.parse(challenge.expirationTime) - Date.parse(challenge.issuedAt)).toBe(300_000);
     const [, args] = rpcMock.mock.calls[0] as [string, Record<string, unknown>];
     expect(rpcMock.mock.calls[0][0]).toBe("app_issue_auth_nonce");
     expect(args).toMatchObject({

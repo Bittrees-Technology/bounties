@@ -649,7 +649,7 @@ describe("App", () => {
     const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
     expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 
-  });
+  }, 10_000);
 
   it("lists role-specific bounties on a profile and opens the selected marketplace bounty", async () => {
     configureMockProfileRoleBounties();

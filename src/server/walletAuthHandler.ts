@@ -172,8 +172,9 @@ async function handle(request: Request): Promise<Response> {
     const wallet = address(requiredString(body, "walletAddress"));
     const id = chainId(body.chainId);
     const nonce = randomToken();
-    const issuedAt = new Date().toISOString();
-    const expirationTime = new Date(Date.now() + 300_000).toISOString();
+    const issuedAtMs = Date.now();
+    const issuedAt = new Date(issuedAtMs).toISOString();
+    const expirationTime = new Date(issuedAtMs + 300_000).toISOString();
     const { data: nonceId, error } = await db.rpc("app_issue_auth_nonce", {
       p_wallet_address: wallet.toLowerCase(),
       p_chain_id: id,
