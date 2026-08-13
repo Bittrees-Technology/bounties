@@ -46,7 +46,8 @@ describe("App", () => {
 
     expect(screen.getAllByRole("button", { name: /^connect wallet$/i })).toHaveLength(1);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: /fund work.*deliver results/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Fund work Deliver results" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "One bounty One shared record" })).toBeInTheDocument();
     expect(screen.getByText(/create or complete bounties with clear terms, milestones, and payment records/i)).toBeInTheDocument();
     expect(screen.getByText(/connecting a wallet proves ownership only.*never authorizes token spending/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^bounties$/i })).not.toBeInTheDocument();
