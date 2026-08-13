@@ -856,7 +856,7 @@ li {
 
 .workflow-guide {
   gap: 18px;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .workflow-guide li {
@@ -907,7 +907,46 @@ li {
   width: 25px;
 }
 
+.workflow-guide li > strong { overflow-wrap: anywhere; }
 .workflow-guide small { color: #5a6862; line-height: 1.4; }
+.workflow-continuation {
+  background: #eef7f2;
+  border: 1px solid #c9dfd2;
+  border-radius: 14px;
+  color: #425149;
+  font-size: .88rem;
+  line-height: 1.55;
+  margin: 18px 0 0;
+  padding: 13px 15px;
+}
+.workflow-alternatives {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 14px;
+}
+.workflow-alternatives article {
+  border: 1px solid #d7e5dc;
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 14px;
+}
+.workflow-alternatives article > strong { color: #0f6b57; }
+.workflow-alternatives article > span { color: #26342d; font-size: .76rem; line-height: 1.4; }
+.workflow-alternatives article > span b { font-weight: 800; overflow-wrap: anywhere; }
+.workflow-alternatives article > small { color: #5a6862; line-height: 1.45; }
+.workflow-docs-link {
+  align-items: center;
+  color: #0f6b57;
+  display: inline-flex;
+  font-size: .86rem;
+  font-weight: 800;
+  gap: 5px;
+  margin-top: 16px;
+  text-underline-offset: 3px;
+}
 
 .marketplace-page { min-width: 0; }
 .order-card { overflow: hidden; }
@@ -2654,6 +2693,10 @@ textarea {
   .landing-hero { grid-template-columns: 1fr; }
   .landing-hero h1 { max-width: 13ch; }
   .landing-overview { width: 100%; }
+  .workflow-guide { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .workflow-guide li:nth-child(3)::after,
+  .workflow-guide li:nth-child(3)::before { display: none; }
+  .workflow-alternatives { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 760px) {
@@ -2717,6 +2760,7 @@ textarea {
   .landing-feature-grid,
   .landing-participant-grid,
   .landing-closing-cta { grid-template-columns: 1fr; }
+  .workflow-alternatives { grid-template-columns: 1fr; }
   .landing-closing-cta .landing-actions { width: 100%; }
 
   .legal-footer nav {
