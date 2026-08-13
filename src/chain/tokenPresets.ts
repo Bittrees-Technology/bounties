@@ -1,7 +1,7 @@
 import type { SupportedChainId } from "./types";
 
 export type StandardTokenPreset = {
-  symbol: "WETH" | "WBTC" | "USDC" | "USDT";
+  symbol: "WETH" | "WBTC" | "USDC" | "USDT" | "USDG";
   name: string;
   contractAddress: `0x${string}`;
 };
@@ -31,6 +31,9 @@ export const standardTokenPresets: Record<SupportedChainId, readonly StandardTok
     { symbol: "WETH", name: "Wrapped Ether (ERC20; not native ETH)", contractAddress: "0x4200000000000000000000000000000000000006" },
     { symbol: "USDC", name: "USD Coin", contractAddress: "0x036cbd53842c5426634e7929541ec2318f3dcf7c" }
   ],
-  4663: [],
+  4663: [
+    { symbol: "WETH", name: "Wrapped Ether (ERC20; not native ETH)", contractAddress: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73" },
+    { symbol: "USDG", name: "Global Dollar", contractAddress: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" }
+  ],
   46630: []
 };

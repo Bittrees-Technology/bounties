@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig, supportedChainIds } from "./config";
+import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig, resolveDefaultPaymentChainId, supportedChainIds } from "./config";
 
 describe("chain config", () => {
   it("stays hard-disabled for live settlement until launch gates pass", () => {
@@ -9,6 +9,13 @@ describe("chain config", () => {
   it("defaults the active chain to Base Sepolia", () => {
     expect(activeChainId).toBe(84532);
     expect(chains[activeChainId].isTestnet).toBe(true);
+  });
+
+  it("defaults bounty payments to Ethereum and accepts supported operations overrides", () => {
+    expect(resolveDefaultPaymentChainId(undefined)).toBe(1);
+    expect(resolveDefaultPaymentChainId("")).toBe(1);
+    expect(resolveDefaultPaymentChainId("8453")).toBe(8453);
+    expect(resolveDefaultPaymentChainId("999")).toBe(1);
   });
 
   it("ships curated token placeholders with no contract addresses until operations verifies them", () => {

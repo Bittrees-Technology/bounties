@@ -69,6 +69,7 @@ export default defineConfig({
     setupFiles: "./src/test/setup.ts",
     env: {
       VITE_DEFAULT_CHAIN_ID: "84532",
+      VITE_DEFAULT_PAYMENT_CHAIN_ID: "84532",
       VITE_ESCROW_ENABLED: "false"
     },
     // contracts/ is a separate Foundry package (onchain-execution); its vendored lib/ test
