@@ -288,6 +288,19 @@ describe("public profile discovery", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("app_search_public_wallet_profiles", expect.anything());
   });
 
+  it("does not expose a hidden profile through its direct public URL", async () => {
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_public_wallet_profile"
+      ? { data: { account_id: session.account_id, wallet_address: session.wallet_address, profile_moderation_status: "hidden" }, error: null }
+      : { data: null, error: null }));
+
+    const response = await handleBountiesApi(new Request(
+      `https://bounties.bittrees.org/api/bounties/profiles/${session.wallet_address}`
+    ), `profiles/${session.wallet_address}`);
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ code: "PROFILE_NOT_FOUND" });
+  });
+
   it("serves a bounded profile directory only to a verified wallet session", async () => {
     rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
       ? { data: [session], error: null }
@@ -357,6 +370,53 @@ describe("profile specialties and review responses", () => {
       p_categories: ["Engineering", "Smart Contracts & Web3"],
       p_custom_specialty: "Zero-knowledge systems"
     });
+  });
+
+  it("reads retained owner data and changes only the verified owner's profile visibility", async () => {
+    const ownerRead = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/me",
+      { headers: { cookie: "bounties_session=opaque-session" } }
+    ), "profiles/me");
+    expect(ownerRead.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_my_wallet_profile", { p_actor_id: session.account_id });
+
+    const visibility = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/visibility",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ visible: false, accountId: "forged-account-id" })
+      }
+    ), "profiles/visibility");
+    expect(visibility.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_set_profile_visibility", {
+      p_actor_id: session.account_id,
+      p_visible: false
+    });
+  });
+
+  it("rejects malformed profile visibility before persistence", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/visibility",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ visible: "yes" })
+      }
+    ), "profiles/visibility");
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_VISIBLE" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_set_profile_visibility", expect.anything());
   });
 
   it("rejects duplicate or oversized selections before profile persistence", async () => {

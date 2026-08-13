@@ -1028,6 +1028,43 @@ li {
 .profile-editor form { display: grid; gap: 12px; margin-top: 16px; }
 .profile-editor form button { justify-self: start; }
 
+.profile-visibility-control {
+  background: #f8faf8;
+  border: 1px solid #dce5df;
+  border-radius: 14px;
+  margin-top: 18px;
+  padding: 13px 14px;
+}
+
+.profile-visibility-control > summary {
+  color: #5a6862;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.profile-visibility-control > div { display: grid; gap: 12px; margin-top: 12px; }
+.profile-visibility-control p { color: #5a6862; line-height: 1.5; margin: 0; max-width: 78ch; }
+.profile-visibility-control button { background: #f7ece9; border-color: #d6aaa1; color: #6e2f25; justify-self: start; }
+.profile-visibility-control button:hover:not(:disabled) { background: #efdcd7; color: #57231b; }
+
+.profile-visibility-status {
+  align-items: center;
+  background: #fff8e7;
+  border: 1px solid #d9b86c;
+  border-radius: 14px;
+  color: #6b4b0d;
+  display: grid;
+  gap: 13px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-top: 18px;
+  padding: 14px;
+}
+
+.profile-visibility-status.moderated { background: #fdecea; border-color: #e3aaa2; color: #7a271a; }
+.profile-visibility-status > div { display: grid; gap: 4px; }
+.profile-visibility-status span { font-size: .85rem; line-height: 1.45; }
+.profile-visibility-status button { white-space: nowrap; }
+
 .participation-options {
   display: grid;
   gap: 10px;
@@ -2396,6 +2433,8 @@ textarea {
   .profile-directory-toolbar button { width: 100%; }
   .profile-directory-heading { align-items: stretch; }
   .profile-directory-heading .secondary-button { width: 100%; }
+  .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }
+  .profile-visibility-status button { width: 100%; }
 
   .legal-footer nav {
     justify-content: flex-start;

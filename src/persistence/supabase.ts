@@ -44,6 +44,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RPC_CHAIN_MISMATCH") return "ENS search is unavailable because the configured endpoint is not Ethereum mainnet.";
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
   if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters, a wallet address, or an ENS name.";
+  if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
   }
@@ -173,6 +174,7 @@ export type PublicWalletProfile = {
   profile_bio: string | null;
   profile_url: string | null;
   profile_moderation_status: "visible" | "hidden";
+  visibility_source?: "owner" | "moderation" | null;
   profile_updated_at: string;
   ens_name?: string | null;
   work_types?: string[];
@@ -309,9 +311,11 @@ export const recordRevisionRequest = (milestoneId: string, reason: string, reaso
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });
 export const createReviewResponse = (reviewId: string, body: string) => request<ParticipantReview>(`/reviews/${reviewId}/response`, { method: "POST", body: JSON.stringify({ body }) });
 export const loadPublicProfile = (walletAddress: string) => request<PublicWalletProfile>(`/profiles/${getAddress(walletAddress)}`, { method: "GET" });
+export const loadMyProfile = () => request<PublicWalletProfile>("/profiles/me", { method: "GET" });
 export const browsePublicProfiles = () => request<{ results: PublicWalletProfile[] }>("/profiles/directory", { method: "GET" });
 export const searchPublicProfiles = (query: string) => request<{ results: PublicWalletProfile[] }>(`/profiles/search?q=${encodeURIComponent(query.trim())}`, { method: "GET" });
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
+export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
 export const reportContent = (entityType: "bounty" | "review" | "profile", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
 export const decideContentReport = (
   reportId: string,

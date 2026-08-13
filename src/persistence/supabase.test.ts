@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { browsePublicProfiles, createBounty, loadMarketplace, loadPublicProfile, mapBounty, searchPublicProfiles, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { browsePublicProfiles, createBounty, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -23,6 +23,11 @@ describe("Supabase marketplace mapping", () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "Proxy misconfigured." }, { status: 500 }));
 
     await expect(loadMarketplace()).rejects.toThrow("Bounties is temporarily unavailable. Please try again shortly.");
+  });
+
+  it("explains why a moderator-hidden profile cannot be self-reactivated", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "PROFILE_MODERATOR_HIDDEN" }, { status: 403 }));
+    await expect(setMyProfileVisibility(true)).rejects.toThrow("hidden by a moderator");
   });
 
   it("keeps database account identity separate from the provider wallet address", () => {
@@ -163,6 +168,10 @@ describe("Supabase marketplace mapping", () => {
     expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/0x1111111111111111111111111111111111111111");
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json(profile));
+    await expect(loadMyProfile()).resolves.toEqual(profile);
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/me");
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json(profile));
     await expect(updateMyProfile({ displayName: "Dual participant", profileBio: "Builds and funds useful work.", profileUrl: profile.profile_url })).resolves.toEqual(profile);
     const updateRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
     expect(updateRequest?.method).toBe("POST");
@@ -171,6 +180,12 @@ describe("Supabase marketplace mapping", () => {
       profileBio: "Builds and funds useful work.",
       profileUrl: "https://example.test/profile"
     });
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ...profile, profile_moderation_status: "hidden", visibility_source: "owner" }));
+    await expect(setMyProfileVisibility(false)).resolves.toMatchObject({ profile_moderation_status: "hidden", visibility_source: "owner" });
+    const visibilityRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
+    expect(visibilityRequest?.method).toBe("POST");
+    expect(JSON.parse(String(visibilityRequest?.body))).toEqual({ visible: false });
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results: [profile] }));
     await expect(browsePublicProfiles()).resolves.toEqual({ results: [profile] });
