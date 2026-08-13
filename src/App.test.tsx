@@ -426,6 +426,9 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
     const orderFilter = screen.getByLabelText(/^order$/i);
     const activityFilter = screen.getByLabelText(/^last completed$/i);
+    const profileSearchForm = screen.getByRole("button", { name: /^search profiles$/i }).closest("form");
+    expect(orderFilter.closest("form")).toBe(profileSearchForm);
+    expect(activityFilter.closest("form")).toBe(profileSearchForm);
     expect(orderFilter).toHaveValue("name-asc");
     expect(activityFilter).toHaveValue("any");
     expect(Array.from(document.querySelectorAll(".profile-directory-card h3")).map((heading) => heading.textContent)).toEqual(["Capital guide", "Test participant"]);
