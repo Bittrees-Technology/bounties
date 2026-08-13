@@ -18,7 +18,7 @@ async function renderConfiguredEscrow() {
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
   await user.click(await screen.findByRole("link", { name: /^marketplace$/i }));
-  await screen.findByRole("heading", { name: /how would you like to participate/i });
+  await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   return within((await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement);
 }
 
@@ -32,7 +32,7 @@ it("enables participant escrow creation only when a deployment is configured", a
   render(<App />);
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
   await user.click(await screen.findByRole("link", { name: /^marketplace$/i }));
-  await screen.findByRole("heading", { name: /how would you like to participate/i });
+  await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
   await user.type(screen.getByLabelText(/bounty title/i), "Verify escrow observation");
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
