@@ -5,6 +5,7 @@ const {
   contractGetBountyMock,
   contractGetMilestoneMock,
   providerGetNetworkMock,
+  providerLookupAddressMock,
   providerGetReceiptMock,
   resolveSharedModeratorMock,
   rpcMock
@@ -12,6 +13,7 @@ const {
   contractGetBountyMock: vi.fn(),
   contractGetMilestoneMock: vi.fn(),
   providerGetNetworkMock: vi.fn(),
+  providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
   resolveSharedModeratorMock: vi.fn(),
   rpcMock: vi.fn()
@@ -23,6 +25,7 @@ vi.mock("ethers", async (importOriginal) => {
     ...actual,
     JsonRpcProvider: class {
       getNetwork = providerGetNetworkMock;
+      lookupAddress = providerLookupAddressMock;
       getTransactionReceipt = providerGetReceiptMock;
     },
     Contract: class {
@@ -222,6 +225,8 @@ describe("public profile discovery", () => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
     vi.stubEnv("CHAIN_1_RPC_URL", "");
+    providerGetNetworkMock.mockReset();
+    providerLookupAddressMock.mockReset();
     rpcMock.mockReset();
   });
 
@@ -339,6 +344,36 @@ describe("public profile discovery", () => {
     ), "profiles/directory");
     expect(disconnected.status).toBe(401);
     await expect(disconnected.json()).resolves.toEqual({ code: "SESSION_EXPIRED" });
+  });
+
+  it("adds ENS names to custom-named directory profiles and caches repeat lookups", async () => {
+    vi.stubEnv("CHAIN_1_RPC_URL", "https://mainnet-rpc.example.test");
+    providerGetNetworkMock.mockResolvedValue({ chainId: 1n });
+    providerLookupAddressMock.mockResolvedValue("testparticipant.eth");
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : name === "app_browse_public_wallet_profiles"
+        ? { data: [{ account_id: session.account_id, wallet_address: session.wallet_address, display_name: "Test participant" }], error: null }
+        : { data: null, error: null }));
+
+    const directoryRequest = () => handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/directory",
+      { headers: { cookie: "bounties_session=opaque-session" } }
+    ), "profiles/directory");
+
+    const firstResponse = await directoryRequest();
+    expect(firstResponse.status).toBe(200);
+    await expect(firstResponse.json()).resolves.toMatchObject({
+      results: [{ display_name: "Test participant", ens_name: "testparticipant.eth" }]
+    });
+
+    const secondResponse = await directoryRequest();
+    expect(secondResponse.status).toBe(200);
+    await expect(secondResponse.json()).resolves.toMatchObject({
+      results: [{ display_name: "Test participant", ens_name: "testparticipant.eth" }]
+    });
+    expect(providerLookupAddressMock).toHaveBeenCalledTimes(1);
+    expect(providerLookupAddressMock).toHaveBeenCalledWith(session.wallet_address);
   });
 });
 

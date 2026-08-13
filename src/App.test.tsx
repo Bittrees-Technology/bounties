@@ -258,10 +258,12 @@ describe("App", () => {
     expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 
     expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
-    expect(screen.getByText(/ENS names are resolved/i)).toBeInTheDocument();
+    expect(screen.queryByText(/compare each participant.s marketplace history/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ENS names are resolved from Ethereum/i)).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /view test participant profile/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /view capital guide profile/i })).toBeInTheDocument();
     expect(screen.getByText(/2 public profiles/i)).toBeInTheDocument();
+    expect(screen.queryByText(/public marketplace activity and participant reputation/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/search within/i)).not.toBeInTheDocument();
 
     await user.type(screen.getByLabelText(/^keywords$/i), "testparticipant.eth");
@@ -289,9 +291,18 @@ describe("App", () => {
     await connectWallet(user);
     await user.click(screen.getByRole("link", { name: /^my profile$/i }));
 
-    expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
+    const profileCard = (await screen.findByRole("heading", { name: /test participant/i })).closest(".profile-card") as HTMLElement;
+    const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
+    expect(within(identityMeta).getByText("testparticipant.eth", { selector: "code" })).toBeInTheDocument();
+    expect(within(identityMeta).queryByText("0x1111111111111111111111111111111111111111", { selector: "code" })).not.toBeInTheDocument();
+    expect(identityMeta.firstElementChild).toHaveTextContent("testparticipant.eth");
+    expect(identityMeta.lastElementChild).toHaveTextContent(/profile link/i);
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
+    const reportControl = within(profileCard).getByText(/report this profile/i);
+    const deactivateControl = within(profileCard).getByText(/deactivate public profile/i);
+    expect(reportControl.compareDocumentPosition(deactivateControl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(profileCard.querySelector(".profile-report-action")?.nextElementSibling).toBe(deactivateControl.closest(".profile-visibility-control"));
     const editControl = screen.getByText(/^edit profile$/i);
     expect(editControl.closest(".profile-card")).toBeInTheDocument();
     await user.click(editControl);
@@ -339,6 +350,20 @@ describe("App", () => {
     });
     await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
     expect(screen.getByText(/^Profile report$/i)).toBeInTheDocument();
+  });
+
+  it("falls back to the wallet address when a public profile has no ENS name", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^profiles$/i }));
+
+    await user.click(await screen.findByRole("button", { name: /view capital guide profile/i }));
+    const walletIdentity = await screen.findByText("0x2222222222222222222222222222222222222222", { selector: "code" });
+    const profileCard = walletIdentity.closest(".profile-card") as HTMLElement;
+    const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
+    expect(within(identityMeta).getByText("0x2222222222222222222222222222222222222222", { selector: "code" })).toBe(walletIdentity);
+    expect(within(identityMeta).getByRole("link", { name: /profile link/i })).toHaveAttribute("href", "https://example.test/profile");
   });
 
   it("publishes safe clickable links and privacy-conscious contact preferences", async () => {

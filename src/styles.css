@@ -881,6 +881,8 @@ li {
 .profile-hero > div { min-width: 0; }
 .profile-hero h3 { font-size: 1.5rem; margin: 0 0 5px; }
 .ens-name { color: #0f6b57; font-weight: 750; margin: 0 0 7px; }
+.profile-identity-meta { display: grid; gap: 5px; justify-items: start; }
+.profile-identity-meta a { align-items: center; color: #0f6b57; display: inline-flex; font-weight: 700; gap: 3px; }
 .revision-status { background: #fff8e7; border: 1px solid #d9b86c; border-radius: 12px; color: #6b4b0d; margin: 0; padding: 10px 12px; }
 
 .profile-discovery { display: grid; gap: 14px; }
@@ -1046,20 +1048,24 @@ li {
 .profile-editor form button { justify-self: start; }
 
 .profile-visibility-control {
-  background: #f8faf8;
-  border: 1px solid #dce5df;
-  border-radius: 14px;
-  margin-top: 18px;
-  padding: 13px 14px;
+  margin-top: 10px;
 }
 
 .profile-visibility-control > summary {
-  color: #5a6862;
+  color: #6e2f25;
   cursor: pointer;
-  font-weight: 750;
+  display: inline-block;
+  font-size: .84rem;
+  font-weight: 650;
+  list-style: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.profile-visibility-control > div { display: grid; gap: 12px; margin-top: 12px; }
+.profile-visibility-control > summary::-webkit-details-marker { display: none; }
+.profile-visibility-control > summary:hover { color: #57231b; }
+.profile-visibility-control > summary:focus-visible { outline: 3px solid rgba(110, 47, 37, .2); outline-offset: 3px; }
+.profile-visibility-control > div { border-left: 2px solid #e6c5be; display: grid; gap: 12px; margin-top: 12px; padding-left: 12px; }
 .profile-visibility-control p { color: #5a6862; line-height: 1.5; margin: 0; max-width: 78ch; }
 .profile-visibility-control button { background: #f7ece9; border-color: #d6aaa1; color: #6e2f25; justify-self: start; }
 .profile-visibility-control button:hover:not(:disabled) { background: #efdcd7; color: #57231b; }
@@ -1150,20 +1156,6 @@ li {
   font-size: .9rem;
   margin: 0 2px -8px;
 }
-
-.ens-integration-note {
-  align-items: flex-start;
-  background: #eef7f2;
-  border: 1px solid #c9dfd2;
-  border-radius: 12px;
-  color: #315d50;
-  display: flex;
-  font-size: .88rem;
-  gap: 8px;
-  padding: 10px 12px;
-}
-
-.ens-integration-note svg { flex: 0 0 auto; margin-top: 2px; }
 
 .bounty-description {
   color: #46564e !important;
