@@ -120,18 +120,6 @@ nav a:hover {
   margin-top: 12px;
 }
 
-.gate-callout {
-  align-items: flex-start;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 8px;
-  display: flex;
-  gap: 10px;
-  line-height: 1.45;
-  margin-top: auto;
-  padding: 14px;
-}
-
 .content {
   padding: 28px;
 }
@@ -1571,13 +1559,6 @@ main {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.1);
   transform: translateX(2px);
-}
-
-.gate-callout {
-  background: rgba(255, 255, 255, 0.09);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  line-height: 1.5;
 }
 
 .content {
