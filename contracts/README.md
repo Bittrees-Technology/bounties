@@ -4,6 +4,11 @@
 never an NFT. The contract has no owner, administrator, arbiter, token allowlist,
 cap, pause, dispute, or claims flow.
 
+The deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain Testnet
+deployments, Safe authority, transaction receipts, bytecode hashes, and source
+verification records are published in [`deployments/testnet.json`](deployments/testnet.json).
+These testnet deployments do not authorize a mainnet deployment.
+
 Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
 address. Token symbols, decimals, names, and offchain prices are never read.
 
