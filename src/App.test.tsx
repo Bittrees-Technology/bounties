@@ -402,6 +402,7 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: /^my profile$/i }));
 
     const profileCard = (await screen.findByRole("heading", { name: /test participant/i })).closest(".profile-card") as HTMLElement;
+    expect(within(profileCard).queryByText(/public wallet profile/i)).not.toBeInTheDocument();
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
     expect(within(identityMeta).getByRole("link", { name: /view testparticipant\.eth on etherscan/i })).toHaveAttribute("href", "https://etherscan.io/address/0x1111111111111111111111111111111111111111");
     expect(within(identityMeta).queryByText(/0x1111/i)).not.toBeInTheDocument();

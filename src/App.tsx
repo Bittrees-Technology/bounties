@@ -1631,7 +1631,6 @@ export default function App() {
                         <div className="profile-hero">
                           <UserRound size={28} />
                           <div>
-                            <p className="eyebrow">Public wallet profile</p>
                             <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || walletExplorerLink(publicProfile?.wallet_address ?? selectedProfile.address)}</h3>
                             <div className="profile-identity-meta">
                               {publicProfile?.display_name && publicProfile.ens_name ? ensExplorerLink(publicProfile, "ens-name") : null}
