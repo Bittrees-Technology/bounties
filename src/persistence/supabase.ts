@@ -48,6 +48,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
   if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters or choose a valid profile filter.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
+  if (serverCode === "TOKEN_MODERATOR_HIDDEN") return "This token has been hidden from Bounties after moderation review. Choose another payment token.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
@@ -121,6 +122,7 @@ export type TokenRecord = {
   id: string; chain_id: number; contract_address: string; checksum_address: string; name: string | null;
   symbol: string | null; decimals: number; total_supply: string | null; explorer_url: string;
   proxy_status: string; source_verification_status: string; risk_flags: string[]; inspected_at: string;
+  moderation_status?: "visible" | "hidden"; moderation_reason?: string | null;
 };
 export type Notification = { id: string; body: string; read_at: string | null; created_at?: string };
 export type EscrowObservation = {
@@ -149,7 +151,7 @@ export type ParticipantReview = {
 export type ModerationDecision = "hide" | "restore" | "no_action";
 export type ModerationReport = {
   id: string;
-  entity_type: "bounty" | "review" | "profile";
+  entity_type: "bounty" | "review" | "profile" | "token";
   entity_id: string;
   reason: string;
   status: "open" | "resolved" | "dismissed";
@@ -158,7 +160,15 @@ export type ModerationReport = {
   moderator_response?: string | null;
   current_moderation_status?: "visible" | "hidden";
   entity_title?: string | null;
-  content?: { type?: "bounty" | "review" | "profile"; wallet_address?: string } | null;
+  content?: {
+    type?: "bounty" | "review" | "profile" | "token";
+    wallet_address?: string;
+    chain_id?: number;
+    checksum_address?: string;
+    explorer_url?: string;
+    name?: string | null;
+    symbol?: string | null;
+  } | null;
   created_at: string;
 };
 type Evidence = { id: string; uri: string; content_hash: string; evidence_hash: string; canonical_approval_hash?: string | null; revision: number };
@@ -339,7 +349,7 @@ export function searchPublicProfiles(query: string, filters: ProfileSearchFilter
 }
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
-export const reportContent = (entityType: "bounty" | "review" | "profile", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
+export const reportContent = (entityType: "bounty" | "review" | "profile" | "token", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
 export const decideContentReport = (
   reportId: string,
   decision: ModerationDecision,

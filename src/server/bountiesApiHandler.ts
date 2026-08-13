@@ -342,9 +342,9 @@ function contentHashField(body: Record<string, unknown>): Bytes32Hex {
   return value as Bytes32Hex;
 }
 
-function contentType(body: Record<string, unknown>, field = "entityType"): "bounty" | "review" | "profile" {
+function contentType(body: Record<string, unknown>, field = "entityType"): "bounty" | "review" | "profile" | "token" {
   const value = requiredString(body, field);
-  if (value !== "bounty" && value !== "review" && value !== "profile") throw new ApiError("INVALID_CONTENT_TYPE", 400);
+  if (value !== "bounty" && value !== "review" && value !== "profile" && value !== "token") throw new ApiError("INVALID_CONTENT_TYPE", 400);
   return value;
 }
 

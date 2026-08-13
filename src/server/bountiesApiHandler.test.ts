@@ -199,6 +199,34 @@ describe("profile report ownership boundary", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("app_consume_rate_limit", expect.anything());
     expect(rpcMock).not.toHaveBeenCalledWith("app_report_content", expect.anything());
   });
+
+  it("accepts a token report and forwards the exact token record identity", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/reports",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          entityType: "token",
+          entityId: "10000000-0000-4000-8000-000000000010",
+          reason: "Suspected scam token"
+        })
+      }
+    ), "reports");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_report_content", {
+      p_actor_id: session.account_id,
+      p_entity_type: "token",
+      p_entity_id: "10000000-0000-4000-8000-000000000010",
+      p_reason: "Suspected scam token"
+    });
+  });
 });
 
 describe("optional shared moderation projection", () => {

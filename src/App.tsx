@@ -134,7 +134,7 @@ function ProfileAvatar({ profile }: { profile: PublicWalletProfile | null }) {
 }
 
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
-type ReportableEntity = "bounty" | "review" | "profile";
+type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
   current_milestone?: number | null;
@@ -144,7 +144,7 @@ type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObserv
   current_milestone_state?: "Pending" | "Submitted" | "Approved" | "Released" | null;
 };
 
-const reportEntityLabel = (entityType: ReportableEntity) => entityType === "bounty" ? "Listing" : entityType === "profile" ? "Profile" : "Review";
+const reportEntityLabel = (entityType: ReportableEntity) => entityType === "bounty" ? "Listing" : entityType === "profile" ? "Profile" : entityType === "token" ? "Token" : "Review";
 const reportEntityNoun = (entityType: ReportableEntity) => reportEntityLabel(entityType).toLowerCase();
 
 const pageRoutes: Record<ProductPage, string> = {
@@ -363,17 +363,18 @@ export default function App() {
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
   const wallet = session?.account.wallet_address;
-  const selectedTokenPresets = standardTokenPresets[Number(inspectChain) as SupportedChainId] ?? [];
   const networkTokens = availableTokens.filter((token) => token.chain_id === Number(inspectChain));
+  const visibleNetworkTokens = networkTokens.filter((token) => token.moderation_status !== "hidden");
+  const selectedTokenPresets = (standardTokenPresets[Number(inspectChain) as SupportedChainId] ?? []).filter((preset) => !networkTokens.some((token) => token.contract_address.toLowerCase() === preset.contractAddress.toLowerCase() && token.moderation_status === "hidden"));
   const standardPaymentOptions = selectedTokenPresets.map((preset) => {
-    const token = networkTokens.find((candidate) => candidate.contract_address.toLowerCase() === preset.contractAddress.toLowerCase());
+    const token = visibleNetworkTokens.find((candidate) => candidate.contract_address.toLowerCase() === preset.contractAddress.toLowerCase());
     return {
       preset,
       token,
       value: token?.id ?? `preset:${inspectChain}:${preset.contractAddress.toLowerCase()}`
     };
   });
-  const otherPaymentTokens = networkTokens.filter((token) => !selectedTokenPresets.some((preset) => preset.contractAddress.toLowerCase() === token.contract_address.toLowerCase()));
+  const otherPaymentTokens = visibleNetworkTokens.filter((token) => !selectedTokenPresets.some((preset) => preset.contractAddress.toLowerCase() === token.contract_address.toLowerCase()));
   const paymentTokenOptions = [
     ...standardPaymentOptions.map(({ preset, token, value }) => ({
       value,
@@ -582,8 +583,8 @@ export default function App() {
       setSession(next);
       setExpired(false);
       setDraft((current) => {
-        if (current.token && next.tokens.some((token) => token.id === current.token)) return current;
-        const fallback = next.tokens.find((token) => token.chain_id === Number(inspectChain));
+        if (current.token && next.tokens.some((token) => token.id === current.token && token.moderation_status !== "hidden")) return current;
+        const fallback = next.tokens.find((token) => token.chain_id === Number(inspectChain) && token.moderation_status !== "hidden");
         return fallback ? { ...current, token: fallback.id } : { ...current, token: "" };
       });
     } catch (caught) {
@@ -761,6 +762,7 @@ export default function App() {
 
   async function inspectContract(chainId: number, contractAddress: string) {
     const token = await inspectToken(chainId, contractAddress);
+    if (token.moderation_status === "hidden") throw new Error("This token has been hidden from Bounties after moderation review. Choose another payment token.");
     setInspected(token);
     setInspectChain(String(chainId));
     setInspectAddress(token.checksum_address);
@@ -1010,9 +1012,10 @@ export default function App() {
   }
 
   function reportForm(entityType: ReportableEntity, entityId: string) {
+    const tokenReport = entityType === "token";
     return (
       <details className="report-control">
-        <summary><Flag size={14} /> Report this {reportEntityNoun(entityType)}</summary>
+        <summary><Flag size={14} /> {tokenReport ? "Flag this token" : `Report this ${reportEntityNoun(entityType)}`}</summary>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -1029,14 +1032,23 @@ export default function App() {
         >
           <label>
             Concern
-            <select name="category" defaultValue="Fraud or misleading content" required>
-              <option>Illegal or prohibited activity</option>
-              <option>Fraud or misleading content</option>
-              <option>Harassment or personal information</option>
-              <option>Spam</option>
-              <option>Intellectual-property concern</option>
-              <option>Other safety concern</option>
-            </select>
+            {tokenReport ? (
+              <select name="category" defaultValue="Suspected scam token" required>
+                <option>Suspected scam token</option>
+                <option>Impersonation or misleading metadata</option>
+                <option>Malicious transfer behavior</option>
+                <option>Other token safety concern</option>
+              </select>
+            ) : (
+              <select name="category" defaultValue="Fraud or misleading content" required>
+                <option>Illegal or prohibited activity</option>
+                <option>Fraud or misleading content</option>
+                <option>Harassment or personal information</option>
+                <option>Spam</option>
+                <option>Intellectual-property concern</option>
+                <option>Other safety concern</option>
+              </select>
+            )}
           </label>
           <label>Details (optional)<textarea name="details" maxLength={430} /></label>
           <button type="submit">Submit report</button>
@@ -1516,7 +1528,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a>{reportForm("token", selectedToken.id)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -1792,7 +1804,7 @@ export default function App() {
                 <section id="moderation" className="panel moderation-panel authorized-panel">
                   <div className="moderator-badge"><ShieldCheck size={16} />Authorized {session.staffRole}</div>
                   <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
-                  <p>Review reported listings, reviews, and profiles, choose a visibility decision, and respond to the reporter.</p>
+                  <p>Review reported listings, reviews, profiles, and tokens, choose a visibility decision, and respond to the reporter.</p>
                   <p className="moderation-safety-note"><ShieldCheck size={16} /> These actions change visibility on Bounties only. They do not affect escrow, payment, or blockchain records.</p>
                   <p>{session.staffRole} access · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
                   {session.moderationReports.length ? session.moderationReports.map((report) => (
@@ -1802,7 +1814,9 @@ export default function App() {
                         <p>{report.reason}</p>
                         <span>Reported {new Date(report.created_at).toLocaleString()} · {report.entity_type === "profile" && report.content?.wallet_address
                           ? <button className="wallet-link" type="button" onClick={() => openProfile(report.content!.wallet_address!)}>View reported profile</button>
-                          : <a href={`#${report.entity_type}-${report.entity_id}`}>View reported {reportEntityNoun(report.entity_type)}</a>}</span>
+                          : report.entity_type === "token" && report.content?.explorer_url
+                            ? <a href={report.content.explorer_url} target="_blank" rel="noreferrer noopener">Inspect reported token <ExternalLink size={12} /></a>
+                            : <a href={`#${report.entity_type}-${report.entity_id}`}>View reported {reportEntityNoun(report.entity_type)}</a>}</span>
                       </div>
                       <form
                         className="moderation-decision-form"
@@ -1825,8 +1839,8 @@ export default function App() {
                           Decision
                           <select name="decision" defaultValue="no_action" required>
                             <option value="no_action">Keep visible — no action</option>
-                            <option value="hide">Hide from marketplace</option>
-                            <option value="restore">Restore to marketplace</option>
+                            <option value="hide">Hide from Bounties</option>
+                            <option value="restore">Restore on Bounties</option>
                           </select>
                         </label>
                         <label>Message to reporter<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Explain the outcome in clear, neutral language." required /></label>

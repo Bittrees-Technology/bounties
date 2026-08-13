@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockStaff } from "./test/setup";
+import { configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -287,6 +287,39 @@ describe("App", () => {
     expect(await screen.findByRole("link", { name: /inspect contract/i })).toHaveAttribute("href", expect.stringContaining("0x036cbd"));
     expect(screen.queryByText(/is ready to use/i)).not.toBeInTheDocument();
     expect(screen.getAllByText(/USD Coin \(USDC\)/i).length).toBeGreaterThan(0);
+  });
+
+  it("lets a signed-in user flag the selected token as a suspected scam", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /^BIT · Base Sepolia/i }));
+    const selectedTokenCard = screen.getByText(/selected token/i).closest(".selected-token-card") as HTMLElement;
+    await user.click(within(selectedTokenCard).getByText(/flag this token/i));
+    expect(within(selectedTokenCard).getByLabelText(/concern/i)).toHaveValue("Suspected scam token");
+    await user.type(within(selectedTokenCard).getByLabelText(/details/i), "Impersonates another asset");
+    await user.click(within(selectedTokenCard).getByRole("button", { name: /submit report/i }));
+
+    expect(await screen.findByText(/report received/i)).toBeInTheDocument();
+    const reportCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/reports"));
+    expect(JSON.parse(String(reportCall?.[1]?.body))).toEqual({
+      entityType: "token",
+      entityId: "00000000-0000-4000-8000-000000000003",
+      reason: "Suspected scam token: Impersonates another asset"
+    });
+  });
+
+  it("removes moderator-hidden tokens including matching standard presets from payment choices", async () => {
+    configureMockHiddenStandardToken();
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    expect(screen.queryByRole("option", { name: /^USDC · USD Coin · Base Sepolia/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /USDC · USDC test token · Base Sepolia/i })).toBeInTheDocument();
   });
 
   it("discovers public profiles by custom or ENS identity", async () => {
@@ -597,6 +630,16 @@ describe("App", () => {
       status: "open",
       version: 1,
       created_at: new Date().toISOString()
+    }, {
+      id: "00000000-0000-4000-8000-000000000890",
+      entity_type: "token",
+      entity_id: "00000000-0000-4000-8000-000000000003",
+      entity_title: "BIT on network 84532",
+      content: { type: "token", explorer_url: "https://sepolia.basescan.org/address/0x4444444444444444444444444444444444444444" },
+      reason: "Suspected scam token",
+      status: "open",
+      version: 1,
+      created_at: new Date().toISOString()
     }]);
     const user = userEvent.setup();
     render(<App />);
@@ -608,7 +651,9 @@ describe("App", () => {
     expect(screen.getByText(/potentially illegal service/i)).toBeInTheDocument();
     expect(screen.getByText(/Profile report.*Profile 0x1111/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /view reported profile/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("option", { name: /keep visible.*no action/i })).toHaveLength(2);
-    expect(screen.getAllByLabelText(/message to reporter/i)).toHaveLength(2);
+    expect(screen.getByText(/Token report.*BIT on network 84532/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /inspect reported token/i })).toHaveAttribute("href", expect.stringContaining("0x4444"));
+    expect(screen.getAllByRole("option", { name: /keep visible.*no action/i })).toHaveLength(3);
+    expect(screen.getAllByLabelText(/message to reporter/i)).toHaveLength(3);
   });
 });

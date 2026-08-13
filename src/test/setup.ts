@@ -4,11 +4,12 @@ import { beforeEach, expect, vi } from "vitest";
 
 import { SIWE_AUTHENTICATION_METHOD, SIWE_STATEMENT, siweResources } from "../auth/siwe";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment } from "../chain/hashCodec";
+import type { TokenRecord } from "../persistence/supabase";
 
 expect.extend(matchers);
 
 const testWallet = "0x1111111111111111111111111111111111111111";
-const defaultTokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
+const defaultTokens: TokenRecord[] = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"].map((symbol, index) => ({
   id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
   symbol,
   decimals: symbol === "USDC" || symbol === "USDT" ? 6 : symbol === "WBTC" ? 8 : 18,
@@ -21,6 +22,7 @@ const defaultTokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"]
   proxy_status: "unknown",
   source_verification_status: "unavailable",
   risk_flags: [],
+  moderation_status: "visible",
   inspected_at: new Date().toISOString()
 }));
 let tokens = [...defaultTokens];
@@ -42,6 +44,27 @@ export function configureMockStaff(
 
 export function configureMockProfileLegacySpecialty(value: string | null) {
   profileLegacySpecialty = value;
+}
+
+export function configureMockHiddenStandardToken() {
+  const contractAddress = "0x036cbd53842c5426634e7929541ec2318f3dcf7c";
+  tokens = [...tokens.filter((token) => token.contract_address.toLowerCase() !== contractAddress), {
+    id: "00000000-0000-4000-8000-000000000008",
+    symbol: "USDC",
+    decimals: 6,
+    chain_id: 84532,
+    contract_address: contractAddress,
+    checksum_address: contractAddress,
+    name: "USD Coin",
+    total_supply: "1000000000",
+    explorer_url: `https://sepolia.basescan.org/address/${contractAddress}`,
+    proxy_status: "unknown",
+    source_verification_status: "unavailable",
+    risk_flags: [],
+    moderation_status: "hidden",
+    moderation_reason: "Confirmed scam contract",
+    inspected_at: new Date().toISOString()
+  }];
 }
 
 export function configureMockMilestoneEscrow(
