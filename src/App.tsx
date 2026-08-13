@@ -1513,7 +1513,7 @@ export default function App() {
                           {publicProfile.categories?.map((category) => <span key={`category-${category}`}>{category}</span>)}
                           {publicProfile.custom_specialty ? <span>{publicProfile.custom_specialty}</span> : null}
                         </div> : null}
-                        {publicProfile?.account_id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
+                        {publicProfile?.account_id && publicProfile.account_id !== session?.account.id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (
                           <details className="profile-visibility-control">
                             <summary>Deactivate public profile</summary>

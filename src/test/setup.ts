@@ -294,15 +294,16 @@ beforeEach(() => {
     if (url.includes("/api/bounties/profiles/")) {
       if (profileVisibility === "hidden" && url.toLowerCase().endsWith(testWallet.toLowerCase())) return Response.json({ code: "PROFILE_NOT_FOUND" }, { status: 404 });
       const profileWallet = decodeURIComponent(url.split("/profiles/")[1]);
+      const ownProfile = profileWallet.toLowerCase() === testWallet.toLowerCase();
       return Response.json({
-        account_id: "00000000-0000-4000-8000-000000000111",
+        account_id: ownProfile ? "00000000-0000-4000-8000-000000000111" : "00000000-0000-4000-8000-000000000222",
         wallet_address: profileWallet,
-        display_name: profileWallet.toLowerCase() === testWallet.toLowerCase() ? "Test participant" : null,
+        display_name: ownProfile ? "Test participant" : null,
         profile_bio: "Builds and funds verifiable work.",
         profile_url: "https://example.test/profile",
         profile_moderation_status: "visible",
         profile_updated_at: new Date().toISOString(),
-        ens_name: profileWallet.toLowerCase() === testWallet.toLowerCase() ? "testparticipant.eth" : null,
+        ens_name: ownProfile ? "testparticipant.eth" : null,
         member_since: new Date().toISOString(),
         roles: ["buyer", "provider"],
         activity_summary: { capital_bounties: 1, labor_bounties: 1 },
