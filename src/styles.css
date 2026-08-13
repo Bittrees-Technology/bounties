@@ -1018,11 +1018,13 @@ li {
   padding: 11px 0;
 }
 
-.profile-directory-reputation > div { align-items: center; display: grid; gap: 7px; grid-template-columns: auto minmax(140px, .65fr) minmax(190px, 1fr) auto; }
+.profile-directory-reputation > div { align-items: start; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr); }
 .profile-directory-reputation svg { color: #0f6b57; }
 .profile-directory-reputation span { color: #5a6862; font-size: .78rem; }
-.profile-directory-reputation strong { font-size: .78rem; text-align: right; }
-.profile-directory-reputation small { color: #5a6862; font-size: .76rem; text-align: right; }
+.profile-directory-reputation strong { font-size: .78rem; }
+.profile-directory-reputation small { color: #5a6862; font-size: .76rem; }
+.profile-directory-reputation strong,
+.profile-directory-reputation small { grid-column: 2; text-align: left; }
 .profile-directory-activity-total { color: #5a6862; font-size: .76rem; margin: 0; }
 
 .profile-role-grid {
@@ -2562,9 +2564,6 @@ textarea {
   .profile-directory-card { padding: 18px; }
   .profile-directory-card-header { grid-template-columns: 1fr; }
   .profile-directory-card-header > button { width: 100%; }
-  .profile-directory-reputation > div { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
-  .profile-directory-reputation strong,
-  .profile-directory-reputation small { grid-column: 2; text-align: left; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }
   .profile-visibility-status button { width: 100%; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
