@@ -234,6 +234,20 @@ describe("App", () => {
       customSpecialty: "Protocol documentation"
     });
 
+    await user.click(screen.getByText(/deactivate public profile/i));
+    await user.click(screen.getByRole("button", { name: /hide my profile/i }));
+    expect((await screen.findAllByText(/your public profile is hidden/i)).length).toBeGreaterThan(0);
+    expect(screen.getByText(/profile details, ratings, reviews, and activity remain stored/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /test participant/i })).toBeInTheDocument();
+    const hideCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/profiles/visibility") && init?.method === "POST");
+    expect(JSON.parse(String(hideCall?.[1]?.body))).toEqual({ visible: false });
+
+    await user.click(screen.getByRole("button", { name: /reactivate profile/i }));
+    expect(await screen.findByText(/public profile is active again/i)).toBeInTheDocument();
+    expect(screen.getByText(/deactivate public profile/i)).toBeInTheDocument();
+    const visibilityCalls = vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/profiles/visibility"));
+    expect(JSON.parse(String(visibilityCalls.at(-1)?.[1]?.body))).toEqual({ visible: true });
+
     const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
     expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 

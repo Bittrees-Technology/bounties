@@ -235,6 +235,12 @@ function requiredString(body: Record<string, unknown>, field: string): string {
   return value;
 }
 
+function requiredBoolean(body: Record<string, unknown>, field: string): boolean {
+  const value = body[field];
+  if (typeof value !== "boolean") throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
+  return value;
+}
+
 function optionalString(body: Record<string, unknown>, field: string): string | null {
   const value = body[field];
   if (value === undefined || value === null || value === "") return null;
@@ -1122,7 +1128,7 @@ async function handle(request: Request, action: string): Promise<Response> {
         const ensProfile = await callRpc<PublicProfileRecord | null>("app_public_wallet_profile", {
           p_wallet_address: ensAddress
         });
-        if (ensProfile) profiles.unshift({ ...ensProfile, ens_name: query.toLowerCase() });
+        if (ensProfile && ensProfile.profile_moderation_status !== "hidden") profiles.unshift({ ...ensProfile, ens_name: query.toLowerCase() });
       }
     }
     return Response.json({ results: profiles.slice(0, 12) }, { headers });
@@ -1134,7 +1140,7 @@ async function handle(request: Request, action: string): Promise<Response> {
     const profile = await callRpc<PublicProfileRecord | null>("app_public_wallet_profile", {
       p_wallet_address: checkedAddress(publicProfileMatch[1], "INVALID_WALLET")
     });
-    if (!profile) throw new ApiError("PROFILE_NOT_FOUND", 404);
+    if (!profile || profile.profile_moderation_status === "hidden") throw new ApiError("PROFILE_NOT_FOUND", 404);
     return Response.json(await enrichPublicProfile(profile), { headers });
   }
 
@@ -1159,6 +1165,14 @@ async function handle(request: Request, action: string): Promise<Response> {
     });
     const results = await Promise.all((profiles ?? []).map((profile) => profile.display_name ? profile : enrichPublicProfile(profile)));
     return Response.json({ results: results.filter(Boolean) }, { headers });
+  }
+
+  if (action === "profiles/me" && method === "GET") {
+    const profile = await callRpc<PublicProfileRecord | null>("app_my_wallet_profile", {
+      p_actor_id: session.account_id
+    });
+    if (!profile) throw new ApiError("PROFILE_NOT_FOUND", 404);
+    return Response.json(await enrichPublicProfile(profile), { headers });
   }
 
   if (action === "me" && method === "GET") {
@@ -1192,6 +1206,14 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_work_types: optionalStringArray(body, "workTypes"),
       p_categories: optionalStringArray(body, "categories"),
       p_custom_specialty: optionalString(body, "customSpecialty")
+    });
+    return Response.json(data, { headers });
+  }
+
+  if (action === "profiles/visibility" && method === "POST") {
+    const data = await callRpc("app_set_profile_visibility", {
+      p_actor_id: session.account_id,
+      p_visible: requiredBoolean(body, "visible")
     });
     return Response.json(data, { headers });
   }

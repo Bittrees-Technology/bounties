@@ -29,6 +29,7 @@ let authenticated = false;
 let snapshotStaffRole: "moderator" | "admin" | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
+let profileVisibility: "visible" | "hidden" = "visible";
 
 export function configureMockStaff(
   role: "moderator" | "admin" | null,
@@ -123,6 +124,7 @@ beforeEach(() => {
   snapshotStaffRole = null;
   snapshotModerationReports = [];
   snapshotMyReports = [];
+  profileVisibility = "visible";
   if (typeof window === "undefined") return;
   window.history.replaceState({}, "", "/");
   Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
@@ -194,13 +196,40 @@ beforeEach(() => {
       return Response.json({
         account_id: "00000000-0000-4000-8000-000000000111",
         wallet_address: testWallet,
-        display_name: body.displayName || null,
-        profile_bio: body.profileBio || null,
-        profile_url: body.profileUrl || null,
-        work_types: body.workTypes || [],
-        categories: body.categories || [],
-        custom_specialty: body.customSpecialty || null,
-        profile_moderation_status: "visible",
+        display_name: init?.method === "POST" ? body.displayName || null : "Test participant",
+        profile_bio: init?.method === "POST" ? body.profileBio || null : "Builds and funds verifiable work.",
+        profile_url: init?.method === "POST" ? body.profileUrl || null : "https://example.test/profile",
+        work_types: init?.method === "POST" ? body.workTypes || [] : ["audit"],
+        categories: init?.method === "POST" ? body.categories || [] : ["Smart Contracts & Web3"],
+        custom_specialty: init?.method === "POST" ? body.customSpecialty || null : null,
+        profile_moderation_status: profileVisibility,
+        visibility_source: profileVisibility === "hidden" ? "owner" : null,
+        profile_updated_at: new Date().toISOString(),
+        ens_name: "testparticipant.eth",
+        member_since: new Date().toISOString(),
+        roles: ["buyer", "provider"],
+        activity_summary: { capital_bounties: 1, labor_bounties: 1 },
+        rating_summaries: {
+          capital_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } },
+          labor_provider: { average_rating: null, review_count: 0, rating_counts: { "1": 0, "2": 0, "3": 0, "4": 0, "5": 0 } }
+        },
+        reviews_received: []
+      });
+    }
+    if (url.endsWith("/api/bounties/profiles/visibility")) {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      profileVisibility = body.visible ? "visible" : "hidden";
+      return Response.json({
+        account_id: "00000000-0000-4000-8000-000000000111",
+        wallet_address: testWallet,
+        display_name: "Test participant",
+        profile_bio: "Builds and funds verifiable work.",
+        profile_url: "https://example.test/profile",
+        work_types: ["audit"],
+        categories: ["Smart Contracts & Web3"],
+        custom_specialty: null,
+        profile_moderation_status: profileVisibility,
+        visibility_source: profileVisibility === "hidden" ? "owner" : null,
         profile_updated_at: new Date().toISOString(),
         ens_name: "testparticipant.eth",
         member_since: new Date().toISOString(),
@@ -236,7 +265,7 @@ beforeEach(() => {
         reviews_received: []
       });
       return Response.json({ results: [
-        profile("00000000-0000-4000-8000-000000000111", testWallet, "Test participant", "testparticipant.eth", "provider"),
+        ...(profileVisibility === "visible" ? [profile("00000000-0000-4000-8000-000000000111", testWallet, "Test participant", "testparticipant.eth", "provider")] : []),
         profile("00000000-0000-4000-8000-000000000222", "0x2222222222222222222222222222222222222222", "Capital guide", null, "buyer")
       ] });
     }
@@ -263,6 +292,7 @@ beforeEach(() => {
       });
     }
     if (url.includes("/api/bounties/profiles/")) {
+      if (profileVisibility === "hidden" && url.toLowerCase().endsWith(testWallet.toLowerCase())) return Response.json({ code: "PROFILE_NOT_FOUND" }, { status: 404 });
       const profileWallet = decodeURIComponent(url.split("/profiles/")[1]);
       return Response.json({
         account_id: "00000000-0000-4000-8000-000000000111",

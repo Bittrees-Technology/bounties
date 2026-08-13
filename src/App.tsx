@@ -37,6 +37,7 @@ import {
   decideContentReport,
   inspectToken,
   loadMarketplace,
+  loadMyProfile,
   loadPublicProfile,
   markNotificationRead,
   recordEscrowObservation,
@@ -45,6 +46,7 @@ import {
   reportContent,
   selectRole,
   searchPublicProfiles,
+  setMyProfileVisibility,
   signInWithEthereum,
   signOut,
   submitEvidence,
@@ -367,7 +369,8 @@ export default function App() {
     setProfileMessage("Loading wallet profile…");
     navigateToPage("profile");
     window.scrollTo({ top: 0, behavior: "smooth" });
-    void loadPublicProfile(address)
+    const isOwnProfile = wallet?.toLowerCase() === address.toLowerCase();
+    void (isOwnProfile ? loadMyProfile() : loadPublicProfile(address))
       .then((profile) => {
         setPublicProfile(profile);
         setProfileMessage(null);
@@ -392,6 +395,14 @@ export default function App() {
     } finally {
       setProfileSearching(false);
     }
+  }
+
+  async function changeProfileVisibility(visible: boolean) {
+    await act(async () => {
+      const updated = await setMyProfileVisibility(visible);
+      setPublicProfile(updated);
+      setProfileDirectoryLoaded(false);
+    }, visible ? "Your public profile is active again." : "Your public profile is hidden. Your data has been retained.");
   }
 
   async function refresh(allowDisconnected = false) {
@@ -1347,6 +1358,26 @@ export default function App() {
                           <UserRound size={28} />
                           <div><p className="eyebrow">Public wallet profile</p><h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>{publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}<code>{selectedProfile.address}</code>{publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}{publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}{profileMessage ? <p className="form-hint">{profileMessage}</p> : null}</div>
                         </div>
+                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile ? (
+                          publicProfile?.profile_moderation_status === "hidden" ? (
+                            <div className={`profile-visibility-status ${publicProfile.visibility_source === "moderation" ? "moderated" : "owner-hidden"}`}>
+                              <EyeOff size={19} />
+                              <div>
+                                <strong>{publicProfile.visibility_source === "moderation" ? "Your profile is hidden by moderation" : "Your public profile is hidden"}</strong>
+                                <span>{publicProfile.visibility_source === "moderation" ? "It is unavailable in profile discovery and cannot be reactivated from these settings." : "It is not visible in discovery or through a public profile link. Your profile details, ratings, reviews, and activity remain stored."}</span>
+                              </div>
+                              {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
+                            </div>
+                          ) : (
+                            <details className="profile-visibility-control">
+                              <summary>Deactivate public profile</summary>
+                              <div>
+                                <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
+                                <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
+                              </div>
+                            </details>
+                          )
+                        ) : null}
                         {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties" aria-label="Profile work preferences">
                           {publicProfile.work_types?.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}
                           {publicProfile.categories?.map((category) => <span key={`category-${category}`}>{category}</span>)}
