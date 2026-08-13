@@ -105,6 +105,23 @@ describe("App", () => {
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
   });
 
+  it("shows a legible, descriptive empty notification state", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    const notificationButton = screen.getByRole("button", { name: /^notifications$/i });
+    expect(notificationButton).toHaveAttribute("aria-expanded", "false");
+    await user.click(notificationButton);
+
+    expect(notificationButton).toHaveAttribute("aria-expanded", "true");
+    const notificationRegion = screen.getByRole("region", { name: /^notifications$/i });
+    expect(notificationRegion).toHaveClass("notification-popover");
+    expect(within(notificationRegion).getByText(/you.re all caught up/i)).toBeInTheDocument();
+    expect(within(notificationRegion).getByText(/new activity will appear here/i)).toBeInTheDocument();
+    expect(within(notificationRegion).getByText(/0 unread/i)).toBeInTheDocument();
+  });
+
   it("publishes user-defined work types and categories instead of an Other placeholder", async () => {
     const user = userEvent.setup();
     render(<App />);

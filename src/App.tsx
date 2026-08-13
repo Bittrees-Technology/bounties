@@ -1132,7 +1132,7 @@ export default function App() {
             <div className="sidebar-account" aria-label="Account controls" id="account-controls">
               <div className={`account-actions ${wallet ? "connected-account-actions" : "disconnected-account-actions"}`}>
                 {wallet ? (
-                  <button className="compact-account-button notification-button" aria-label="Notifications" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                  <button className="compact-account-button notification-button" aria-label="Notifications" aria-controls="notification-popover" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
                     <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
                   </button>
                 ) : null}
@@ -1142,10 +1142,15 @@ export default function App() {
                   <button className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
                 )}
                 {notificationsOpen ? (
-                  <div className="notification-popover">
+                  <div className="notification-popover" id="notification-popover" role="region" aria-label="Notifications">
+                    <div className="notification-popover-header">
+                      <strong>Notifications</strong>
+                      <span>{session?.notifications.filter((notification) => !notification.read_at).length ?? 0} unread</span>
+                    </div>
                     {session?.notifications.length
                       ? session.notifications.map((notification) => (
                           <button
+                            className="notification-item"
                             key={notification.id}
                             disabled={Boolean(notification.read_at)}
                             onClick={() => void act(() => markNotificationRead(notification.id))}
@@ -1153,7 +1158,7 @@ export default function App() {
                             {notification.body}{notification.read_at ? " · Read" : " · Mark read"}
                           </button>
                         ))
-                      : "No notifications."}
+                      : <div className="notification-empty" role="status"><Bell size={20} aria-hidden="true" /><strong>You’re all caught up.</strong><span>New activity will appear here.</span></div>}
                   </div>
                 ) : null}
               </div>
