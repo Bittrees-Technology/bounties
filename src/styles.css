@@ -880,9 +880,25 @@ li {
 
 .profile-hero > div { min-width: 0; }
 .profile-hero h3 { font-size: 1.5rem; margin: 0 0 5px; }
-.ens-name { color: #0f6b57; font-weight: 750; margin: 0 0 7px; }
 .profile-identity-meta { display: grid; gap: 5px; justify-items: start; }
 .profile-identity-meta a { align-items: center; color: #0f6b57; display: inline-flex; font-weight: 700; gap: 3px; }
+.ens-name,
+.directory-ens-link,
+.wallet-explorer-link {
+  align-items: center;
+  color: #0f6b57;
+  display: inline-flex;
+  font-weight: 750;
+  gap: 5px;
+  justify-self: start;
+  text-decoration: none;
+}
+
+.directory-ens-link { font-size: 0.88rem; }
+.wallet-explorer-link code { color: inherit; }
+.ens-name:hover,
+.directory-ens-link:hover,
+.wallet-explorer-link:hover { text-decoration: underline; }
 .revision-status { background: #fff8e7; border: 1px solid #d9b86c; border-radius: 12px; color: #6b4b0d; margin: 0; padding: 10px 12px; }
 
 .profile-discovery { display: grid; gap: 14px; }

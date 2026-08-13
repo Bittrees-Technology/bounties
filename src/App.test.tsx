@@ -282,7 +282,12 @@ describe("App", () => {
     const result = await screen.findByRole("button", { name: /view test participant profile/i });
     await user.click(result);
     expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
-    expect(screen.getAllByText(/testparticipant\.eth/i).length).toBeGreaterThan(0);
+    const ensLink = screen.getByRole("link", { name: /view testparticipant\.eth on etherscan/i });
+    expect(ensLink).toHaveTextContent(/^testparticipant\.eth$/i);
+    expect(ensLink).toHaveAttribute("href", "https://etherscan.io/address/0x1111111111111111111111111111111111111111");
+    expect(screen.getAllByText(/^testparticipant\.eth$/i)).toHaveLength(1);
+    expect(screen.getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
+    expect(screen.queryByText(/^ENS ·/i)).not.toBeInTheDocument();
   });
 
   it("loads separate participant roles on a public wallet profile and limits editing to its owner", async () => {
@@ -293,10 +298,10 @@ describe("App", () => {
 
     const profileCard = (await screen.findByRole("heading", { name: /test participant/i })).closest(".profile-card") as HTMLElement;
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
-    expect(within(identityMeta).getByText("testparticipant.eth", { selector: "code" })).toBeInTheDocument();
-    expect(within(identityMeta).queryByText("0x1111111111111111111111111111111111111111", { selector: "code" })).not.toBeInTheDocument();
+    expect(within(identityMeta).getByRole("link", { name: /view testparticipant\.eth on etherscan/i })).toHaveAttribute("href", "https://etherscan.io/address/0x1111111111111111111111111111111111111111");
+    expect(within(identityMeta).queryByText(/0x1111/i)).not.toBeInTheDocument();
     expect(identityMeta.firstElementChild).toHaveTextContent("testparticipant.eth");
-    expect(identityMeta.lastElementChild).toHaveTextContent(/profile link/i);
+    expect(identityMeta.lastElementChild).toHaveTextContent(/website/i);
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
     const reportControl = within(profileCard).getByText(/report this profile/i);
@@ -359,11 +364,12 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: /^profiles$/i }));
 
     await user.click(await screen.findByRole("button", { name: /view capital guide profile/i }));
-    const walletIdentity = await screen.findByText("0x2222222222222222222222222222222222222222", { selector: "code" });
+    const walletIdentity = await screen.findByRole("link", { name: /view wallet on etherscan/i });
+    expect(walletIdentity).toHaveAttribute("href", "https://etherscan.io/address/0x2222222222222222222222222222222222222222");
+    expect(within(walletIdentity).getByText("0x2222…2222", { selector: "code" })).toBeInTheDocument();
     const profileCard = walletIdentity.closest(".profile-card") as HTMLElement;
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
-    expect(within(identityMeta).getByText("0x2222222222222222222222222222222222222222", { selector: "code" })).toBe(walletIdentity);
-    expect(within(identityMeta).getByRole("link", { name: /profile link/i })).toHaveAttribute("href", "https://example.test/profile");
+    expect(within(identityMeta).getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
   });
 
   it("publishes safe clickable links and privacy-conscious contact preferences", async () => {

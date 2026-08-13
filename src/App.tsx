@@ -100,6 +100,12 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
 ];
 
 const workTypeLabel = (value: string) => scopes.find((scope) => scope.value === value)?.label ?? value;
+const ethereumExplorerUrl = (walletAddress: string) => `https://etherscan.io/address/${walletAddress}`;
+
+function ensExplorerLink(profile: PublicWalletProfile, className?: string) {
+  if (!profile.ens_name) return null;
+  return <a className={className} href={ethereumExplorerUrl(profile.wallet_address)} target="_blank" rel="noreferrer noopener" aria-label={`View ${profile.ens_name} on Etherscan`}>{profile.ens_name}<ExternalLink size={13} aria-hidden="true" /></a>;
+}
 
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
@@ -1080,8 +1086,8 @@ export default function App() {
         <div className="profile-directory-identity">
           <span className="profile-avatar" aria-hidden="true"><UserRound size={20} /></span>
           <div>
-            <div className="profile-name-line"><h3>{identity}</h3>{wallet?.toLowerCase() === profile.wallet_address.toLowerCase() ? <span>You</span> : null}</div>
-            {profile.display_name && profile.ens_name ? <p>{profile.ens_name}</p> : null}
+            <div className="profile-name-line"><h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : identity}</h3>{wallet?.toLowerCase() === profile.wallet_address.toLowerCase() ? <span>You</span> : null}</div>
+            {profile.display_name && profile.ens_name ? ensExplorerLink(profile, "directory-ens-link") : null}
             <code>{short(profile.wallet_address)}</code>
           </div>
         </div>
@@ -1454,11 +1460,11 @@ export default function App() {
                           <UserRound size={28} />
                           <div>
                             <p className="eyebrow">Public wallet profile</p>
-                            <h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>
-                            {publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}
+                            <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || short(selectedProfile.address)}</h3>
                             <div className="profile-identity-meta">
-                              <code>{publicProfile?.ens_name || selectedProfile.address}</code>
-                              {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}
+                              {publicProfile?.display_name && publicProfile.ens_name ? ensExplorerLink(publicProfile, "ens-name") : null}
+                              {!publicProfile?.ens_name ? <a className="wallet-explorer-link" href={ethereumExplorerUrl(publicProfile?.wallet_address ?? selectedProfile.address)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(publicProfile?.wallet_address ?? selectedProfile.address)}</code><ExternalLink size={13} aria-hidden="true" /></a> : null}
+                              {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
                             </div>
                             {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
                             {profileMessage ? <p className="form-hint">{profileMessage}</p> : null}
