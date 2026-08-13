@@ -10,7 +10,7 @@ async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
   expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
   await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
-  expect(await screen.findByRole("heading", { name: /how would you like to participate/i })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { level: 1, name: /^marketplace$/i })).toBeInTheDocument();
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 }
 
@@ -83,8 +83,13 @@ describe("App", () => {
 
     await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
     expect(window.location.pathname).toBe("/marketplace");
-    expect(screen.getByRole("heading", { level: 1, name: /work with clear terms and visible progress/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: /^marketplace$/i })).toHaveLength(1);
+    expect(screen.getByRole("heading", { level: 1, name: /^marketplace$/i })).toBeInTheDocument();
+    expect(screen.getByText("Browse opportunities, apply with a plan, and follow each bounty from application to accepted work.")).toBeInTheDocument();
+    expect(screen.queryByText(/find the right work/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/work with clear terms and visible progress/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/how would you like to participate/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/review the scope, timeline, token contract/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("heading", { name: /how the escrow works/i })).not.toBeInTheDocument();
     expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
@@ -225,21 +230,6 @@ describe("App", () => {
     const order = within((await screen.findByRole("heading", { name: "Map urban biodiversity" })).closest("article") as HTMLElement);
     expect(order.getByText(/Field research · Ecology and conservation/i)).toBeInTheDocument();
     expect(order.queryByText(/^Other$/i)).not.toBeInTheDocument();
-  });
-
-  it("routes the participation choices to hiring and work destinations", async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    await connectWallet(user);
-
-    await user.click(screen.getByRole("button", { name: /i want to hire/i }));
-    expect(await screen.findByRole("heading", { name: /^create a bounty$/i })).toBeInTheDocument();
-    expect(await screen.findByText(/ready to create a bounty/i)).toBeInTheDocument();
-
-    await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
-    expect(screen.queryByText(/ready to create a bounty/i)).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: /i want to work/i }));
-    expect(await screen.findByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
   });
 
   it("keeps account controls at the top and makes milestone creation legible", async () => {

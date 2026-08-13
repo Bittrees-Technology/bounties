@@ -44,7 +44,6 @@ import {
   recordRevisionRequest,
   refreshEscrowState,
   reportContent,
-  selectRole,
   searchPublicProfiles,
   setMyProfileVisibility,
   signInWithEthereum,
@@ -897,19 +896,6 @@ export default function App() {
     setDraft((current) => ({ ...current, token: value }));
   }
 
-  async function chooseRole(role: "buyer" | "provider") {
-    if (!wallet) return void connect();
-    await act(async () => {
-      if (!session?.roles.includes(role)) await selectRole(role);
-      if (role === "buyer") {
-        navigateToPage("create");
-      } else {
-        navigateToPage("marketplace");
-        setTimeout(() => document.querySelector("#orders")?.scrollIntoView?.({ behavior: "smooth", block: "start" }), 0);
-      }
-    }, role === "buyer" ? "Ready to create a bounty." : "Showing available work.");
-  }
-
   const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
   const isProvider = (order: MarketplaceOrder) => order.providerId === session?.account.id;
   const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
@@ -1534,8 +1520,8 @@ export default function App() {
           {visiblePage !== "profile" && visiblePage !== "home" ? (
             <header className="topbar">
               <div className="topbar-copy">
-                {visiblePage !== "create" ? <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : "Authorized workspace"}</p> : null}
-                <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
+                {visiblePage === "moderator" ? <p className="eyebrow">Authorized workspace</p> : null}
+                <h1>{visiblePage === "marketplace" ? "Marketplace" : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
                 <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
               </div>
             </header>
@@ -1628,17 +1614,6 @@ export default function App() {
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           {notice ? <p className="form-success" role="status">{notice}</p> : null}
           {loading ? <p className="loading-state"><Loader2 className="spin" /> Updating Bounties…</p> : null}
-
-          {visiblePage === "marketplace" && wallet ? (
-            <section className="panel role-panel" aria-label="Marketplace roles">
-              <div className="section-heading"><BadgeCheck /><h2>How would you like to participate?</h2></div>
-              <p>Choose a starting point. This does not lock your wallet into one role; you can hire and work from the same profile.</p>
-              <div className="participation-options">
-                <button onClick={() => void chooseRole("buyer")}><span>I want to hire</span><small>Create and fund a bounty</small></button>
-                <button onClick={() => void chooseRole("provider")}><span>I want to work</span><small>Browse marketplace opportunities</small></button>
-              </div>
-            </section>
-          ) : null}
 
               {visiblePage === "create" || visiblePage === "marketplace" ? <section className="page-stack">
                 {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
@@ -1735,8 +1710,6 @@ export default function App() {
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
                 <section id="orders" className="panel queue marketplace-page">
-                  <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace</h2></div>
-                  <p className="section-copy">Review the scope, timeline, token contract, and application activity before participating.</p>
                   {!wallet ? (
                     <div className="marketplace-access-state">
                       <WalletCards size={28} aria-hidden="true" />
