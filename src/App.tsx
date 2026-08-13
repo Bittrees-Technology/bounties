@@ -1525,7 +1525,7 @@ export default function App() {
   return (
     <main>
       <section className="workspace">
-        <aside className="sidebar">
+        <aside className={`sidebar ${visiblePage === "home" ? "sidebar-home" : ""}`}>
           <header className="sidebar-header" role="banner" aria-label="Bounties account controls">
             <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "home")} aria-label="Bounties home">
               <span className="brand-mark" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
@@ -1566,13 +1566,15 @@ export default function App() {
               </div>
             </div>
           </header>
-          <nav className="primary-nav" aria-label="Primary navigation">
-            <a href="/marketplace" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
-            <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
-            <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
-            {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
-            {session?.staffRole ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
-          </nav>
+          {visiblePage !== "home" ? (
+            <nav className="primary-nav" aria-label="Primary navigation">
+              <a href="/marketplace" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
+              <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
+              <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
+              {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
+              {session?.staffRole ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
+            </nav>
+          ) : null}
         </aside>
 
         <section className={`content content-${visiblePage}`}>
@@ -1595,6 +1597,7 @@ export default function App() {
                   <div className="landing-actions">
                     <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
                     <a className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
+                    <a className="landing-secondary-action" href="/profiles" onClick={(event) => handlePageLink(event, "profile")}><Search size={18} />Profiles</a>
                   </div>
                   <ul className="landing-assurances" aria-label="Product foundations">
                     <li><WalletCards size={16} />Wallet sign-in</li>
