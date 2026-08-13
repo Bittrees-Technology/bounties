@@ -8,14 +8,18 @@ afterEach(() => cleanup());
 
 async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
-  expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
-  await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
-  expect(await screen.findByRole("heading", { level: 1, name: /^marketplace$/i })).toBeInTheDocument();
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
+  await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
+  expect(await screen.findByRole("heading", { level: 1, name: /^marketplace$/i })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
 }
 
 async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
+  const primaryNavigation = screen.queryByRole("navigation", { name: /^primary navigation$/i });
+  const createLink = primaryNavigation
+    ? within(primaryNavigation).getByRole("link", { name: /^create bounty$/i })
+    : within(screen.getByRole("heading", { level: 1, name: /fund work deliver results/i }).closest(".landing-hero") as HTMLElement).getByRole("link", { name: /^create a bounty$/i });
+  await user.click(createLink);
   expect(screen.getByRole("heading", { name: /^create a bounty$/i })).toBeInTheDocument();
 }
 
@@ -79,10 +83,11 @@ describe("App", () => {
     expect(within(escrowWorkflow).getByRole("link", { name: /read the escrow lifecycle/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md#lifecycle"));
     expect(screen.getByText(/milestone clarity/i)).toBeInTheDocument();
     expect(screen.getByText(/role-specific reputation/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /^browse bounties$/i })).toHaveAttribute("href", "/marketplace");
-    expect(screen.getByRole("link", { name: /^marketplace$/i })).not.toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("href", "/marketplace");
-    expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("href", "/create");
+    const landingHero = landingHeading.closest(".landing-hero") as HTMLElement;
+    expect(within(landingHero).getByRole("link", { name: /^browse bounties$/i })).toHaveAttribute("href", "/marketplace");
+    expect(within(landingHero).getByRole("link", { name: /^create a bounty$/i })).toHaveAttribute("href", "/create");
+    expect(within(landingHero).getByRole("link", { name: /^profiles$/i })).toHaveAttribute("href", "/profiles");
+    expect(screen.queryByRole("navigation", { name: /^primary navigation$/i })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
     expect(window.location.pathname).toBe("/marketplace");
@@ -93,6 +98,7 @@ describe("App", () => {
     expect(screen.queryByText(/work with clear terms and visible progress/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/how would you like to participate/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/review the scope, timeline, token contract/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: /^primary navigation$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("heading", { name: /how the escrow works/i })).not.toBeInTheDocument();
     expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
