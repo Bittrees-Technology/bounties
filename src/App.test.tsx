@@ -379,6 +379,8 @@ describe("App", () => {
     expect(walletIdentity).toHaveAttribute("href", "https://etherscan.io/address/0x2222222222222222222222222222222222222222");
     expect(within(walletIdentity).getByText("0x2222…2222", { selector: "code" })).toBeInTheDocument();
     const profileCard = walletIdentity.closest(".profile-card") as HTMLElement;
+    expect(within(profileCard).getAllByText("0x2222…2222", { selector: "code" })).toHaveLength(1);
+    expect(walletIdentity.closest("h3")).toBeInTheDocument();
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
     expect(within(identityMeta).getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
     await user.click(within(profileCard).getByText(/report this profile/i));

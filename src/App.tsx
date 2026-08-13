@@ -107,6 +107,10 @@ function ensExplorerLink(profile: PublicWalletProfile, className?: string) {
   return <a className={className} href={ethereumExplorerUrl(profile.wallet_address)} target="_blank" rel="noreferrer noopener" aria-label={`View ${profile.ens_name} on Etherscan`}>{profile.ens_name}<ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
+function walletExplorerLink(walletAddress: string) {
+  return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
+}
+
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
@@ -1092,10 +1096,10 @@ export default function App() {
                 <p className="eyebrow">Public wallet profile</p>
                 {isOwnProfile ? <span className="profile-owner-badge">You</span> : null}
               </div>
-              <h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : identity}</h3>
+              <h3>{profile.ens_name && !profile.display_name ? ensExplorerLink(profile) : !profile.display_name ? walletExplorerLink(profile.wallet_address) : identity}</h3>
               <div className="profile-identity-meta">
                 {profile.display_name && profile.ens_name ? ensExplorerLink(profile, "ens-name") : null}
-                {!profile.ens_name ? <a className="wallet-explorer-link" href={ethereumExplorerUrl(profile.wallet_address)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(profile.wallet_address)}</code><ExternalLink size={13} aria-hidden="true" /></a> : null}
+                {profile.display_name && !profile.ens_name ? walletExplorerLink(profile.wallet_address) : null}
                 {profile.profile_url ? <a href={profile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
               </div>
             </div>
@@ -1468,10 +1472,10 @@ export default function App() {
                           <UserRound size={28} />
                           <div>
                             <p className="eyebrow">Public wallet profile</p>
-                            <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || short(selectedProfile.address)}</h3>
+                            <h3>{publicProfile?.ens_name && !publicProfile.display_name ? ensExplorerLink(publicProfile) : publicProfile?.display_name || walletExplorerLink(publicProfile?.wallet_address ?? selectedProfile.address)}</h3>
                             <div className="profile-identity-meta">
                               {publicProfile?.display_name && publicProfile.ens_name ? ensExplorerLink(publicProfile, "ens-name") : null}
-                              {!publicProfile?.ens_name ? <a className="wallet-explorer-link" href={ethereumExplorerUrl(publicProfile?.wallet_address ?? selectedProfile.address)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(publicProfile?.wallet_address ?? selectedProfile.address)}</code><ExternalLink size={13} aria-hidden="true" /></a> : null}
+                              {publicProfile?.display_name && !publicProfile.ens_name ? walletExplorerLink(publicProfile.wallet_address) : null}
                               {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
                             </div>
                             {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
