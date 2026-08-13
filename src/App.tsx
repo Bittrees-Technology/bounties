@@ -1364,11 +1364,39 @@ export default function App() {
                   </section>
                   {wallet && selectedProfile ? (
                     <>
-                      <section className="panel profile-card" id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
+                      <section className={`panel profile-card ${wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? "editable-profile-card" : ""}`} id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
                         <div className="profile-hero">
                           <UserRound size={28} />
                           <div><p className="eyebrow">Public wallet profile</p><h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>{publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}<code>{selectedProfile.address}</code>{publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}{publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}{profileMessage ? <p className="form-hint">{profileMessage}</p> : null}</div>
                         </div>
+                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
+                          <details className="profile-editor">
+                            <summary>Edit profile</summary>
+                            <form onSubmit={(event) => {
+                              event.preventDefault();
+                              const form = new FormData(event.currentTarget);
+                              void act(async () => {
+                                const updated = await updateMyProfile({
+                                  displayName: String(form.get("displayName") ?? "") || null,
+                                  profileBio: String(form.get("profileBio") ?? "") || null,
+                                  profileUrl: String(form.get("profileUrl") ?? "") || null,
+                                  workTypes: form.getAll("workTypes").map(String),
+                                  categories: form.getAll("categories").map(String),
+                                  customSpecialty: String(form.get("customSpecialty") ?? "").trim() || null
+                                });
+                                setPublicProfile(updated);
+                              }, "Public profile updated.");
+                            }}>
+                              <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
+                              <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
+                              <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
+                              <fieldset className="profile-preference-fieldset"><legend>Work types</legend><p className="form-hint">Choose the kinds of engagement you want visitors to find.</p><div className="profile-checkbox-grid">{scopes.map((scope) => <label key={scope.value}><input type="checkbox" name="workTypes" value={scope.value} defaultChecked={publicProfile?.work_types?.includes(scope.value)} />{scope.label}</label>)}</div></fieldset>
+                              <fieldset className="profile-preference-fieldset"><legend>Categories</legend><p className="form-hint">Choose the areas that best describe your work or hiring interests.</p><div className="profile-checkbox-grid">{categories.map((category) => <label key={category.value}><input type="checkbox" name="categories" value={category.value} defaultChecked={publicProfile?.categories?.includes(category.value)} />{category.label}</label>)}</div></fieldset>
+                              <label>Other specialty (optional)<input name="customSpecialty" defaultValue={publicProfile?.custom_specialty ?? ""} maxLength={120} placeholder="Add a specialty not covered above" /></label>
+                              <button type="submit">Save public profile</button>
+                            </form>
+                          </details>
+                        ) : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile ? (
                           publicProfile?.profile_moderation_status === "hidden" ? (
                             <div className={`profile-visibility-status ${publicProfile.visibility_source === "moderation" ? "moderated" : "owner-hidden"}`}>
@@ -1396,34 +1424,6 @@ export default function App() {
                         </div> : null}
                         {publicProfile?.account_id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
                       </section>
-                      {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
-                        <details className="panel profile-editor">
-                          <summary>Edit my public profile</summary>
-                          <form onSubmit={(event) => {
-                            event.preventDefault();
-                            const form = new FormData(event.currentTarget);
-                            void act(async () => {
-                              const updated = await updateMyProfile({
-                                displayName: String(form.get("displayName") ?? "") || null,
-                                profileBio: String(form.get("profileBio") ?? "") || null,
-                                profileUrl: String(form.get("profileUrl") ?? "") || null,
-                                workTypes: form.getAll("workTypes").map(String),
-                                categories: form.getAll("categories").map(String),
-                                customSpecialty: String(form.get("customSpecialty") ?? "").trim() || null
-                              });
-                              setPublicProfile(updated);
-                            }, "Public profile updated.");
-                          }}>
-                            <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
-                            <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
-                            <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
-                            <fieldset className="profile-preference-fieldset"><legend>Work types</legend><p className="form-hint">Choose the kinds of engagement you want visitors to find.</p><div className="profile-checkbox-grid">{scopes.map((scope) => <label key={scope.value}><input type="checkbox" name="workTypes" value={scope.value} defaultChecked={publicProfile?.work_types?.includes(scope.value)} />{scope.label}</label>)}</div></fieldset>
-                            <fieldset className="profile-preference-fieldset"><legend>Categories</legend><p className="form-hint">Choose the areas that best describe your work or hiring interests.</p><div className="profile-checkbox-grid">{categories.map((category) => <label key={category.value}><input type="checkbox" name="categories" value={category.value} defaultChecked={publicProfile?.categories?.includes(category.value)} />{category.label}</label>)}</div></fieldset>
-                            <label>Other specialty (optional)<input name="customSpecialty" defaultValue={publicProfile?.custom_specialty ?? ""} maxLength={120} placeholder="Add a specialty not covered above" /></label>
-                            <button type="submit">Save public profile</button>
-                          </form>
-                        </details>
-                      ) : null}
                       <p className="rating-context">Capital-provider and labor-provider ratings stay separate so each kind of participation is easy to understand.</p>
                       <section className="profile-role-grid">
                         <article className="panel profile-role-card">

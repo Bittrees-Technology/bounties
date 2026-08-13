@@ -1021,8 +1021,28 @@ li {
 .profile-review { border-top: 1px solid #dce5df; display: grid; gap: 5px; padding-top: 12px; }
 .profile-review p { margin: 0; }
 
-.profile-editor > summary { color: #0f6b57; cursor: pointer; font-weight: 750; }
-.profile-editor form { display: grid; gap: 12px; margin-top: 16px; }
+.editable-profile-card { position: relative; }
+.editable-profile-card .profile-hero { padding-right: 150px; }
+.profile-editor > summary {
+  align-items: center;
+  background: #eef7f2;
+  border: 1px solid #9ccfbe;
+  border-radius: 12px;
+  color: #0f6b57;
+  cursor: pointer;
+  display: flex;
+  font-weight: 750;
+  list-style: none;
+  min-height: 42px;
+  padding: 9px 14px;
+  position: absolute;
+  right: 24px;
+  top: 24px;
+}
+.profile-editor > summary::-webkit-details-marker { display: none; }
+.profile-editor > summary:hover { background: #e1f1ea; }
+.profile-editor > summary:focus-visible { outline: 3px solid rgba(15, 107, 87, .3); outline-offset: 2px; }
+.profile-editor[open] form { border-top: 1px solid #dce5df; display: grid; gap: 12px; margin-top: 20px; padding-top: 20px; }
 .profile-editor form button { justify-self: start; }
 
 .profile-visibility-control {
@@ -2425,6 +2445,8 @@ textarea {
   .profile-directory-heading .secondary-button { width: 100%; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }
   .profile-visibility-status button { width: 100%; }
+  .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
+  .profile-editor > summary { right: 18px; top: 18px; }
 
   .legal-footer nav {
     justify-content: flex-start;

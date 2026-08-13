@@ -229,7 +229,9 @@ describe("App", () => {
     expect(await screen.findByRole("heading", { name: /test participant/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a capital provider/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /as a labor provider/i })).toBeInTheDocument();
-    await user.click(screen.getByText(/edit my public profile/i));
+    const editControl = screen.getByText(/^edit profile$/i);
+    expect(editControl.closest(".profile-card")).toBeInTheDocument();
+    await user.click(editControl);
     await user.clear(screen.getByLabelText(/custom profile name/i));
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
     await user.click(screen.getByLabelText(/defined task/i));
