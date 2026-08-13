@@ -1470,14 +1470,23 @@ export default function App() {
               </header>
 
               <section className="panel workflow-panel landing-workflow">
-                <div className="landing-section-heading"><p className="eyebrow">From idea to accepted delivery</p><h2>How a bounty works</h2><p>Each step leaves both participants with a clearer understanding of what happens next.</p></div>
+                <div className="landing-section-heading"><p className="eyebrow">Contract lifecycle</p><h2>How the escrow works</h2><p>The interface follows the same recorded states and participant-controlled outcomes as the BountyEscrow contract.</p></div>
                 <ol className="workflow-guide">
-                  <li><span>1</span><strong>Create</strong><small>Publish clear work and payment terms.</small></li>
-                  <li><span>2</span><strong>Apply</strong><small>A labor provider submits a plan.</small></li>
-                  <li><span>3</span><strong>Accept applicant</strong><small>The capital provider chooses who will deliver.</small></li>
-                  <li><span>4</span><strong>Submit work</strong><small>Delivery evidence is shared within the timeline.</small></li>
-                  <li><span>5</span><strong>Accept work</strong><small>The capital provider reviews delivery.</small></li>
+                  <li><span>1</span><strong>Created</strong><small>Provider, token, milestones, and terms are committed.</small></li>
+                  <li><span>2</span><strong>Funded</strong><small>The exact ERC20 amount enters escrow.</small></li>
+                  <li><span>3</span><strong>ProviderAccepted</strong><small>The selected provider accepts the committed terms.</small></li>
+                  <li><span>4</span><strong>Delivered</strong><small>The provider commits evidence before the active deadline.</small></li>
+                  <li><span>5</span><strong>BuyerApproved</strong><small>The requester approves the active milestone.</small></li>
+                  <li><span>6</span><strong>Released</strong><small>Anyone may trigger payment after approval or review expiry.</small></li>
                 </ol>
+                <p className="workflow-continuation">For milestone bounties, each release pays only the active allocation. If another milestone remains, the contract returns to <strong>ProviderAccepted</strong>; the final payment ends in <strong>Released</strong>.</p>
+                <div className="workflow-alternatives" aria-label="Alternative escrow outcomes">
+                  <article><strong>Cancelled</strong><span><b>Created / Funded</b> → Cancelled</span><small>The requester may cancel before provider acceptance; funded principal returns to the requester.</small></article>
+                  <article><strong>Revision</strong><span><b>Delivered</b> → ProviderAccepted</span><small>During review, the requester may request one revision; the provider receives seven days to resubmit.</small></article>
+                  <article><strong>Refunded</strong><span><b>ProviderAccepted</b> → Refunded</span><small>A missed active delivery or revision deadline returns all unreleased principal to the requester.</small></article>
+                  <article><strong>Settled</strong><span><b>Funded / ProviderAccepted / Delivered / BuyerApproved</b> → Settled</span><small>Either party may propose an exact split; only the counterparty can accept it before expiry.</small></article>
+                </div>
+                <a className="workflow-docs-link" href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md#lifecycle" target="_blank" rel="noreferrer noopener">Read the escrow lifecycle <ExternalLink size={13} /></a>
               </section>
 
               <section className="landing-value-section" aria-labelledby="landing-value-title">

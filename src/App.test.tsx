@@ -53,7 +53,27 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: /^bounties$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/explore bounties, then sign in when you.re ready/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/won.t send a transaction or give bounties access to your tokens/i)).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /how a bounty works/i })).toBeInTheDocument();
+    const escrowWorkflow = screen.getByRole("heading", { name: /how the escrow works/i }).closest(".landing-workflow") as HTMLElement;
+    expect(Array.from(within(escrowWorkflow).getByRole("list").querySelectorAll("li > strong")).map((step) => step.textContent)).toEqual([
+      "Created",
+      "Funded",
+      "ProviderAccepted",
+      "Delivered",
+      "BuyerApproved",
+      "Released"
+    ]);
+    const alternativeOutcomes = within(escrowWorkflow).getByLabelText(/alternative escrow outcomes/i);
+    expect(within(alternativeOutcomes).getByText("Cancelled")).toBeInTheDocument();
+    expect(within(alternativeOutcomes).getByText("Revision")).toBeInTheDocument();
+    expect(within(alternativeOutcomes).getByText("Refunded")).toBeInTheDocument();
+    expect(within(alternativeOutcomes).getByText("Settled")).toBeInTheDocument();
+    expect(Array.from(alternativeOutcomes.querySelectorAll("article > span")).map((outcome) => outcome.textContent)).toEqual([
+      "Created / Funded → Cancelled",
+      "Delivered → ProviderAccepted",
+      "ProviderAccepted → Refunded",
+      "Funded / ProviderAccepted / Delivered / BuyerApproved → Settled"
+    ]);
+    expect(within(escrowWorkflow).getByRole("link", { name: /read the escrow lifecycle/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md#lifecycle"));
     expect(screen.getByText(/milestone clarity/i)).toBeInTheDocument();
     expect(screen.getByText(/role-specific reputation/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^browse bounties$/i })).toHaveAttribute("href", "/marketplace");
@@ -66,7 +86,7 @@ describe("App", () => {
     expect(screen.getByRole("heading", { level: 1, name: /work with clear terms and visible progress/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("heading", { name: /how a bounty works/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /how the escrow works/i })).not.toBeInTheDocument();
     expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
     expect(screen.getByText(/connecting does not authorize a transaction or token spending/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect to marketplace/i })).toBeInTheDocument();
