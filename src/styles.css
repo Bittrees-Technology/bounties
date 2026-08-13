@@ -994,6 +994,76 @@ li {
 }
 
 .marketplace-page { min-width: 0; }
+
+.bounty-directory-filters {
+  align-items: end;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.35fr) repeat(5, minmax(145px, 1fr));
+}
+
+.bounty-directory-filters label { min-width: 0; }
+
+.bounty-directory-heading,
+.bounty-detail-toolbar {
+  align-items: center;
+  border-top: 1px solid #dce5df;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  padding-top: 16px;
+}
+
+.bounty-directory-heading > div:first-child,
+.bounty-detail-toolbar > div { display: grid; gap: 3px; }
+.bounty-directory-heading h3 { font-size: 1.22rem; margin: 0; }
+.bounty-directory-heading span,
+.bounty-detail-toolbar span { color: #5a6862; font-size: .82rem; }
+
+.bounty-directory-grid { display: grid; gap: 12px; }
+.bounty-directory-grid--tiles { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
+.bounty-directory-grid--list { grid-template-columns: 1fr; }
+
+.bounty-directory-card {
+  align-items: center;
+  background: linear-gradient(180deg, #fff, #f7faf8);
+  border: 1px solid #d7e5dc;
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 15px;
+}
+
+.bounty-directory-card-main {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.bounty-directory-identity { display: grid; gap: 6px; min-width: 0; }
+.bounty-directory-identity h3 { font-size: 1.05rem; margin: 0; overflow-wrap: anywhere; }
+.bounty-directory-identity > span:last-child { color: #5a6862; font-size: .74rem; }
+.bounty-directory-budget { color: #173c35; font-size: .88rem; white-space: nowrap; }
+.bounty-directory-meta { border-top: 1px solid #e1e9e4; display: flex; flex-wrap: wrap; gap: 7px 14px; padding-top: 9px; }
+.bounty-directory-meta span { color: #5a6862; font-size: .72rem; }
+.bounty-directory-view-action { justify-self: start; min-height: 36px; padding: 8px 12px; }
+
+@media (min-width: 980px) {
+  .bounty-directory-card--list {
+    grid-template-areas: "main meta action";
+    grid-template-columns: minmax(280px, 1fr) minmax(420px, 1.35fr) auto;
+  }
+  .bounty-directory-card--list .bounty-directory-card-main { grid-area: main; }
+  .bounty-directory-card--list .bounty-directory-meta { border-left: 1px solid #e1e9e4; border-top: 0; grid-area: meta; padding-left: 18px; padding-top: 0; }
+  .bounty-directory-card--list .bounty-directory-view-action { grid-area: action; justify-self: end; margin-left: auto; white-space: nowrap; }
+}
+
+.bounty-detail-toolbar { border-top: 0; padding: 0 0 2px; }
+.bounty-detail-card { gap: 16px; }
+.bounty-detail-card .bounty-card-header h2 { font-size: clamp(1.5rem, 3vw, 2.15rem); margin: 8px 0 0; }
 .order-card { overflow: hidden; }
 .bounty-budget { text-align: right; }
 .participant-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
@@ -1098,6 +1168,11 @@ li {
   .profile-search-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .profile-keyword-field { grid-column: 1 / -1; }
   .profile-search-form button { grid-column: 1 / -1; width: 100%; }
+}
+
+@media (max-width: 1280px) {
+  .bounty-directory-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .bounty-keyword-field { grid-column: 1 / -1; }
 }
 
 .profile-directory-access {
@@ -2985,6 +3060,12 @@ textarea {
   .profile-directory-card { padding: 18px; }
   .profile-directory-card--list .profile-directory-card-header { grid-template-columns: 1fr; }
   .profile-directory-card--list .profile-directory-view-action { width: 100%; }
+  .bounty-directory-filters { grid-template-columns: 1fr; }
+  .bounty-keyword-field { grid-column: auto; }
+  .bounty-directory-heading,
+  .bounty-detail-toolbar { align-items: stretch; flex-direction: column; }
+  .bounty-detail-toolbar button,
+  .bounty-directory-card--list .bounty-directory-view-action { width: 100%; }
   .profile-role-bounty-row { grid-template-columns: minmax(0, 1fr) auto; }
   .profile-role-bounty-row > svg { display: none; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }

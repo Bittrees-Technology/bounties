@@ -663,16 +663,59 @@ describe("App", () => {
     expect(within(capitalCard).getByText(/0 payment-experience reviews · 1 bounty posted/i)).toBeInTheDocument();
     expect(within(capitalCard).getByRole("link", { name: /capital research bounty/i })).toHaveAttribute(
       "href",
-      "/marketplace#bounty-00000000-0000-4000-8000-000000000610"
+      "/bounties/00000000-0000-4000-8000-000000000610"
     );
     expect(within(laborCard).getByText(/0 service reviews · 1 bounty completed/i)).toBeInTheDocument();
     expect(within(laborCard).getByRole("link", { name: /active audit bounty/i })).toHaveTextContent(/provider accepted onchain/i);
     expect(within(laborCard).getByRole("link", { name: /completed delivery bounty/i })).toHaveTextContent(/paid onchain/i);
 
     await user.click(within(laborCard).getByRole("link", { name: /active audit bounty/i }));
-    expect(window.location.pathname).toBe("/marketplace");
-    expect(window.location.hash).toBe("#bounty-00000000-0000-4000-8000-000000000620");
+    expect(window.location.pathname).toBe("/bounties/00000000-0000-4000-8000-000000000620");
+    expect(window.location.hash).toBe("");
     expect(await screen.findByRole("heading", { name: /active audit bounty/i })).toBeInTheDocument();
+  });
+
+  it("presents a compact filterable bounty directory and opens the full bounty workflow", async () => {
+    configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    expect(screen.getByRole("heading", { name: /marketplace directory/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^keywords$/i)).toHaveAttribute("placeholder", "Title, description, token, or requester");
+    expect(screen.getByLabelText(/^work type$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^category$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^status$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^network$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^order$/i)).toBeInTheDocument();
+
+    const tileCard = screen.getByRole("heading", { level: 3, name: /two-phase active milestone/i }).closest("article") as HTMLElement;
+    expect(tileCard).toHaveClass("bounty-directory-card--tiles");
+    expect(within(tileCard).getByText(/provider accepted onchain/i)).toBeInTheDocument();
+    expect(within(tileCard).queryByLabelText(/work evidence link/i)).not.toBeInTheDocument();
+    expect(within(tileCard).getByRole("link", { name: /view bounty/i })).toHaveAttribute(
+      "href",
+      "/bounties/00000000-0000-4000-8000-000000000321"
+    );
+
+    await user.click(within(screen.getByRole("group", { name: /bounty view/i })).getByRole("button", { name: /list/i }));
+    expect(screen.getByRole("heading", { level: 3, name: /two-phase active milestone/i }).closest("article")).toHaveClass("bounty-directory-card--list");
+
+    await user.selectOptions(screen.getByLabelText(/^status$/i), "review");
+    expect(screen.getByText(/no matching bounties/i)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(/^status$/i), "active");
+
+    await user.click(screen.getByRole("link", { name: /view bounty/i }));
+    expect(window.location.pathname).toBe("/bounties/00000000-0000-4000-8000-000000000321");
+    expect(await screen.findByRole("heading", { level: 1, name: /bounty details/i })).toBeInTheDocument();
+    const detailCard = screen.getByRole("heading", { level: 2, name: /two-phase active milestone/i }).closest("article") as HTMLElement;
+    expect(within(detailCard).getByText(/^marketplace$/i)).toBeInTheDocument();
+    expect(within(detailCard).getByLabelText(/work evidence link/i)).toBeInTheDocument();
+    expect(within(detailCard).getByLabelText(/delivered bytes sha-256/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /back to marketplace/i }));
+    expect(window.location.pathname).toBe("/marketplace");
+    expect(screen.getByRole("heading", { name: /marketplace directory/i })).toBeInTheDocument();
   });
 
   it("preserves a legacy specialty as a custom category on the next profile save", async () => {
@@ -756,7 +799,9 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
-    const order = within((await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement);
+    const directoryCard = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
+    await user.click(within(directoryCard).getByRole("link", { name: /view bounty/i }));
+    const order = within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
 
     expect(within(order.getByText("Phase two").closest(".milestone-row") as HTMLElement).getByText(/active milestone/i)).toBeInTheDocument();
     expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
