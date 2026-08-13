@@ -1145,13 +1145,15 @@ export default function App() {
         </aside>
 
         <section className={`content content-${visiblePage}`}>
-          <header className="topbar">
-            <div className="topbar-copy">
-              <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : visiblePage === "moderator" ? "Authorized workspace" : "Wallet reputation"}</p>
-              <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create work with clear terms." : visiblePage === "moderator" ? "Moderator panel" : "A wallet’s work history, in context."}</h1>
-              <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Set the scope, payment, timeline, and approval conditions in one place." : visiblePage === "moderator" ? "Review reports and manage frontend visibility without authority over escrow or payments." : "Discover a public wallet profile, its verified marketplace activity, and its preferred areas of work."}</p>
-            </div>
-          </header>
+          {visiblePage !== "profile" ? (
+            <header className="topbar">
+              <div className="topbar-copy">
+                <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : "Authorized workspace"}</p>
+                <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create work with clear terms." : "Moderator panel"}</h1>
+                <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Set the scope, payment, timeline, and approval conditions in one place." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
+              </div>
+            </header>
+          ) : null}
 
           {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Connect wallet again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
@@ -1169,7 +1171,7 @@ export default function App() {
             </section>
           ) : null}
 
-              <section className="page-stack">
+              {visiblePage === "create" || visiblePage === "marketplace" ? <section className="page-stack">
                 {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
                   <div className="section-heading"><ClipboardList /><h2>Bounty details</h2></div>
                   <p className="section-copy">Give applicants the information they need to deliver successfully.</p>
@@ -1298,7 +1300,7 @@ export default function App() {
                   )}
                 </section>
                 </section> : null}
-              </section>
+              </section> : null}
 
               {visiblePage === "marketplace" && session?.myReports.length ? (
                 <section id="my-reports" className="panel my-reports-panel">

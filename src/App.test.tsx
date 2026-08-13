@@ -189,6 +189,8 @@ describe("App", () => {
     render(<App />);
     await user.click(screen.getByRole("link", { name: /^profiles$/i }));
     expect(screen.getByText(/connect your wallet to browse profiles/i)).toBeInTheDocument();
+    expect(screen.queryByText(/a wallet’s work history, in context/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/wallet reputation/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /profile directory/i })).not.toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
     expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
