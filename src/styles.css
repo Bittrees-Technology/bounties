@@ -2489,13 +2489,29 @@ textarea {
 }
 
 .report-control form {
-  align-items: stretch;
-  grid-template-columns: minmax(180px, 0.8fr) minmax(220px, 1.2fr) auto;
+  align-items: start;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) auto;
+  min-width: 0;
+  width: 100%;
 }
 
+.report-control form label,
+.report-control form select,
+.report-control form textarea,
 .report-control input,
 .compact-action-form input {
   min-width: 0;
+}
+
+.report-control form select,
+.report-control form textarea {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.report-control form button {
+  align-self: end;
+  white-space: nowrap;
 }
 
 .review-panel {
@@ -2936,6 +2952,8 @@ textarea {
   .escrow-actions form {
     grid-template-columns: 1fr;
   }
+
+  .report-control form button { justify-self: start; }
 
   .milestone-meta {
     justify-items: start;
