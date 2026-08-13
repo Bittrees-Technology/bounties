@@ -6,6 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 contract FeeOnTransferERC20 is ERC20 {
     uint256 public constant feeBps = 100;
     address public immutable feeSink = address(0xdead);
+    bool public feeEnabled = true;
 
     constructor() ERC20("Fee On Transfer Test Token", "FOT") {}
 
@@ -13,8 +14,12 @@ contract FeeOnTransferERC20 is ERC20 {
         _mint(account, amount);
     }
 
+    function setFeeEnabled(bool enabled) external {
+        feeEnabled = enabled;
+    }
+
     function _update(address from, address to, uint256 value) internal virtual override {
-        if (from == address(0) || to == address(0) || value == 0) {
+        if (!feeEnabled || from == address(0) || to == address(0) || value == 0) {
             super._update(from, to, value);
             return;
         }

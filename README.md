@@ -26,6 +26,10 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Let signed-in users report listings, reviews, profiles, and suspected scam tokens, and let operations-provisioned
   moderators hide illegal or prohibited content from the hosted frontend without
   gaining any authority over escrow or onchain state.
+- Treat custom-token inspection as identity and metadata review rather than a
+  compatibility certification. Funding and every payout enforce exact sender,
+  escrow, and recipient balance changes so transfer-fee, sender-taxed, and
+  rebasing behavior is rejected or fails closed.
 - Let each participant publish one directional rating and review after the API
   freshly verifies a Released or Settled escrow state.
 - Provide wallet profiles with owner-managed public details and separate reputation

@@ -680,6 +680,22 @@ li {
   margin: 16px 0 0;
 }
 
+.token-policy-notice {
+  align-items: flex-start;
+  background: #edf7f2;
+  border: 1px solid #b8d8cb;
+  border-radius: 12px;
+  color: #284b40;
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+}
+
+.token-policy-notice > svg { flex: 0 0 auto; margin-top: 2px; }
+.token-policy-notice p { display: grid; gap: 3px; margin: 0; }
+.token-policy-notice span { color: #49645b; }
+
 .token-inspector-form {
   align-items: end;
   border-top: 1px solid #dce5df;
@@ -688,6 +704,20 @@ li {
   grid-template-columns: minmax(180px, .7fr) minmax(280px, 1.3fr) auto;
   margin-top: 16px;
   padding-top: 16px;
+}
+
+.token-inspector-form .token-policy-confirmation {
+  align-items: flex-start;
+  display: flex;
+  font-weight: 600;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.token-inspector-form .token-policy-confirmation input {
+  flex: 0 0 auto;
+  margin-top: 3px;
+  width: auto;
 }
 
 .payment-setup-grid {
@@ -717,6 +747,17 @@ li {
 .selected-token-card a,
 .inspected-token-card a,
 .token-identity-card a { color: #0f6b57; font-weight: 700; justify-self: start; }
+
+.token-accounting-note {
+  align-items: flex-start;
+  color: #405e54;
+  display: flex;
+  font-size: .88rem;
+  gap: 7px;
+  margin: 2px 0 0;
+}
+
+.token-accounting-note svg { flex: 0 0 auto; margin-top: 2px; }
 
 .selected-token-card .report-control {
   border-top: 1px solid #cfe0d6;

@@ -323,6 +323,7 @@ export default function App() {
   const [inspectChain, setInspectChain] = useState(String(defaultPaymentChainId));
   const [inspectAddress, setInspectAddress] = useState("");
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
+  const [tokenPolicyConfirmed, setTokenPolicyConfirmed] = useState(false);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
   const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
@@ -766,6 +767,7 @@ export default function App() {
     setInspected(token);
     setInspectChain(String(chainId));
     setInspectAddress(token.checksum_address);
+    setTokenPolicyConfirmed(false);
     setDraft((current) => ({ ...current, token: token.id }));
   }
 
@@ -779,6 +781,7 @@ export default function App() {
     setInspectChain(chainId);
     setInspectAddress("");
     setInspected(null);
+    setTokenPolicyConfirmed(false);
     setDraft((current) => {
       const currentToken = availableTokens.find((token) => token.id === current.token);
       return currentToken && currentToken.chain_id !== Number(chainId) ? { ...current, token: "" } : current;
@@ -1528,7 +1531,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a>{reportForm("token", selectedToken.id)}</div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -1560,12 +1563,14 @@ export default function App() {
                 {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector">
                   <summary><Search size={18} /><span><strong>Add a custom ERC20 token</strong><small>Use a contract that is not in the standard token list.</small></span></summary>
                   <p className="custom-token-copy">Choose a supported network and enter the token contract address. Bounties will inspect that contract on the selected network before making it available.</p>
+                  <div className="token-policy-notice"><ShieldCheck size={18} /><p><strong>Exact-accounting policy</strong><span>Read-only inspection does not certify transfer behavior. Fee-on-transfer, sender-taxed, and rebasing tokens are unsupported; escrow funding and payouts fail closed unless balance changes reconcile exactly. Token value, liquidity, redemption, issuer conduct, and legal status are not guaranteed.</span></p></div>
                   <form className="token-inspector-form" onSubmit={inspect}>
                     <label>Token network<select aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
-                    <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
-                    <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
+                    <label>Token contract address<input value={inspectAddress} onChange={(event) => { setInspectAddress(event.target.value); setInspected(null); setTokenPolicyConfirmed(false); }} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
+                    <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
+                    <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>
                   </form>
-                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Automated checks do not guarantee that a token is safe.</p></article> : null}
+                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Exact accounting is enforced when escrow funding and payouts execute.</p></article> : null}
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">

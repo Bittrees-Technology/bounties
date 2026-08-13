@@ -274,6 +274,27 @@ describe("App", () => {
     await user.selectOptions(customNetwork, "1");
     expect(screen.getByLabelText(/payment network/i)).toHaveValue("1");
     expect(screen.getByText(/choose a supported network and enter the token contract address/i)).toBeInTheDocument();
+    expect(screen.getByText(/read-only inspection does not certify transfer behavior/i)).toBeInTheDocument();
+    expect(screen.getByText(/token value, liquidity, redemption, issuer conduct, and legal status are not guaranteed/i)).toBeInTheDocument();
+  });
+
+  it("requires the exact-accounting notice before adding a custom token", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.click(screen.getByText(/add a custom erc20 token/i));
+    const addButton = screen.getByRole("button", { name: /inspect and add token/i });
+    expect(addButton).toBeDisabled();
+
+    await user.type(screen.getByLabelText(/token contract address/i), "0x9999999999999999999999999999999999999999");
+    await user.click(screen.getByRole("checkbox", { name: /not a safety or compatibility certification/i }));
+    expect(addButton).toBeEnabled();
+    await user.click(addButton);
+
+    expect(await screen.findByText(/added as a payment candidate, not certified as safe or transfer-compatible/i)).toBeInTheDocument();
+    expect(screen.getByText(/exact accounting is enforced when escrow funding and payouts execute/i)).toBeInTheDocument();
   });
 
   it("adds a standard payment token directly from the payment dropdown", async () => {
