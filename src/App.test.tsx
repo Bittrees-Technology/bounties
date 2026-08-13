@@ -662,14 +662,14 @@ describe("App", () => {
     expect(order.getByRole("link", { name: /chirpy/i })).toHaveAttribute("href", "https://chirpy.bittrees.org");
   });
 
-  it("surfaces the server-side escrow verifier while live settlement is disabled", async () => {
+  it("removes manual escrow verification and records the wallet transaction automatically", async () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
     const order = await publishBounty(user, "Verify escrow observation");
-    expect(order.getByLabelText(/escrow transaction hash/i)).toBeInTheDocument();
-    expect(order.getByRole("button", { name: /verify escrow observation/i })).toBeInTheDocument();
-    expect(order.getByText(/API validates required confirmations, the receipt, and canonical create\/fund logs/i)).toBeInTheDocument();
+    expect(order.queryByLabelText(/escrow transaction hash/i)).not.toBeInTheDocument();
+    expect(order.queryByRole("button", { name: /verify escrow observation/i })).not.toBeInTheDocument();
+    expect(order.queryByText(/API validates required confirmations, the receipt, and canonical create\/fund logs/i)).not.toBeInTheDocument();
   });
 
   it("fails closed on acceptance without an independently derivable approval commitment", async () => {

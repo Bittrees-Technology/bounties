@@ -23,7 +23,13 @@ function rememberCsrf(value: string | null) {
 
 export class PersistenceError extends Error {
   code: "auth-expired" | "network" | "server";
-  constructor(message: string, code: PersistenceError["code"] = "server") { super(message); this.name = "PersistenceError"; this.code = code; }
+  serverCode?: string;
+  constructor(message: string, code: PersistenceError["code"] = "server", serverCode?: string) {
+    super(message);
+    this.name = "PersistenceError";
+    this.code = code;
+    this.serverCode = serverCode;
+  }
 }
 
 function marketplaceErrorMessage(status: number, serverCode?: string): string {
@@ -77,7 +83,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   catch { throw new PersistenceError("Could not reach the marketplace. Check your connection and retry.", "network"); }
   if (response.status === 401) throw new PersistenceError("Your wallet session expired. Reconnect to continue.", "auth-expired");
   const body = await response.json().catch(() => null) as { code?: string } | null;
-  if (!response.ok) throw new PersistenceError(marketplaceErrorMessage(response.status, body?.code));
+  if (!response.ok) throw new PersistenceError(marketplaceErrorMessage(response.status, body?.code), "server", body?.code);
   return body as T;
 }
 
@@ -239,7 +245,7 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
     const evidence = m.evidence?.at(-1);
     return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryRevision: evidence?.revision, revisionReason: m.revision_request?.reason, revisionReasonHash: m.revision_request?.reason_hash, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
   });
-  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", dueDate: typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString().slice(0, 10), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
+  return { id: row.id, creatorId: row.creator_id, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", fundOnApplicantAcceptance: source.fundOnApplicantAcceptance !== false, dueDate: typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString().slice(0, 10), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
 }
 
 export async function loadMarketplace(): Promise<MarketplaceSnapshot> {
@@ -301,7 +307,7 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
       throw new PersistenceError("The budget must provide at least one token base unit per milestone.");
     }
   }
-  const scopeSource = { scope: resolvedWorkType(draft), category: resolvedCategory(draft), project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label) };
+  const scopeSource = { scope: resolvedWorkType(draft), category: resolvedCategory(draft), project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label), fundOnApplicantAcceptance: draft.fundOnApplicantAcceptance !== false };
   const row = await request<BountyRow>("/bounties", { method: "POST", body: JSON.stringify({ title: draft.title.trim(), description: draft.project.trim(), scopeSource, scopeHash: hashSourceJson(scopeSource).value, chainId: token.chain_id, tokenId: token.id, budgetBaseUnits, milestones: milestones.map((milestone, index) => ({ ordinal: milestone.ordinal, title: milestone.title, amount_base_units: milestoneAmounts[index], delivery_deadline: milestone.deliveryDeadline ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline) ? `${milestone.deliveryDeadline}T23:59:59.999Z` : milestone.deliveryDeadline).toISOString() : null, scope_source: { criteria: criteria.map(c => c.label), deliveryDeadline: milestone.deliveryDeadline }, evidence_requirements: {} })) }) });
   return mapBounty(row);
 }
@@ -317,7 +323,7 @@ export const inspectToken = async (chainId: number, contractAddress: string): Pr
   }
 };
 export const createProposal = (order: MarketplaceOrder, note: string) => request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), proposedMilestones: [] }) });
-export const acceptProposal = (bountyId: string, proposalId: string) => request("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) });
+export const acceptProposal = async (bountyId: string, proposalId: string): Promise<MarketplaceOrder> => mapBounty(await request<BountyRow>("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) }));
 export async function submitEvidence(milestoneId: string, uri: string, contentHash: string) {
   const normalizedContentHash = contentHash.trim().toLowerCase();
   if (!/^0x[0-9a-f]{64}$/.test(normalizedContentHash) || /^0x0{64}$/.test(normalizedContentHash)) {

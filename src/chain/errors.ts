@@ -4,6 +4,7 @@ export type EscrowErrorCode =
   | "AMOUNT_INVALID"
   | "INTEGRATION_DISABLED"
   | "WALLET_NOT_CONNECTED"
+  | "INSUFFICIENT_BALANCE"
   | "INSUFFICIENT_ALLOWANCE"
   | "CONTRACT_REVERTED"
   | "USER_REJECTED"
@@ -25,6 +26,7 @@ const USER_MESSAGES: Record<EscrowErrorCode, string> = {
   AMOUNT_INVALID: "Enter a valid positive escrow amount.",
   INTEGRATION_DISABLED: "Live escrow settlement is disabled until legal, security, and onchain launch gates pass.",
   WALLET_NOT_CONNECTED: "Connect a wallet to continue.",
+  INSUFFICIENT_BALANCE: "Your wallet does not hold enough of the selected token to fund this escrow.",
   INSUFFICIENT_ALLOWANCE: "Spending approval is required before funds can move.",
   CONTRACT_REVERTED: "The escrow contract rejected this action.",
   USER_REJECTED: "The request was cancelled.",

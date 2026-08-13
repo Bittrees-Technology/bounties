@@ -10,6 +10,7 @@ describe("escrow error mapping", () => {
       "AMOUNT_INVALID",
       "INTEGRATION_DISABLED",
       "WALLET_NOT_CONNECTED",
+      "INSUFFICIENT_BALANCE",
       "INSUFFICIENT_ALLOWANCE",
       "CONTRACT_REVERTED",
       "USER_REJECTED",

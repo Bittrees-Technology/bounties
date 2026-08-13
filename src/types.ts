@@ -104,6 +104,7 @@ export interface MarketplaceOrder {
   tokenRecord?: import("./persistence/supabase").TokenRecord;
   escrowObservation?: import("./persistence/supabase").EscrowObservation;
   escrowScheduleStatus?: "structured" | "requires_recreation";
+  fundOnApplicantAcceptance?: boolean;
   moderationStatus?: "visible" | "hidden";
   moderationReason?: string;
   reviews?: import("./persistence/supabase").ParticipantReview[];
@@ -135,4 +136,5 @@ export interface RequestDraft {
   milestoneSchedule?: Array<{ title: string; amount: string; deliveryDeadline: string }>;
   support: string;
   criteria: string;
+  fundOnApplicantAcceptance?: boolean;
 }
