@@ -14,7 +14,7 @@ it("starts bounty payments on Ethereum and offers verified presets on each mainn
   const { default: App } = await import("./App");
   const user = userEvent.setup();
   render(<App />);
-  await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
+  await user.click(within(screen.getByRole("heading", { level: 1, name: /fund work deliver results/i }).closest(".landing-hero") as HTMLElement).getByRole("link", { name: /^create a bounty$/i }));
 
   const network = screen.getByLabelText(/payment network/i);
   const paymentToken = screen.getByLabelText(/payment token/i);
