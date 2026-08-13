@@ -101,6 +101,12 @@ const jsonHeaders = { "content-type": "application/json" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const jsonBodyLimitBytes = 256 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
+const profileSearchFields = new Set(["all", "identity", "bio", "specialty"]);
+const profileWorkTypes = new Set(["task", "deliverable", "milestone", "project", "consultation", "audit", "retainer"]);
+const profileCategories = new Set([
+  "Software Engineering", "Smart Contracts & Web3", "Product & UX Design", "Data & Analytics", "Research & Writing",
+  "Marketing & Growth", "Legal & Compliance", "Finance & Accounting", "Operations & Support", "Media & Creative"
+]);
 const safeServiceErrorCodes = new Set([
   "ENS_RPC_UNAVAILABLE",
   "ENS_RPC_CHAIN_MISMATCH",
@@ -1111,15 +1117,28 @@ async function handle(request: Request, action: string): Promise<Response> {
 
   const method = request.method.toUpperCase();
   if (action === "profiles/search" && method === "GET") {
-    const query = new URL(request.url).searchParams.get("q")?.trim() ?? "";
-    if (query.length < 2 || query.length > 80) throw new ApiError("INVALID_PROFILE_QUERY", 400);
+    const searchParams = new URL(request.url).searchParams;
+    const query = searchParams.get("q")?.trim() ?? "";
+    const field = searchParams.get("field")?.trim() || "all";
+    const workType = searchParams.get("workType")?.trim() ?? "";
+    const category = searchParams.get("category")?.trim() ?? "";
+    if ((query && (query.length < 2 || query.length > 80))
+      || !profileSearchFields.has(field)
+      || (workType && !profileWorkTypes.has(workType))
+      || (category && !profileCategories.has(category))
+      || (!query && !workType && !category)) {
+      throw new ApiError("INVALID_PROFILE_QUERY", 400);
+    }
     await consumePublicDiscoveryLimit(request, requestOrigin);
-    const matches = await callRpc<PublicProfileRecord[]>("app_search_public_wallet_profiles", {
-      p_query: query,
+    const matches = await callRpc<PublicProfileRecord[]>("app_filter_public_wallet_profiles", {
+      p_query: query || null,
+      p_search_field: field,
+      p_work_type: workType || null,
+      p_category: category || null,
       p_limit: 12
     });
     const profiles = [...(matches ?? [])];
-    const ensAddress = await resolveEnsAddress(query);
+    const ensAddress = query && (field === "all" || field === "identity") ? await resolveEnsAddress(query) : null;
     if (ensAddress) {
       const existingProfile = profiles.find((profile) => profile.wallet_address?.toLowerCase() === ensAddress.toLowerCase());
       if (existingProfile) {
@@ -1128,7 +1147,10 @@ async function handle(request: Request, action: string): Promise<Response> {
         const ensProfile = await callRpc<PublicProfileRecord | null>("app_public_wallet_profile", {
           p_wallet_address: ensAddress
         });
-        if (ensProfile && ensProfile.profile_moderation_status !== "hidden") profiles.unshift({ ...ensProfile, ens_name: query.toLowerCase() });
+        const workTypes = Array.isArray(ensProfile?.work_types) ? ensProfile.work_types : [];
+        const categories = Array.isArray(ensProfile?.categories) ? ensProfile.categories : [];
+        const matchesFilters = (!workType || workTypes.includes(workType)) && (!category || categories.includes(category));
+        if (ensProfile && ensProfile.profile_moderation_status !== "hidden" && matchesFilters) profiles.unshift({ ...ensProfile, ens_name: query.toLowerCase() });
       }
     }
     return Response.json({ results: profiles.slice(0, 12) }, { headers });

@@ -200,8 +200,20 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /view capital guide profile/i })).toBeInTheDocument();
     expect(screen.getByText(/2 public profiles/i)).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/search profiles/i), "testparticipant.eth");
-    await user.click(screen.getByRole("button", { name: /^search$/i }));
+    await user.type(screen.getByLabelText(/^keywords$/i), "testparticipant.eth");
+    await user.selectOptions(screen.getByLabelText(/search within/i), "identity");
+    await user.selectOptions(screen.getByLabelText(/^work type$/i), "audit");
+    await user.selectOptions(screen.getByLabelText(/^category$/i), "Smart Contracts & Web3");
+    await user.click(screen.getByRole("button", { name: /^search profiles$/i }));
+
+    const searchCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("/api/bounties/profiles/search?"));
+    const searchUrl = new URL(String(searchCall?.[0]), "https://bounties.bittrees.org");
+    expect(Object.fromEntries(searchUrl.searchParams)).toEqual({
+      q: "testparticipant.eth",
+      field: "identity",
+      workType: "audit",
+      category: "Smart Contracts & Web3"
+    });
 
     const result = await screen.findByRole("button", { name: /view test participant profile/i });
     await user.click(result);

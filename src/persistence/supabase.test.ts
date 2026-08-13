@@ -192,8 +192,8 @@ describe("Supabase marketplace mapping", () => {
     expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/directory");
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ results: [profile] }));
-    await expect(searchPublicProfiles("dual.eth")).resolves.toEqual({ results: [profile] });
-    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/search?q=dual.eth");
+    await expect(searchPublicProfiles("dual.eth", { field: "identity", workType: "audit", category: "Smart Contracts & Web3" })).resolves.toEqual({ results: [profile] });
+    expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/search?q=dual.eth&field=identity&workType=audit&category=Smart+Contracts+%26+Web3");
   });
 
   it("requires legacy multi-milestone drafts to be recreated with explicit schedule terms", async () => {

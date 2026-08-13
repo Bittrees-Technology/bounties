@@ -43,7 +43,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RPC_UNAVAILABLE") return "ENS search is not configured. Operations must add the Ethereum mainnet server-side RPC endpoint.";
   if (serverCode === "ENS_RPC_CHAIN_MISMATCH") return "ENS search is unavailable because the configured endpoint is not Ethereum mainnet.";
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
-  if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters, a wallet address, or an ENS name.";
+  if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters or choose a valid profile filter.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
@@ -313,7 +313,16 @@ export const createReviewResponse = (reviewId: string, body: string) => request<
 export const loadPublicProfile = (walletAddress: string) => request<PublicWalletProfile>(`/profiles/${getAddress(walletAddress)}`, { method: "GET" });
 export const loadMyProfile = () => request<PublicWalletProfile>("/profiles/me", { method: "GET" });
 export const browsePublicProfiles = () => request<{ results: PublicWalletProfile[] }>("/profiles/directory", { method: "GET" });
-export const searchPublicProfiles = (query: string) => request<{ results: PublicWalletProfile[] }>(`/profiles/search?q=${encodeURIComponent(query.trim())}`, { method: "GET" });
+export type ProfileSearchField = "all" | "identity" | "bio" | "specialty";
+export type ProfileSearchFilters = { field?: ProfileSearchField; workType?: string; category?: string };
+export function searchPublicProfiles(query: string, filters: ProfileSearchFilters = {}) {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set("q", query.trim());
+  if (filters.field && filters.field !== "all") params.set("field", filters.field);
+  if (filters.workType) params.set("workType", filters.workType);
+  if (filters.category) params.set("category", filters.category);
+  return request<{ results: PublicWalletProfile[] }>(`/profiles/search?${params.toString()}`, { method: "GET" });
+}
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
 export const reportContent = (entityType: "bounty" | "review" | "profile", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
