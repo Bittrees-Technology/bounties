@@ -647,7 +647,7 @@ li {
   border-top: 1px solid #dce5df;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(260px, 1fr) auto;
+  grid-template-columns: minmax(180px, .7fr) minmax(280px, 1.3fr) auto;
   margin-top: 16px;
   padding-top: 16px;
 }

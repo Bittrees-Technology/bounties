@@ -184,6 +184,30 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: /add usdc/i })).not.toBeInTheDocument();
   });
 
+  it("offers custom ERC20 inspection on every supported payment network", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.click(screen.getByText(/add a custom erc20 token/i));
+    const customNetwork = screen.getByLabelText(/custom token network/i);
+    const networkNames = within(customNetwork).getAllByRole("option").map((option) => option.textContent);
+
+    expect(networkNames).toEqual([
+      "Ethereum",
+      "Ethereum Sepolia",
+      "Base",
+      "Base Sepolia",
+      "Robinhood Chain",
+      "Robinhood Chain Testnet"
+    ]);
+
+    await user.selectOptions(customNetwork, "1");
+    expect(screen.getByLabelText(/payment network/i)).toHaveValue("1");
+    expect(screen.getByText(/choose a supported network and enter the token contract address/i)).toBeInTheDocument();
+  });
+
   it("adds a standard payment token directly from the payment dropdown", async () => {
     const user = userEvent.setup();
     render(<App />);

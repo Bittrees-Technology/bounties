@@ -1321,8 +1321,9 @@ export default function App() {
 
                 {visiblePage === "create" ? <details id="custom-token-inspector" className="panel token-inspector">
                   <summary><Search size={18} /><span><strong>Add a custom ERC20 token</strong><small>Use a contract that is not in the standard token list.</small></span></summary>
-                  <p className="custom-token-copy">Add a token on <strong>{chains[Number(inspectChain) as SupportedChainId]?.name}</strong>. Bounties will inspect its contract before making it available.</p>
+                  <p className="custom-token-copy">Choose a supported network and enter the token contract address. Bounties will inspect that contract on the selected network before making it available.</p>
                   <form className="token-inspector-form" onSubmit={inspect}>
+                    <label>Token network<select aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
                     <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                   </form>
