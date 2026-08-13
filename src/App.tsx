@@ -1150,9 +1150,9 @@ export default function App() {
           {visiblePage !== "profile" && visiblePage !== "home" ? (
             <header className="topbar">
               <div className="topbar-copy">
-                <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : "Authorized workspace"}</p>
-                <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create work with clear terms." : "Moderator panel"}</h1>
-                <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Set the scope, payment, timeline, and approval conditions in one place." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
+                {visiblePage !== "create" ? <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : "Authorized workspace"}</p> : null}
+                <h1>{visiblePage === "marketplace" ? "Work with clear terms and visible progress." : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
+                <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
               </div>
             </header>
           ) : null}

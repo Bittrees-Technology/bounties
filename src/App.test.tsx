@@ -16,7 +16,7 @@ async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
 
 async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
-  expect(screen.getByRole("heading", { name: /create work with clear terms/i })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: /^create a bounty$/i })).toBeInTheDocument();
 }
 
 async function completeCreateForm(
@@ -111,7 +111,7 @@ describe("App", () => {
     await connectWallet(user);
 
     await user.click(screen.getByRole("button", { name: /i want to hire/i }));
-    expect(await screen.findByRole("heading", { name: /create work with clear terms/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /^create a bounty$/i })).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
     await user.click(screen.getByRole("button", { name: /i want to work/i }));
