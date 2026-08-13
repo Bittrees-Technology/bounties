@@ -46,7 +46,10 @@ describe("App", () => {
 
     expect(screen.getAllByRole("button", { name: /^connect wallet$/i })).toHaveLength(1);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: "Fund work Deliver results" })).toBeInTheDocument();
+    const landingHeading = screen.getByRole("heading", { level: 1, name: "Fund work Deliver results" });
+    expect(landingHeading).toBeInTheDocument();
+    expect(Array.from(landingHeading.querySelectorAll("span")).map((line) => line.textContent)).toEqual(["Fund work", "Deliver results"]);
+    expect(within(landingHeading.closest(".landing-hero") as HTMLElement).queryByText("Token-funded work")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 2, name: "One bounty One shared record" })).toBeInTheDocument();
     expect(screen.getByText(/create or complete bounties with clear terms, milestones, and payment records/i)).toBeInTheDocument();
     expect(screen.getByText(/connecting a wallet proves ownership only.*never authorizes token spending/i)).toBeInTheDocument();

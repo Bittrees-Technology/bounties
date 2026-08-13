@@ -1590,8 +1590,7 @@ export default function App() {
             <section className="landing-page" aria-label="Bounties product overview">
               <header className="landing-hero">
                 <div className="landing-hero-copy">
-                  <p className="eyebrow">Token-funded work</p>
-                  <h1>Fund work Deliver results</h1>
+                  <h1><span>Fund work</span>{" "}<span>Deliver results</span></h1>
                   <p>Create or complete bounties with clear terms, milestones, and payment records.</p>
                   <div className="landing-actions">
                     <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>

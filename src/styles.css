@@ -1948,12 +1948,13 @@ main {
 .landing-hero .eyebrow { color: #a8d6c9; margin-bottom: 12px; }
 .landing-hero h1 {
   color: #fff;
-  font-size: clamp(3rem, 5.2vw, 4.7rem);
+  font-size: clamp(3rem, 4.6vw, 4.25rem);
   letter-spacing: -.055em;
   line-height: .94;
   margin: 0;
-  max-width: 12ch;
+  max-width: none;
 }
+.landing-hero h1 span { display: block; white-space: nowrap; }
 .landing-hero-copy > p:not(.eyebrow) { color: #d4e5df; font-size: clamp(1rem, 1.5vw, 1.18rem); line-height: 1.65; margin: 24px 0 0; max-width: 650px; }
 .landing-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
 .landing-actions a {
@@ -2972,7 +2973,7 @@ textarea {
   .funded-escrow-summary { grid-template-columns: 1fr; }
   .funded-escrow-summary a { justify-content: center; width: 100%; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }
-  .landing-hero h1 { font-size: clamp(2.6rem, 13vw, 3.6rem); }
+  .landing-hero h1 { font-size: clamp(2.4rem, 10.5vw, 3.25rem); }
   .landing-actions { align-items: stretch; flex-direction: column; }
   .landing-actions a { width: 100%; }
   .landing-assurances { align-items: flex-start; flex-direction: column; }
