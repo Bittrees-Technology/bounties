@@ -1445,7 +1445,7 @@ export default function App() {
               <header className="landing-hero">
                 <div className="landing-hero-copy">
                   <p className="eyebrow">Token-funded work</p>
-                  <h1>Fund work. Deliver results.</h1>
+                  <h1>Fund work Deliver results</h1>
                   <p>Create or complete bounties with clear terms, milestones, and payment records.</p>
                   <div className="landing-actions">
                     <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
@@ -1459,7 +1459,7 @@ export default function App() {
                 </div>
                 <aside className="landing-overview" aria-label="What stays visible">
                   <p className="eyebrow">Simple by design</p>
-                  <h2>One bounty. One shared record.</h2>
+                  <h2>One bounty One shared record</h2>
                   <ul>
                     <li><BadgeCheck size={17} /><span><strong>Set the terms</strong>Define scope, deadlines, and acceptance criteria.</span></li>
                     <li><UsersRound size={17} /><span><strong>Choose a provider</strong>Review applications before work begins.</span></li>
