@@ -1056,14 +1056,10 @@ li {
   padding: 11px 0;
 }
 
-.profile-directory-reputation > div { align-items: start; display: grid; gap: 7px; grid-template-columns: auto minmax(0, 1fr); }
+.profile-directory-reputation > div { align-items: start; display: grid; gap: 3px 7px; grid-template-columns: auto minmax(0, 1fr); }
 .profile-directory-reputation svg { color: #0f6b57; }
-.profile-directory-reputation span { color: #5a6862; font-size: .78rem; }
 .profile-directory-reputation strong { font-size: .78rem; }
-.profile-directory-reputation small { color: #5a6862; font-size: .76rem; }
-.profile-directory-reputation strong,
-.profile-directory-reputation small { grid-column: 2; text-align: left; }
-.profile-directory-activity-total { color: #5a6862; font-size: .76rem; margin: 0; }
+.profile-directory-reputation span { color: #5a6862; font-size: .76rem; grid-column: 2; line-height: 1.4; text-align: left; }
 
 .profile-role-grid {
   display: grid;
