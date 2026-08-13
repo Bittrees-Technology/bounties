@@ -320,6 +320,8 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const notificationButtonRef = useRef<HTMLButtonElement | null>(null);
+  const notificationPopoverRef = useRef<HTMLDivElement | null>(null);
   const [inspectChain, setInspectChain] = useState(String(defaultPaymentChainId));
   const [inspectAddress, setInspectAddress] = useState("");
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
@@ -629,6 +631,30 @@ export default function App() {
     // `refresh` intentionally runs once for session discovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!notificationsOpen) return;
+
+    const isWithinNotificationControl = (target: EventTarget | null) => target instanceof Node
+      && (notificationButtonRef.current?.contains(target) || notificationPopoverRef.current?.contains(target));
+    const dismissOnOutsideInteraction = (event: PointerEvent | FocusEvent) => {
+      if (!isWithinNotificationControl(event.target)) setNotificationsOpen(false);
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setNotificationsOpen(false);
+      notificationButtonRef.current?.focus();
+    };
+
+    document.addEventListener("pointerdown", dismissOnOutsideInteraction);
+    document.addEventListener("focusin", dismissOnOutsideInteraction);
+    document.addEventListener("keydown", dismissOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnOutsideInteraction);
+      document.removeEventListener("focusin", dismissOnOutsideInteraction);
+      document.removeEventListener("keydown", dismissOnEscape);
+    };
+  }, [notificationsOpen]);
 
   useEffect(() => {
     if (activePage !== "profile" || !wallet || selectedProfileAddress || profileSearchApplied || profileDirectoryLoaded) return;
@@ -1342,7 +1368,7 @@ export default function App() {
             <div className="sidebar-account" aria-label="Account controls" id="account-controls">
               <div className={`account-actions ${wallet ? "connected-account-actions" : "disconnected-account-actions"}`}>
                 {wallet ? (
-                  <button className="compact-account-button notification-button" aria-label="Notifications" aria-controls="notification-popover" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen((open) => !open)}>
+                  <button ref={notificationButtonRef} className="compact-account-button notification-button" aria-label="Notifications" aria-controls="notification-popover" aria-expanded={notificationsOpen} aria-haspopup="true" onClick={() => setNotificationsOpen((open) => !open)}>
                     <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
                   </button>
                 ) : null}
@@ -1352,7 +1378,7 @@ export default function App() {
                   <button className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
                 )}
                 {notificationsOpen ? (
-                  <div className="notification-popover" id="notification-popover" role="region" aria-label="Notifications">
+                  <div ref={notificationPopoverRef} className="notification-popover" id="notification-popover" role="region" aria-label="Notifications">
                     <div className="notification-popover-header">
                       <strong>Notifications</strong>
                       <span>{session?.notifications.filter((notification) => !notification.read_at).length ?? 0} unread</span>

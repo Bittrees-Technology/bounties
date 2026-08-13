@@ -138,6 +138,26 @@ describe("App", () => {
     expect(within(notificationRegion).getByText(/0 unread/i)).toBeInTheDocument();
   });
 
+  it("dismisses notifications after an outside click or Escape", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    const notificationButton = screen.getByRole("button", { name: /^notifications$/i });
+    await user.click(notificationButton);
+    await user.click(within(screen.getByRole("region", { name: /^notifications$/i })).getByText(/you.re all caught up/i));
+    expect(screen.getByRole("region", { name: /^notifications$/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
+    expect(screen.queryByRole("region", { name: /^notifications$/i })).not.toBeInTheDocument();
+    expect(notificationButton).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(notificationButton);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("region", { name: /^notifications$/i })).not.toBeInTheDocument();
+    expect(notificationButton).toHaveFocus();
+  });
+
   it("publishes user-defined work types and categories instead of an Other placeholder", async () => {
     const user = userEvent.setup();
     render(<App />);
