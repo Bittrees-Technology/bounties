@@ -11,8 +11,16 @@ describe("standard token presets", () => {
     }
   });
 
-  it("does not invent presets for networks without a verified standard token", () => {
-    expect(standardTokenPresets[4663]).toEqual([]);
+  it("provides verified defaults for each supported mainnet", () => {
+    expect(standardTokenPresets[1].map(({ symbol }) => symbol)).toEqual(["WETH", "WBTC", "USDC", "USDT"]);
+    expect(standardTokenPresets[8453].map(({ symbol }) => symbol)).toEqual(["WETH", "USDC"]);
+    expect(standardTokenPresets[4663]).toEqual([
+      { symbol: "WETH", name: "Wrapped Ether (ERC20; not native ETH)", contractAddress: "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73" },
+      { symbol: "USDG", name: "Global Dollar", contractAddress: "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168" }
+    ]);
+  });
+
+  it("does not invent presets for testnets without an official canonical token registry", () => {
     expect(standardTokenPresets[46630]).toEqual([]);
   });
 

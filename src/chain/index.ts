@@ -44,7 +44,7 @@ export type {
 export { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 export type { EscrowAbiEvent, EscrowAbiFunction, EscrowAbiParameter, EscrowBoundaryAbi } from "./abi";
 
-export { activeChainId, assets, chains, CHAIN_INTEGRATION_ENABLED, curatedTokenSymbols, getAssetConfig, getChainConfig, getExplorerContractUrl } from "./config";
+export { activeChainId, assets, chains, CHAIN_INTEGRATION_ENABLED, curatedTokenSymbols, defaultPaymentChainId, getAssetConfig, getChainConfig, getExplorerContractUrl, resolveDefaultPaymentChainId } from "./config";
 
 export {
   assertIntegrationEnabled,

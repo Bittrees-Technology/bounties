@@ -146,6 +146,16 @@ export const activeChainId: SupportedChainId = supportedChainIds.includes(reques
   ? requestedDefaultChainId as SupportedChainId
   : 84532;
 
+export function resolveDefaultPaymentChainId(value: unknown): SupportedChainId {
+  const requestedChainId = Number(value);
+  return supportedChainIds.includes(requestedChainId as SupportedChainId)
+    ? requestedChainId as SupportedChainId
+    : 1;
+}
+
+/** Payment creation starts on Ethereum unless operations explicitly configures another supported network. */
+export const defaultPaymentChainId = resolveDefaultPaymentChainId(import.meta.env.VITE_DEFAULT_PAYMENT_CHAIN_ID);
+
 export function getChainConfig(chainId: number): ChainConfig | undefined {
   return chains[chainId as SupportedChainId];
 }

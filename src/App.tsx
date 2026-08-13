@@ -20,7 +20,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
-import { activeChainId, chains, supportedChainIds } from "./chain/config";
+import { chains, defaultPaymentChainId, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter } from "./chain/escrowAdapter";
 import { keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
@@ -264,7 +264,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [inspectChain, setInspectChain] = useState(String(activeChainId));
+  const [inspectChain, setInspectChain] = useState(String(defaultPaymentChainId));
   const [inspectAddress, setInspectAddress] = useState("");
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
