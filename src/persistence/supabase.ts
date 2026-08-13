@@ -33,6 +33,30 @@ export class PersistenceError extends Error {
 }
 
 function marketplaceErrorMessage(status: number, serverCode?: string): string {
+  if (serverCode === "ESCROW_TX_NOT_SUCCESSFUL") {
+    return "That transaction failed onchain, so no escrow was created or funded. Check the payment-token balance and approval, then try again.";
+  }
+  if (serverCode === "ESCROW_RECEIPT_NOT_FOUND") {
+    return "Bounties has not found that transaction on the bounty's payment network. Check the network and try again.";
+  }
+  if (serverCode === "ESCROW_CONFIRMATIONS_PENDING") {
+    return "That transaction is still confirming. Bounties will record the escrow automatically when it is ready.";
+  }
+  if (serverCode === "ESCROW_RPC_UNAVAILABLE" || serverCode === "ESCROW_RPC_TIMEOUT") {
+    return "Escrow confirmation is temporarily unavailable on this network. Bounties will retry automatically.";
+  }
+  if (serverCode === "ESCROW_CHAIN_MISMATCH") {
+    return "Escrow confirmation is unavailable because the configured network does not match this bounty.";
+  }
+  if (serverCode === "ESCROW_TX_REPLAYED") {
+    return "That transaction has already been recorded for another bounty.";
+  }
+  if (serverCode?.startsWith("ESCROW_") && (
+    serverCode.endsWith("_MISMATCH")
+    || serverCode === "ESCROW_CANONICAL_LOGS_MISSING"
+  )) {
+    return "That transaction does not match this bounty's escrow terms, so it was not recorded.";
+  }
   if (serverCode === "TOKEN_INSPECTION_RPC_UNAVAILABLE") {
     return "Token inspection is not configured for this network yet. Operations must add its server-side RPC endpoint.";
   }
