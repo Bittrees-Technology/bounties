@@ -124,12 +124,12 @@ describe("App", () => {
     await openCreatePage(user);
 
     const deadline = screen.getByLabelText(/^deadline$/i);
-    const deliveryDate = screen.getByLabelText(/^delivery date$/i);
+    const deliveryDate = screen.getByLabelText(/^delivery date and time$/i);
     await user.clear(deadline);
-    await user.type(deadline, "2026-12-31");
+    await user.type(deadline, "2099-12-31T17:30");
 
-    expect(deadline).toHaveValue("2026-12-31");
-    expect(deliveryDate).toHaveValue("2026-12-31");
+    expect(deadline).toHaveValue("2099-12-31T17:30");
+    expect(deliveryDate).toHaveValue("2099-12-31T17:30");
   });
 
   it("connects a wallet and publishes a persisted bounty through the API boundary", async () => {
@@ -543,9 +543,12 @@ describe("App", () => {
 
     await user.click(within(profileCard).getByRole("button", { name: /^edit profile$/i }));
     expect(screen.getByLabelText(/custom profile name/i)).toHaveValue("Test participant");
+    expect(screen.getByLabelText(/^timezone$/i)).toHaveValue("Europe/Lisbon");
+    expect(screen.getByLabelText(/show timezone publicly/i)).not.toBeChecked();
     expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
     await user.clear(screen.getByLabelText(/custom profile name/i));
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
+    await user.click(screen.getByLabelText(/show timezone publicly/i));
     await user.click(screen.getByLabelText(/defined task/i));
     await user.click(screen.getByLabelText(/software engineering/i));
     const workTypesGroup = screen.getByRole("group", { name: /^work types$/i });
@@ -572,7 +575,9 @@ describe("App", () => {
     expect(JSON.parse(String(profileUpdateCall?.[1]?.body))).toMatchObject({
       workTypes: expect.arrayContaining(["task", "Incident response", "Protocol documentation"]),
       categories: expect.arrayContaining(["Software Engineering", "Public goods", "Developer education"]),
-      customSpecialty: null
+      customSpecialty: null,
+      timezone: "Europe/Lisbon",
+      timezonePublic: true
     });
 
     await user.click(within(profileCard).getByRole("button", { name: /^edit profile$/i }));

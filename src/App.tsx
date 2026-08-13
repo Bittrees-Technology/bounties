@@ -22,7 +22,7 @@ import {
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
 import { chains, defaultPaymentChainId, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter } from "./chain/escrowAdapter";
-import { keccak256, toHex } from "viem";
+import { formatUnits, keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
 import { standardTokenPresets } from "./chain/tokenPresets";
 import type { EscrowClient, EscrowOrderRef, SupportedChainId } from "./chain/types";
@@ -61,7 +61,16 @@ import {
 import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
 import "./styles.css";
 
-const defaultDeliveryDeadline = () => new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+function dateTimeInputValue(value: Date): string {
+  const local = new Date(value.getTime() - value.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+const defaultDeliveryDeadline = () => {
+  const deadline = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  deadline.setSeconds(0, 0);
+  return dateTimeInputValue(deadline);
+};
 const emptyDraft: RequestDraft = {
   title: "",
   scope: "task",
@@ -189,6 +198,28 @@ function deadlineTimestamp(value?: string | null): number | null {
   if (!value) return null;
   const parsed = Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const supportedTimeZones = (() => {
+  const supportedValuesOf = (Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] }).supportedValuesOf;
+  const zones = supportedValuesOf?.("timeZone") ?? [];
+  return Array.from(new Set([browserTimeZone, "UTC", ...zones])).sort((left, right) => left.localeCompare(right));
+})();
+
+function formatDeadline(value?: string | null): string {
+  const timestamp = deadlineTimestamp(value);
+  if (timestamp === null) return "Not set";
+  return `${new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: browserTimeZone
+  }).format(timestamp)} (${browserTimeZone})`;
+}
+
+function deadlineInputMinimum(value: string, days = 0): string {
+  const timestamp = deadlineTimestamp(value) ?? Date.now();
+  return dateTimeInputValue(new Date(timestamp + days * 24 * 60 * 60 * 1000));
 }
 
 function deriveMilestoneApprovalHash(order: MarketplaceOrder, milestone: NonNullable<MarketplaceOrder["milestones"]>[number], ordinal: number, requester?: string): `0x${string}` | null {
@@ -455,10 +486,10 @@ export default function App() {
     try { return BigInt(toBase(milestone.amount, selectedToken!.decimals)) > 0n; } catch { return false; }
   });
   const scheduleDatesValid = milestoneSchedule.every((milestone, index) => {
-    const timestamp = Date.parse(`${milestone.deliveryDeadline}T23:59:59Z`);
-    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return false;
+    const timestamp = deadlineTimestamp(milestone.deliveryDeadline);
+    if (timestamp === null || timestamp <= Date.now()) return false;
     if (index === 0) return true;
-    return timestamp > Date.parse(`${milestoneSchedule[index - 1].deliveryDeadline}T23:59:59Z`) + 21 * 24 * 60 * 60 * 1000;
+    return timestamp > (deadlineTimestamp(milestoneSchedule[index - 1].deliveryDeadline) ?? 0) + 21 * 24 * 60 * 60 * 1000;
   });
   const scheduleTotalsBudget = Boolean(selectedToken) && scheduleAmountsValid && (() => {
     try {
@@ -802,9 +833,8 @@ export default function App() {
 
   function addMilestone() {
     const previous = milestoneSchedule.at(-1);
-    const nextDate = new Date(`${previous?.deliveryDeadline ?? defaultDeliveryDeadline()}T12:00:00Z`);
-    nextDate.setUTCDate(nextDate.getUTCDate() + 22);
-    const deliveryDeadline = nextDate.toISOString().slice(0, 10);
+    const nextDate = new Date((deadlineTimestamp(previous?.deliveryDeadline ?? defaultDeliveryDeadline()) ?? Date.now()) + 22 * 24 * 60 * 60 * 1000);
+    const deliveryDeadline = dateTimeInputValue(nextDate);
     setMilestoneSchedule((current) => [...current, { title: `Milestone ${current.length + 1}`, amount: "", deliveryDeadline }]);
     setDraft((current) => ({ ...current, deliveryDeadline }));
   }
@@ -1043,7 +1073,7 @@ export default function App() {
     const releaseLabel = activeMilestone ? `Release ${activeMilestone.label} payment` : "Release current milestone payment";
 
     return (
-      <section className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
+      <section id={`escrow-actions-${order.id}`} className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
         <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" ? (
           <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
@@ -1246,8 +1276,25 @@ export default function App() {
     const milestones = order.milestones ?? [];
     const observation = order.escrowObservation as ReconciledMilestoneObservation | undefined;
     const currentMilestone = Number.isInteger(observation?.current_milestone) ? observation!.current_milestone! : null;
+    const escrowedAmount = observation
+      ? formatUnits(BigInt(observation.received_base_units), order.tokenRecord?.decimals ?? 18)
+      : null;
+    const escrowTransactionUrl = observation && order.tokenRecord
+      ? `${chains[order.tokenRecord.chain_id as SupportedChainId].blockExplorer}/tx/${observation.transaction_hash}`
+      : null;
     return (
       <section className="lifecycle-panel">
+        {observation && escrowTransactionUrl ? (
+          <aside className="funded-escrow-summary" aria-label="Funded escrow">
+            <ShieldCheck size={24} aria-hidden="true" />
+            <div>
+              <span>Funds escrowed</span>
+              <strong>{escrowedAmount} {order.tokenRecord?.symbol || "ERC20"}</strong>
+              <small>Confirmed on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {observation.onchain_state ?? observation.status}</small>
+            </div>
+            <a href={escrowTransactionUrl} target="_blank" rel="noreferrer">View funding transaction <ExternalLink size={14} /></a>
+          </aside>
+        ) : null}
         {milestones.map((milestone, index) => {
           const isActiveMilestone = currentMilestone !== null && index === currentMilestone;
           const derivedEvidenceHash = deriveMilestoneEvidenceHash(order, milestone, index);
@@ -1256,12 +1303,12 @@ export default function App() {
           const serverApprovalMatches = Boolean(derivedApprovalHash && milestone.deliveryApprovalHash) && derivedApprovalHash!.toLowerCase() === milestone.deliveryApprovalHash!.toLowerCase();
           const approvalMatches = serverApprovalMatches && Boolean(observation?.current_milestone_detail?.approval_hash) && milestone.deliveryApprovalHash!.toLowerCase() === observation!.current_milestone_detail!.approval_hash.toLowerCase();
           return (
-          <div className={`milestone-row ${isActiveMilestone ? "active-milestone" : ""}`} key={milestone.id}>
+          <div id={`delivery-${milestone.id}`} className={`milestone-row ${isActiveMilestone ? "active-milestone" : ""}`} key={milestone.id}>
             <div>
               <strong>{milestone.label}</strong>
               {isActiveMilestone ? <span className="active-milestone-badge">Active milestone</span> : null}
               <p>{orderStatusLabel(milestone.status)}</p>
-              {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>Due {new Date(deadlineTimestamp(milestone.deliveryDeadline)!).toLocaleDateString()}</p> : null}
+              {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>Due {formatDeadline(milestone.deliveryDeadline)}</p> : null}
               {milestone.deliveryEvidence ? (
                 <>
                   <p>Evidence: <a href={milestone.deliveryEvidence} target="_blank" rel="noreferrer">{milestone.deliveryEvidence}</a></p>
@@ -1271,7 +1318,7 @@ export default function App() {
             </div>
             <div>
               {isProvider(order) && isActiveMilestone && milestone.status === "escrowed" && observation?.onchain_state === "ProviderAccepted" && observation.current_milestone_detail?.state === "Pending" ? (
-                <form
+                <form className="delivery-submission-form"
                   onSubmit={(event) => {
                     event.preventDefault();
                     const form = new FormData(event.currentTarget);
@@ -1280,10 +1327,11 @@ export default function App() {
                     void act(() => submitEvidence(milestone.id, uri, contentHash));
                   }}
                 >
+                  <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Add a public HTTPS delivery link and the SHA-256 digest of the delivered files.</span></div></div>
                   <label>Work evidence link<input name="uri" type="url" placeholder="https://…" required /></label>
                   <label>Delivered bytes SHA-256<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" aria-describedby={`content-hash-help-${milestone.id}`} required /></label>
                   <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Hash the exact delivered file or a documented canonical bundle of the delivered bytes. Do not hash the link. Prefix the 64-character SHA-256 digest with 0x.</span>
-                  <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</button>
+                  <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit work evidence"}</button>
                 </form>
               ) : null}
               {isBuyer(order) && isActiveMilestone && milestone.status === "delivered" && observation?.current_milestone_detail?.state === "Approved" && observation?.onchain_state === "BuyerApproved" && evidenceMatches && approvalMatches ? (
@@ -1297,12 +1345,8 @@ export default function App() {
 
         {order.escrowObservation ? (
           <>
-            <div className="support-note">
-              <ShieldCheck size={18} />
-              <span>Escrow verified · {order.escrowObservation.onchain_state ?? order.escrowObservation.status} · <a href={`${chains[order.tokenRecord!.chain_id as SupportedChainId].blockExplorer}/tx/${order.escrowObservation.transaction_hash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a></span>
-            </div>
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
-            {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {new Date(order.escrowObservation.review_deadline).toLocaleString()}.</p> : null}
+            {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}
           </>
         ) : null}
       </section>
@@ -1316,6 +1360,23 @@ export default function App() {
     if (order.status !== "open" || order.acceptedProposalId) return 3;
     if (order.proposals?.length) return 2;
     return 1;
+  }
+
+  function providerNextAction(order: MarketplaceOrder) {
+    if (!isProvider(order) || !order.escrowObservation) return null;
+    const state = order.escrowObservation.onchain_state;
+    const currentMilestone = order.escrowObservation.current_milestone ?? 0;
+    const milestone = order.milestones?.[currentMilestone];
+    if (state === "Funded") {
+      return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Accept bounty terms to begin work</a>;
+    }
+    if (state === "ProviderAccepted" && milestone?.deliveryEvidence) {
+      return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Commit submitted work onchain</a>;
+    }
+    if (state === "ProviderAccepted" && milestone) {
+      return <a className="submit-work-shortcut" href={`#delivery-${milestone.id}`}><FileCheck2 size={16} />Submit work for the active milestone</a>;
+    }
+    return null;
   }
 
   function cardProgress(order: MarketplaceOrder) {
@@ -1590,7 +1651,7 @@ export default function App() {
                   <div className="form-grid">
                     <label>Contact alias<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} placeholder="A public alias, not a private email or phone number" maxLength={80} required /><span className="form-hint">Share only the name you want bounty applicants to see.</span></label>
                     <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
-                    <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => updateDeadline(event.target.value)} required /></label>
+                    <label>Deadline<input aria-label="Deadline" type="datetime-local" value={draft.deliveryDeadline} min={dateTimeInputValue(new Date())} onChange={(event) => updateDeadline(event.target.value)} required /><span className="form-hint">Shown in your current timezone: {browserTimeZone}.</span></label>
                   </div>
                   <div className="form-grid payment-setup-grid">
                     <label>Total budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
@@ -1620,7 +1681,7 @@ export default function App() {
                         <span className="milestone-number">{index + 1}</span>
                         <label>Deliverable<input value={milestone.title} onChange={(event) => updateMilestone(index, "title", event.target.value)} placeholder="Completed deliverable" required /></label>
                         <label>Amount<input inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={milestone.amount} onChange={(event) => updateMilestone(index, "amount", event.target.value)} required /></label>
-                        <label>Delivery date<input type="date" min={index === 0 ? new Date().toISOString().slice(0, 10) : (() => { const minimum = new Date(`${milestoneSchedule[index - 1].deliveryDeadline}T12:00:00Z`); minimum.setUTCDate(minimum.getUTCDate() + 22); return minimum.toISOString().slice(0, 10); })()} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
+                        <label>Delivery date and time<input type="datetime-local" min={index === 0 ? dateTimeInputValue(new Date()) : deadlineInputMinimum(milestoneSchedule[index - 1].deliveryDeadline, 22)} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
                         {milestoneSchedule.length > 1 ? <button className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => removeMilestone(index)}>Remove</button> : null}
                       </div>
                     ))}
@@ -1677,11 +1738,12 @@ export default function App() {
                           <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
                         </div>
                         <p className="bounty-description">{linkedDescription(order.project)}</p>
-                        <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {order.dueDate}</p>
+                        <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
                         <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
                         {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
                         {cardProgress(order)}
                         <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Open marketplace bounty"}</span></div>
+                        {providerNextAction(order)}
                         {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
                         <div className="content-actions">{reportForm("bounty", order.id)}</div>
                         {lifecycle(order)}
@@ -1770,6 +1832,7 @@ export default function App() {
                               {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
                             </div>
                             {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
+                            {publicProfile?.timezone_public && publicProfile.timezone ? <p className="profile-timezone">Timezone: {publicProfile.timezone}</p> : null}
                             {profileMessage ? <p className="form-hint">{profileMessage}</p> : null}
                           </div>
                         </div>
@@ -1798,7 +1861,9 @@ export default function App() {
                                     ...form.getAll("categories").map(String),
                                     ...(otherCategoriesEnabled ? customProfileCategories : [])
                                   ]),
-                                  customSpecialty: null
+                                  customSpecialty: null,
+                                  timezone: String(form.get("timezone") ?? "") || null,
+                                  timezonePublic: form.get("timezonePublic") === "on"
                                 });
                                 setPublicProfile(updated);
                                 setProfileEditorOpen(false);
@@ -1807,6 +1872,12 @@ export default function App() {
                               <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
                               <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
                               <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
+                              <div className="profile-timezone-editor">
+                                <label>Timezone<select name="timezone" defaultValue={publicProfile?.timezone ?? browserTimeZone}>
+                                  {supportedTimeZones.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}
+                                </select></label>
+                                <label className="timezone-visibility"><input name="timezonePublic" type="checkbox" defaultChecked={publicProfile?.timezone_public === true} /><span><strong>Show timezone publicly</strong><small>Leave this off to save the timezone privately for your account.</small></span></label>
+                              </div>
                               <fieldset className="profile-preference-fieldset">
                                 <legend>Work types</legend>
                                 <p className="form-hint">Choose the kinds of engagement you want visitors to find.</p>

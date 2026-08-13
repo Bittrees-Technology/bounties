@@ -71,7 +71,13 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(digest).toHaveAttribute("minlength", "66");
   expect(digest).toHaveAttribute("maxlength", "66");
   expect(order.getByText(/hash the exact delivered file.*do not hash the link/i)).toBeInTheDocument();
-  expect(order.getByRole("button", { name: /submit completed work/i })).toBeInTheDocument();
+  expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
+  expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
+  expect(order.getByRole("link", { name: /submit work for the active milestone/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
+  expect(order.getByLabelText(/funded escrow/i)).toHaveTextContent(/250 USDC/i);
+  expect(order.getByRole("link", { name: /view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
+  const finalDue = order.getAllByText(/^Due /i).at(-1)?.textContent?.replace(/^Due /i, "");
+  expect(order.getByText(/Delivery by/i)).toHaveTextContent(finalDue!);
 });
 
 it("requires wallet approval before offering offchain acceptance", async () => {

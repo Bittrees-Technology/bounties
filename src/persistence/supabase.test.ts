@@ -177,6 +177,8 @@ describe("Supabase marketplace mapping", () => {
       display_name: "Dual participant",
       profile_bio: "Builds and funds useful work.",
       profile_url: "https://example.test/profile",
+      timezone: "Europe/Lisbon",
+      timezone_public: false,
       profile_moderation_status: "visible",
       profile_updated_at: "2026-08-12T00:00:00.000Z",
       ens_name: "dual.eth",
@@ -198,13 +200,15 @@ describe("Supabase marketplace mapping", () => {
     expect(vi.mocked(fetch).mock.calls.at(-1)?.[0]).toBe("/api/bounties/profiles/me");
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json(profile));
-    await expect(updateMyProfile({ displayName: "Dual participant", profileBio: "Builds and funds useful work.", profileUrl: profile.profile_url })).resolves.toEqual(profile);
+    await expect(updateMyProfile({ displayName: "Dual participant", profileBio: "Builds and funds useful work.", profileUrl: profile.profile_url, timezone: "Europe/Lisbon", timezonePublic: false })).resolves.toEqual(profile);
     const updateRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
     expect(updateRequest?.method).toBe("POST");
     expect(JSON.parse(String(updateRequest?.body))).toEqual({
       displayName: "Dual participant",
       profileBio: "Builds and funds useful work.",
-      profileUrl: "https://example.test/profile"
+      profileUrl: "https://example.test/profile",
+      timezone: "Europe/Lisbon",
+      timezonePublic: false
     });
 
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ...profile, profile_moderation_status: "hidden", visibility_source: "owner" }));

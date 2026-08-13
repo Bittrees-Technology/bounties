@@ -2,6 +2,10 @@ import type { AcceptanceCriterion, MarketplaceOrder, Milestone, OrderStatus, Req
 
 export const CUSTOM_CLASSIFICATION_VALUE = "__custom__";
 
+function parsedDeadline(value: string): number {
+  return Date.parse(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value);
+}
+
 function normalizeClassification(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
@@ -181,8 +185,8 @@ export function isDraftValid(draft: RequestDraft): boolean {
       validClassification(resolvedCategory(draft)) &&
       draft.project.trim() &&
       draft.buyer.trim() &&
-      /^\d{4}-\d{2}-\d{2}$/.test(draft.deliveryDeadline) &&
-      Date.parse(`${draft.deliveryDeadline}T23:59:59.999Z`) > Date.now() &&
+      Number.isFinite(parsedDeadline(draft.deliveryDeadline)) &&
+      parsedDeadline(draft.deliveryDeadline) > Date.now() &&
       /^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(String(draft.budget)) &&
       Number.isFinite(numericBudget) &&
       numericBudget > 0 &&
