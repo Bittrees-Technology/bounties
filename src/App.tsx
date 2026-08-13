@@ -277,9 +277,14 @@ function tokenIdentityLabel(token: Pick<TokenRecord, "name" | "symbol">, detail 
   return name || symbol || "Unnamed ERC20";
 }
 
-function tokenOptionLabel(token: TokenRecord) {
+function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id" | "checksum_address">) {
   const network = chains[token.chain_id as SupportedChainId]?.name ?? "Supported network";
-  return `${tokenIdentityLabel(token)} · ${network} · ${short(token.checksum_address)}`;
+  const symbol = token.symbol?.trim() ?? "";
+  const name = token.name?.trim() ?? "";
+  const identity = symbol && name && symbol.toLocaleLowerCase() === name.toLocaleLowerCase()
+    ? symbol
+    : [symbol, name].filter(Boolean).join(" · ") || "Unnamed ERC20";
+  return `${identity} · ${network} · ${short(token.checksum_address)}`;
 }
 
 function averageRating(reviews: MarketplaceOrder["reviews"]): string {
@@ -369,6 +374,29 @@ export default function App() {
     };
   });
   const otherPaymentTokens = networkTokens.filter((token) => !selectedTokenPresets.some((preset) => preset.contractAddress.toLowerCase() === token.contract_address.toLowerCase()));
+  const paymentTokenOptions = [
+    ...standardPaymentOptions.map(({ preset, token, value }) => ({
+      value,
+      symbol: token?.symbol?.trim() || preset.symbol,
+      name: token?.name?.trim() || preset.name,
+      address: token?.checksum_address || preset.contractAddress,
+      label: tokenOptionLabel(token ?? {
+        symbol: preset.symbol,
+        name: preset.name,
+        chain_id: Number(inspectChain),
+        checksum_address: preset.contractAddress
+      })
+    })),
+    ...otherPaymentTokens.map((token) => ({
+      value: token.id,
+      symbol: token.symbol?.trim() || token.name?.trim() || token.checksum_address,
+      name: token.name?.trim() || token.symbol?.trim() || "",
+      address: token.checksum_address,
+      label: tokenOptionLabel(token)
+    }))
+  ].sort((left, right) => left.symbol.localeCompare(right.symbol, undefined, { sensitivity: "base" })
+    || left.name.localeCompare(right.name, undefined, { sensitivity: "base" })
+    || left.address.localeCompare(right.address, undefined, { sensitivity: "base" }));
 
   const walletProfiles = useMemo(() => {
     const profiles = new Map<string, WalletProfile>();
@@ -1482,14 +1510,9 @@ export default function App() {
                       Payment token
                       <select aria-label="Payment token" value={draft.token} onChange={(event) => void choosePaymentToken(event.target.value)} disabled={!wallet || loading} required>
                         <option value="">{wallet ? "Choose a payment token" : "Connect wallet to choose"}</option>
-                        <optgroup label="Standard tokens">
-                          {standardPaymentOptions.length
-                            ? standardPaymentOptions.map(({ preset, token, value }) => <option key={value} value={value}>{token ? tokenOptionLabel(token) : `${preset.symbol} · ${preset.name}`}</option>)
-                            : <option disabled>No verified standard tokens on this network</option>}
-                        </optgroup>
-                        {otherPaymentTokens.length ? <optgroup label="Added tokens">
-                          {otherPaymentTokens.map((token) => <option key={token.id} value={token.id}>{tokenOptionLabel(token)}</option>)}
-                        </optgroup> : null}
+                        {paymentTokenOptions.length
+                          ? paymentTokenOptions.map((token) => <option key={token.value} value={token.value}>{token.label}</option>)
+                          : <option disabled>No verified payment tokens on this network</option>}
                       </select>
                     </label>
                   </div>
