@@ -75,7 +75,7 @@ export interface MarketplaceService {
   id: string;
   title: string;
   provider: string;
-  category: ServiceCategory;
+  category: string;
   rating: number;
   completedOrders: number;
   startingAt: number;
@@ -89,9 +89,9 @@ export interface MarketplaceOrder {
   creatorId?: string;
   acceptedProposalId?: string;
   title: string;
-  scope: WorkScope;
+  scope: string;
   scopeHash?: `0x${string}`;
-  category: ServiceCategory;
+  category: string;
   budget: number;
   budgetDisplay?: string;
   budgetBaseUnits?: string;
@@ -121,8 +121,10 @@ export interface MarketplaceOrder {
 
 export interface RequestDraft {
   title: string;
-  scope: WorkScope;
-  category: ServiceCategory;
+  scope: WorkScope | "__custom__";
+  customScope?: string;
+  category: ServiceCategory | "__custom__";
+  customCategory?: string;
   project: string;
   budget: string | number;
   token: MarketplaceOrder["token"];

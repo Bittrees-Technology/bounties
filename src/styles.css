@@ -1830,6 +1830,17 @@ textarea {
   gap: 12px;
 }
 
+.classification-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.classification-field :is(input, select) {
+  min-width: 0;
+  width: 100%;
+}
+
 button {
   background: linear-gradient(135deg, #0f6b57, #0b4f41);
   border-radius: 14px;

@@ -1,4 +1,4 @@
-import { parseCriteria, parseSupport } from "../bountyModel";
+import { parseCriteria, parseSupport, resolvedCategory, resolvedWorkType } from "../bountyModel";
 import { SIWE_AUTHENTICATION_METHOD, validateSiweChallenge } from "../auth/siwe";
 import { hashSourceJson } from "../chain/hashCodec";
 import type { MarketplaceOrder, Proposal, RequestDraft } from "../types";
@@ -289,7 +289,7 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
       throw new PersistenceError("The budget must provide at least one token base unit per milestone.");
     }
   }
-  const scopeSource = { scope: draft.scope, category: draft.category, project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label) };
+  const scopeSource = { scope: resolvedWorkType(draft), category: resolvedCategory(draft), project: draft.project.trim(), buyer: draft.buyer.trim(), contactMethod: draft.providerPreference.trim(), deliveryDeadline: draft.deliveryDeadline, support: parseSupport(draft.support), criteria: parseCriteria(draft.criteria).map(c => c.label) };
   const row = await request<BountyRow>("/bounties", { method: "POST", body: JSON.stringify({ title: draft.title.trim(), description: draft.project.trim(), scopeSource, scopeHash: hashSourceJson(scopeSource).value, chainId: token.chain_id, tokenId: token.id, budgetBaseUnits, milestones: milestones.map((milestone, index) => ({ ordinal: milestone.ordinal, title: milestone.title, amount_base_units: milestoneAmounts[index], delivery_deadline: milestone.deliveryDeadline ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(milestone.deliveryDeadline) ? `${milestone.deliveryDeadline}T23:59:59.999Z` : milestone.deliveryDeadline).toISOString() : null, scope_source: { criteria: criteria.map(c => c.label), deliveryDeadline: milestone.deliveryDeadline }, evidence_requirements: {} })) }) });
   return mapBounty(row);
 }

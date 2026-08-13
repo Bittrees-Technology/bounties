@@ -19,7 +19,7 @@ import {
   UsersRound,
   WalletCards
 } from "lucide-react";
-import { isDraftValid, orderStatusLabel } from "./bountyModel";
+import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
 import { activeChainId, chains, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter } from "./chain/escrowAdapter";
 import { keccak256, toHex } from "viem";
@@ -64,7 +64,9 @@ const defaultDeliveryDeadline = () => new Date(Date.now() + 14 * 24 * 60 * 60 * 
 const emptyDraft: RequestDraft = {
   title: "",
   scope: "task",
+  customScope: "",
   category: "Software Engineering",
+  customCategory: "",
   project: "",
   budget: "250",
   token: "",
@@ -96,6 +98,8 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
   { value: "audit", label: "Review or audit" },
   { value: "retainer", label: "Ongoing retainer" }
 ];
+
+const workTypeLabel = (value: string) => scopes.find((scope) => scope.value === value)?.label ?? value;
 
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
@@ -1253,8 +1257,22 @@ export default function App() {
                   <p className="section-copy">Give applicants the information they need to deliver successfully.</p>
                   <label>Bounty title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What do you need completed?" required /></label>
                   <div className="form-grid">
-                    <label>Work type<select value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as WorkScope })}>{scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}</select></label>
-                    <label>Category<select value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as ServiceCategory })}>{categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}</select></label>
+                    <div className="classification-field">
+                      <label htmlFor="bounty-work-type">Work type</label>
+                      <select id="bounty-work-type" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as RequestDraft["scope"] })}>
+                        {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
+                        <option value={CUSTOM_CLASSIFICATION_VALUE}>Other</option>
+                      </select>
+                      {draft.scope === CUSTOM_CLASSIFICATION_VALUE ? <input aria-label="Custom work type" value={draft.customScope ?? ""} onChange={(event) => setDraft({ ...draft, customScope: event.target.value })} placeholder="Enter a work type" minLength={2} maxLength={80} required autoFocus /> : null}
+                    </div>
+                    <div className="classification-field">
+                      <label htmlFor="bounty-category">Category</label>
+                      <select id="bounty-category" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as RequestDraft["category"] })}>
+                        {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                        <option value={CUSTOM_CLASSIFICATION_VALUE}>Other</option>
+                      </select>
+                      {draft.category === CUSTOM_CLASSIFICATION_VALUE ? <input aria-label="Custom category" value={draft.customCategory ?? ""} onChange={(event) => setDraft({ ...draft, customCategory: event.target.value })} placeholder="Enter a category" minLength={2} maxLength={80} required autoFocus /> : null}
+                    </div>
                   </div>
                   <label>Description<textarea value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} placeholder="Describe the deliverable, context, and requirements. You can include links." maxLength={5000} required /></label>
                   <div className="form-grid">
@@ -1347,7 +1365,7 @@ export default function App() {
                     session.orders.map((order) => (
                       <article id={`bounty-${order.id}`} className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
                         <div className="bounty-card-header">
-                          <div><span className="scope">{order.scope}</span><h4>{order.title}</h4></div>
+                          <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h4>{order.title}</h4></div>
                           <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
                         </div>
                         <p className="bounty-description">{linkedDescription(order.project)}</p>
