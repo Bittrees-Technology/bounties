@@ -87,6 +87,7 @@ export interface MarketplaceService {
 export interface MarketplaceOrder {
   id: string;
   creatorId?: string;
+  persistenceStatus?: string;
   acceptedProposalId?: string;
   title: string;
   scope: string;
