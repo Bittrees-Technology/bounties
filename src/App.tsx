@@ -2010,10 +2010,6 @@ export default function App() {
                             {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
                             {profileCategoryFilter && !standardCategoryValues.has(profileCategoryFilter) ? <option value={profileCategoryFilter}>{profileCategoryFilter}</option> : null}
                           </select></label>
-                          <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
-                        </form>
-                        <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
-                        <div className="profile-directory-filters" aria-label="Profile directory ordering and activity filters">
                           <label>Order<select value={profileDirectoryOrder} onChange={(event) => setProfileDirectoryOrder(event.target.value as ProfileDirectoryOrder)}>
                             <option value="name-asc">Named A–Z</option>
                             <option value="name-desc">Named Z–A</option>
@@ -2026,7 +2022,9 @@ export default function App() {
                             <option value="1-year">Past year</option>
                             <option value="no-completed-activity">No completed activity</option>
                           </select></label>
-                        </div>
+                          <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
+                        </form>
+                        <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{orderedProfiles.length} public profile{orderedProfiles.length === 1 ? "" : "s"}</span></div>
                           <div className="profile-directory-heading-actions">
