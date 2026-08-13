@@ -1,6 +1,7 @@
 # Escrow production readiness
 
-Status: **testnet review candidate; production deployment remains NO-GO**.
+Status: **deployed and source-verified on the three approved testnets; testnet
+soak is pending and production deployment remains NO-GO**.
 
 The repository includes an original Foundry escrow implementation, deterministic and stateful invariant tests, a fail-closed wallet adapter, wallet-only persistence, and server-verified escrow observations. None of this constitutes an audit, legal approval, deployment authorization, or custody approval.
 
@@ -32,13 +33,19 @@ The repository includes an original Foundry escrow implementation, deterministic
 3. **Independent audit** — commission an external auditor after the specification freeze; publish the report and fixes; rerun the full suite against the audited commit.
 4. **Deployment authority** — use the operations-controlled deployment process, verify source and bytecode, document the deployer, and confirm the deployer receives no runtime authority over user records or escrow outcomes.
 5. **Legal/compliance approval** — publish escrow terms covering custody characterization, buyer/provider IP, refunds, sanctions/AML posture, tax/reporting, contributor classification, jurisdiction, and privacy.
-6. **Three-testnet soak** — separately deploy from a release tag to Ethereum
-   Sepolia, Base Sepolia, and Robinhood Chain Testnet; verify source, exercise
+6. **Three-testnet soak** — the identical `BountyEscrow` artifact is deployed
+   and source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
+   Testnet. Next, exercise
    every lifecycle branch, reconcile events against token balances, and run
    monitoring for at least one complete original-delivery and revised-delivery
    cycle on each network. Include both revision resubmission and missed-revision refund.
 7. **Operations readiness** — alert on unexpected balances, failed transactions, receipt-reconciliation failures, and application rollback conditions; rehearse incident response and frontend rollback.
 8. **Production canary** — operator-approved deployment with clearly published risk limits and a documented observation period before widening use.
+
+The immutable receipts, verification jobs, Safe address, deterministic salt, and
+bytecode hashes for the testnet deployment are in
+[`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json).
+All three testnets use the same verified escrow address. No mainnet address is set.
 
 ## Operator decisions still required
 
@@ -48,8 +55,9 @@ The repository includes an original Foundry escrow implementation, deterministic
 - Operational presentation of mandatory delivery deadlines, the single seven-day
   revision window, the fixed seven-day review deadline, and expiring/cancellable
   bilateral settlement proposals.
-- Replacement of every `CHAIN_*_RPC_URL` placeholder with a private provider URL,
-  followed by a chain-ID verification check before any testnet transaction.
+- Replacement of every mainnet `CHAIN_*_RPC_URL` placeholder with an approved
+  provider URL before a mainnet transaction. The three production-environment
+  testnet RPC variables have been populated and their chain IDs verified.
 - Contracting entity, custody/MSB/VASP assessment, IP/NDA owner, sanctions/AML controls, and payout tax/reporting entity.
 - External auditor, bug-bounty budget, RPC/indexing providers, monitoring owner, and deployment gas budget.
 
