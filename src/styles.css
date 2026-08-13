@@ -1255,6 +1255,7 @@ li {
   min-height: 36px;
   padding: 7px 11px;
 }
+.profile-directory-card--tiles .profile-directory-view-action { justify-self: end; white-space: nowrap; }
 
 @media (min-width: 980px) {
   .profile-directory-card--list {
@@ -2961,8 +2962,8 @@ textarea {
   .profile-view-toggle { align-self: stretch; }
   .profile-view-toggle button { flex: 1; width: auto; }
   .profile-directory-card { padding: 18px; }
-  .profile-directory-card-header { grid-template-columns: 1fr; }
-  .profile-directory-view-action { width: 100%; }
+  .profile-directory-card--list .profile-directory-card-header { grid-template-columns: 1fr; }
+  .profile-directory-card--list .profile-directory-view-action { width: 100%; }
   .profile-role-bounty-row { grid-template-columns: minmax(0, 1fr) auto; }
   .profile-role-bounty-row > svg { display: none; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }

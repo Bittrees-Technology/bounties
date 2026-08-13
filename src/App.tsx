@@ -1488,6 +1488,7 @@ export default function App() {
               {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
             </div>
           </div>
+          {profileDirectoryView === "tiles" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button> : null}
         </header>
         {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
           {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{visibleWorkTypes.map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}{hiddenWorkTypeCount ? <span className="profile-specialty-overflow">+{hiddenWorkTypeCount}</span> : null}</div></div> : null}
@@ -1498,7 +1499,7 @@ export default function App() {
           <div aria-label={`Capital provider: ${capitalSummary}`}><WalletCards size={15} /><strong>Capital</strong><span>{capitalSummary}</span></div>
           <div aria-label={`Labor provider: ${laborSummary}`}><UsersRound size={15} /><strong>Labor</strong><span>{laborSummary}</span></div>
         </div>
-        <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
+        {profileDirectoryView === "list" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button> : null}
       </article>
     );
   }
