@@ -16,6 +16,7 @@ const txHash = "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
 const approvalTxHash = "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 
 const erc20Abi = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)"
 ]);
@@ -46,6 +47,7 @@ const funding: EscrowFundingInput = {
 
 interface RecordingOptions {
   smart?: boolean;
+  balance?: bigint;
   allowance?: bigint;
   allowanceResponses?: bigint[];
   sendCallsResult?: unknown;
@@ -75,6 +77,10 @@ class RecordingProvider implements Eip1193Provider {
     if (args.method === "eth_chainId") return this.options.chainId ?? "0x14a34";
     if (args.method === "eth_call") {
       if (this.options.ethCallResult !== undefined) return this.options.ethCallResult;
+      const call = (args.params as Array<{ data?: `0x${string}` }> | undefined)?.[0];
+      if (call?.data && decodeFunctionData({ abi: erc20Abi, data: call.data }).functionName === "balanceOf") {
+        return toAbiWord(this.options.balance ?? 10_000_000n);
+      }
       const allowances = this.options.allowanceResponses ?? [this.options.allowance ?? 0n];
       return toAbiWord(allowances[Math.min(this.allowanceIndex++, allowances.length - 1)]);
     }
@@ -192,6 +198,17 @@ describe("escrow adapter provider support", () => {
     expect(smartWalletProvider.calls.some((call) => call.method === "wallet_getCallsStatus")).toBe(true);
   });
 
+  it("blocks escrow funding before wallet submission when the selected token balance is too low", async () => {
+    const eoaProvider = new RecordingProvider({ balance: 0n, allowance: 2500000n });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "INSUFFICIENT_BALANCE",
+      message: "Your wallet has 0 USDC, but this escrow requires 2.5 USDC. Add the tokens to this wallet before funding."
+    });
+    expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_requestAccounts", "eth_chainId", "eth_call"]);
+  });
+
   it("encodes an ordered milestone schedule whose allocations equal funding", async () => {
     const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 2500000n });
     const adapter = createViemEscrowAdapter({ chain, smartWalletProvider, integrationEnabled: true, statusPollIntervalMs: 0 });
@@ -305,6 +322,7 @@ describe("escrow adapter provider support", () => {
     expect(eoaProvider.calls.map((call) => call.method)).toEqual([
       "eth_requestAccounts",
       "eth_chainId",
+      "eth_call",
       "eth_call",
       "eth_sendTransaction",
       "eth_getTransactionReceipt",

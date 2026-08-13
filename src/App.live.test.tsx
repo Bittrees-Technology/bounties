@@ -43,8 +43,8 @@ it("enables participant escrow creation only when a deployment is configured", a
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
   const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));
-  expect(order.getByRole("button", { name: /create and fund ERC20 escrow/i })).toBeInTheDocument();
-  expect(order.getByRole("button", { name: /verify escrow observation/i })).toBeInTheDocument();
+  expect(order.getByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /verify escrow observation/i })).not.toBeInTheDocument();
 });
 
 it("uses the exact active tranche for approval and release controls", async () => {

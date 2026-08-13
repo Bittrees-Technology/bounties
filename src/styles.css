@@ -2597,9 +2597,59 @@ textarea {
   border: 1px solid #bdd8c7;
   border-radius: 14px;
   display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.escrow-actions > button {
+  width: 100%;
+}
+
+.escrow-transaction-link {
+  align-items: center;
+  color: #5a6862;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  gap: 5px;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.escrow-transaction-link a,
+.support-note a {
+  align-items: center;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.funding-choice {
+  align-items: flex-start;
+  background: #f1f8f4;
+  border: 1px solid #bdd8c7;
+  border-radius: 14px;
+  display: flex;
   gap: 10px;
-  margin-top: 14px;
   padding: 14px;
+}
+
+.funding-choice input {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  min-height: auto;
+  width: auto;
+}
+
+.funding-choice span {
+  display: grid;
+  gap: 4px;
+}
+
+.funding-choice small {
+  color: #5a6862;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 .escrow-actions form {

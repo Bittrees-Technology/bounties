@@ -1,4 +1,4 @@
-import { decodeFunctionResult, encodeFunctionData, parseAbi } from "viem";
+import { decodeFunctionResult, encodeFunctionData, formatUnits, parseAbi } from "viem";
 import { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 import { EscrowClientError } from "./errors";
 import { assertIntegrationEnabled } from "./guardrails";
@@ -114,6 +114,7 @@ interface DecodedMilestoneRecord {
 }
 
 const erc20ApprovalAbi = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)",
   "function allowance(address owner, address spender) view returns (uint256)",
   "function approve(address spender, uint256 amount) returns (bool)"
 ]);
@@ -303,9 +304,11 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       data: encodeFunctionData({ abi: BOUNTY_ESCROW_ABI, functionName, args: args as never }),
       value: "0x0"
     };
-    const approvalCalls = funding
-      ? await buildApprovalCalls(provider, account, contractAddress, chainId, funding)
-      : [];
+    let approvalCalls: WalletCall[] = [];
+    if (funding) {
+      await assertSufficientBalance(provider, account, chainId, funding);
+      approvalCalls = await buildApprovalCalls(provider, account, contractAddress, chainId, funding);
+    }
 
     if (mode === "smart-wallet") {
       return sendSmartWalletCalls(provider, account, chainId, [...approvalCalls, contractCall], pollIntervalMs, pollAttempts);
@@ -353,7 +356,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
             requiredAddress(order.providerAddress, "providerAddress", "CONTRACT_REVERTED"),
             requiredBytes32(order.proposalHash, "proposalHash")
           ],
-          funding
+          funding,
+          true
         );
       }
       return send(
@@ -366,7 +370,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
           requiredAddress(order.providerAddress, "providerAddress", "CONTRACT_REVERTED"),
           requiredBytes32(order.proposalHash, "proposalHash")
         ],
-        funding
+        funding,
+        true
       );
     },
     fundEscrow: async (order, funding) => {
@@ -551,6 +556,39 @@ async function buildApprovalCalls(
   if (allowance !== 0n) approvals.push(approvalCall(token, spender, 0n));
   approvals.push(approvalCall(token, spender, amount));
   return approvals;
+}
+
+async function assertSufficientBalance(
+  provider: Eip1193Provider,
+  owner: ChecksumAddress,
+  chainId: SupportedChainId,
+  funding: EscrowFundingInput
+): Promise<void> {
+  const amount = requiredFunding(chainId, funding);
+  const token = requiredAddress(funding.token.contractAddress, "token contract", "ASSET_UNSUPPORTED");
+  const data = encodeFunctionData({ abi: erc20ApprovalAbi, functionName: "balanceOf", args: [owner] });
+  let rawBalance: unknown;
+  try {
+    rawBalance = await provider.request({ method: "eth_call", params: [{ from: owner, to: token, data }, "latest"] });
+  } catch (error) {
+    throw mapProviderError(error, "ASSET_UNSUPPORTED", "The token balance could not be read.");
+  }
+  if (typeof rawBalance !== "string" || !/^0x[0-9a-fA-F]+$/.test(rawBalance)) {
+    throw new EscrowClientError("ASSET_UNSUPPORTED", "The token returned an invalid balance response.");
+  }
+  let balance: bigint;
+  try {
+    balance = decodeFunctionResult({ abi: erc20ApprovalAbi, functionName: "balanceOf", data: rawBalance as `0x${string}` });
+  } catch {
+    throw new EscrowClientError("ASSET_UNSUPPORTED", "The token returned an invalid balance response.");
+  }
+  if (balance >= amount) return;
+  const decimals = funding.token.decimals ?? 0;
+  const symbol = funding.token.symbol?.trim() || "selected tokens";
+  throw new EscrowClientError(
+    "INSUFFICIENT_BALANCE",
+    `Your wallet has ${formatUnits(balance, decimals)} ${symbol}, but this escrow requires ${formatUnits(amount, decimals)} ${symbol}. Add the tokens to this wallet before funding.`
+  );
 }
 
 async function readAllowance(

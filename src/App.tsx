@@ -54,6 +54,7 @@ import {
   updateMyProfile,
   type MarketplaceSnapshot,
   type ModerationDecision,
+  PersistenceError,
   type PublicWalletProfile,
   type TokenRecord
 } from "./persistence/supabase";
@@ -75,7 +76,8 @@ const emptyDraft: RequestDraft = {
   providerPreference: "Chirpy",
   milestones: "Delivery",
   support: "",
-  criteria: ""
+  criteria: "",
+  fundOnApplicantAcceptance: true
 };
 const categories: Array<{ value: ServiceCategory; label: string }> = [
   { value: "Software Engineering", label: "Software engineering" },
@@ -931,13 +933,54 @@ export default function App() {
 
   async function submitEscrowTransaction(
     order: MarketplaceOrder,
-    action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>
+    action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>,
+    observeCreation = false
   ) {
     await act(async () => {
-      const { client, ref } = escrowBoundary(order);
-      const result = await action(client, ref);
-      if (result.txHash) setEscrowTxHashes((current) => ({ ...current, [order.id]: result.txHash! }));
+      await executeEscrowTransaction(order, action, observeCreation);
     });
+  }
+
+  async function recordConfirmedEscrow(orderId: string, txHash: string) {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      try {
+        return await recordEscrowObservation(orderId, txHash);
+      } catch (caught) {
+        const pending = caught instanceof PersistenceError
+          && ["ESCROW_CONFIRMATIONS_PENDING", "ESCROW_RECEIPT_NOT_FOUND"].includes(caught.serverCode ?? "");
+        if (!pending || attempt === 59) throw caught;
+        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
+      }
+    }
+  }
+
+  async function executeEscrowTransaction(
+    order: MarketplaceOrder,
+    action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>,
+    observeCreation = false
+  ) {
+    const { client, ref } = escrowBoundary(order);
+    const result = await action(client, ref);
+    if (!result.txHash) return;
+    setEscrowTxHashes((current) => ({ ...current, [order.id]: result.txHash! }));
+    if (observeCreation) await recordConfirmedEscrow(order.id, result.txHash);
+  }
+
+  async function acceptApplicantAndFund(order: MarketplaceOrder, proposalId: string) {
+    await act(async () => {
+      const accepted = await acceptProposal(order.id, proposalId);
+      if (accepted.fundOnApplicantAcceptance === false) return;
+      await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
+        amountBaseUnits: accepted.budgetBaseUnits!,
+        token: {
+          chainId: accepted.tokenRecord!.chain_id as SupportedChainId,
+          contractAddress: accepted.tokenRecord!.checksum_address as `0x${string}`,
+          symbol: accepted.tokenRecord!.symbol ?? undefined,
+          decimals: accepted.tokenRecord!.decimals,
+          explorerUrl: accepted.tokenRecord!.explorer_url
+        }
+      }), true);
+    }, order.fundOnApplicantAcceptance === false ? "Applicant accepted." : "Applicant accepted and escrow funded.");
   }
 
   function escrowControls(order: MarketplaceOrder) {
@@ -1006,7 +1049,7 @@ export default function App() {
           <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
             amountBaseUnits: order.budgetBaseUnits!,
             token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
-          }))}>Create and fund ERC20 escrow</button>
+          }), true)}>Create and fund escrow</button>
         ) : null}
         {state === "Funded" && isProvider(order) ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptBounty(ref))}>Accept committed bounty terms</button> : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
@@ -1055,7 +1098,7 @@ export default function App() {
         {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
         {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
         {hasSettlementProposal ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. {settlementProposalActive ? <>Only the counterparty can accept it before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p> : null}
-        {escrowTxHashes[order.id] ? <p className="form-hint">Submitted: <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">{short(escrowTxHashes[order.id])} <ExternalLink size={13} /></a>. Refresh canonical state after confirmation.</p> : null}
+        {escrowTxHashes[order.id] ? <p className="escrow-transaction-link">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}
       </section>
     );
   }
@@ -1189,7 +1232,7 @@ export default function App() {
                     <p>{proposal.note}</p>
                     <span>Application for {proposal.proposedBudget} {order.token}</span>
                   </div>
-                  {isBuyer(order) ? <button onClick={() => void act(() => acceptProposal(order.id, proposal.id))}>Accept applicant</button> : null}
+                  {isBuyer(order) ? <button onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
                 </div>
               ))
             ) : (
@@ -1252,30 +1295,11 @@ export default function App() {
 
         {escrowControls(order)}
 
-        {isBuyer(order) && !order.escrowObservation ? (
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const txHash = String(new FormData(event.currentTarget).get("txHash") ?? "");
-              void act(() => recordEscrowObservation(order.id, txHash));
-            }}
-          >
-            <label>
-              Escrow transaction hash
-              <input name="txHash" value={escrowTxHashes[order.id] ?? ""} onChange={(event) => setEscrowTxHashes((current) => ({ ...current, [order.id]: event.target.value }))} pattern="0x[0-9a-fA-F]{64}" required />
-            </label>
-            <button>Verify escrow observation</button>
-            <p className="form-hint">
-              The API validates required confirmations, the receipt, and canonical create/fund logs before persistence.
-            </p>
-          </form>
-        ) : null}
-
         {order.escrowObservation ? (
           <>
             <div className="support-note">
               <ShieldCheck size={18} />
-              <span>Verified escrow observation · {order.escrowObservation.onchain_state ?? order.escrowObservation.status} · {short(order.escrowObservation.transaction_hash)}</span>
+              <span>Escrow verified · {order.escrowObservation.onchain_state ?? order.escrowObservation.status} · <a href={`${chains[order.tokenRecord!.chain_id as SupportedChainId].blockExplorer}/tx/${order.escrowObservation.transaction_hash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a></span>
             </div>
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {new Date(order.escrowObservation.review_deadline).toLocaleString()}.</p> : null}
@@ -1606,6 +1630,10 @@ export default function App() {
                   </fieldset>
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
+                  <label className="funding-choice">
+                    <input type="checkbox" checked={draft.fundOnApplicantAcceptance !== false} onChange={(event) => setDraft({ ...draft, fundOnApplicantAcceptance: event.target.checked })} />
+                    <span><strong>Fund escrow when I accept an applicant</strong><small>Recommended. Your wallet will check its token balance, request approval if needed, and create the funded escrow after you choose a provider. No tokens move when this form is published.</small></span>
+                  </label>
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
