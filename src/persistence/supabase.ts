@@ -181,6 +181,7 @@ export type PublicWalletProfile = {
   visibility_source?: "owner" | "moderation" | null;
   profile_updated_at: string;
   ens_name?: string | null;
+  ens_avatar_url?: string | null;
   work_types?: string[];
   categories?: string[];
   custom_specialty?: string | null;

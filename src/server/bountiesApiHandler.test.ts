@@ -4,6 +4,7 @@ import { Interface, keccak256, toUtf8Bytes } from "ethers";
 const {
   contractGetBountyMock,
   contractGetMilestoneMock,
+  providerGetAvatarMock,
   providerGetNetworkMock,
   providerLookupAddressMock,
   providerGetReceiptMock,
@@ -12,6 +13,7 @@ const {
 } = vi.hoisted(() => ({
   contractGetBountyMock: vi.fn(),
   contractGetMilestoneMock: vi.fn(),
+  providerGetAvatarMock: vi.fn(),
   providerGetNetworkMock: vi.fn(),
   providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
@@ -24,6 +26,7 @@ vi.mock("ethers", async (importOriginal) => {
   return {
     ...actual,
     JsonRpcProvider: class {
+      getAvatar = providerGetAvatarMock;
       getNetwork = providerGetNetworkMock;
       lookupAddress = providerLookupAddressMock;
       getTransactionReceipt = providerGetReceiptMock;
@@ -263,6 +266,7 @@ describe("public profile discovery", () => {
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
     vi.stubEnv("CHAIN_1_RPC_URL", "");
     providerGetNetworkMock.mockReset();
+    providerGetAvatarMock.mockReset();
     providerLookupAddressMock.mockReset();
     rpcMock.mockReset();
   });
@@ -399,6 +403,7 @@ describe("public profile discovery", () => {
     vi.stubEnv("CHAIN_1_RPC_URL", "https://mainnet-rpc.example.test");
     providerGetNetworkMock.mockResolvedValue({ chainId: 1n });
     providerLookupAddressMock.mockResolvedValue("testparticipant.eth");
+    providerGetAvatarMock.mockResolvedValue("https://images.example.test/testparticipant.png");
     rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
       ? { data: [session], error: null }
       : name === "app_browse_public_wallet_profiles"
@@ -413,7 +418,11 @@ describe("public profile discovery", () => {
     const firstResponse = await directoryRequest();
     expect(firstResponse.status).toBe(200);
     await expect(firstResponse.json()).resolves.toMatchObject({
-      results: [{ display_name: "Test participant", ens_name: "testparticipant.eth" }]
+      results: [{
+        display_name: "Test participant",
+        ens_name: "testparticipant.eth",
+        ens_avatar_url: "https://images.example.test/testparticipant.png"
+      }]
     });
 
     const secondResponse = await directoryRequest();
@@ -423,6 +432,30 @@ describe("public profile discovery", () => {
     });
     expect(providerLookupAddressMock).toHaveBeenCalledTimes(1);
     expect(providerLookupAddressMock).toHaveBeenCalledWith(session.wallet_address);
+    expect(providerGetAvatarMock).toHaveBeenCalledTimes(1);
+    expect(providerGetAvatarMock).toHaveBeenCalledWith("testparticipant.eth");
+  });
+
+  it("rejects unsafe ENS avatar schemes", async () => {
+    vi.stubEnv("CHAIN_1_RPC_URL", "https://mainnet-rpc.example.test");
+    providerGetNetworkMock.mockResolvedValue({ chainId: 1n });
+    providerLookupAddressMock.mockResolvedValue("unsafe-avatar.eth");
+    providerGetAvatarMock.mockResolvedValue("javascript:alert(1)");
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : name === "app_browse_public_wallet_profiles"
+        ? { data: [{ account_id: "10000000-0000-4000-8000-000000000099", wallet_address: "0x9999999999999999999999999999999999999999", display_name: "Unsafe avatar" }], error: null }
+        : { data: null, error: null }));
+
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/directory",
+      { headers: { cookie: "bounties_session=opaque-session" } }
+    ), "profiles/directory");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      results: [{ ens_name: "unsafe-avatar.eth", ens_avatar_url: null }]
+    });
   });
 });
 

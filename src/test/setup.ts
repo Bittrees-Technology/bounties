@@ -212,6 +212,7 @@ beforeEach(() => {
         visibility_source: profileVisibility === "hidden" ? "owner" : null,
         profile_updated_at: new Date().toISOString(),
         ens_name: "testparticipant.eth",
+        ens_avatar_url: "https://images.example.test/testparticipant.png",
         member_since: new Date().toISOString(),
         roles: ["buyer", "provider"],
         activity_summary: { capital_bounties: 1, labor_bounties: 1 },

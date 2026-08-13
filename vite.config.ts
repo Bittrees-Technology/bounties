@@ -10,7 +10,7 @@ const securityHeaders = {
     "base-uri 'self'",
     "object-src 'none'",
     "frame-ancestors 'none'",
-    "img-src 'self' data:",
+    "img-src 'self' data: https:",
     "font-src 'self' https://fonts.gstatic.com",
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
     "script-src 'self'",

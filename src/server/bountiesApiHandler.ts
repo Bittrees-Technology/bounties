@@ -102,8 +102,9 @@ const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const jsonBodyLimitBytes = 256 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
 const profileSearchFields = new Set(["all", "identity", "bio", "specialty"]);
-const ensNameCache = new Map<string, { name: string | null; expiresAt: number }>();
-const ensNameLookups = new Map<string, Promise<string | null>>();
+type EnsProfileIdentity = { name: string | null; avatarUrl: string | null };
+const ensProfileCache = new Map<string, { identity: EnsProfileIdentity; expiresAt: number }>();
+const ensProfileLookups = new Map<string, Promise<EnsProfileIdentity>>();
 const ensNameCacheLimit = 512;
 const ensNameCacheTtlMs = 30 * 60 * 1_000;
 const ensNameMissCacheTtlMs = 5 * 60 * 1_000;
@@ -397,43 +398,70 @@ function ethereumMainnetProvider(): JsonRpcProvider | null {
   return provider;
 }
 
-async function reverseEnsName(walletAddress: string): Promise<string | null> {
+function safeEnsAvatarUrl(value: unknown): string | null {
+  if (typeof value !== "string" || !value) return null;
+  if (value.length <= 350_000 && /^data:image\/(?:png|jpeg|gif|webp|svg\+xml);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+  if (value.length > 2_048) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" || url.username || url.password) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function normalizedEnsName(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try {
+    const name = ensNormalize(value);
+    return name.endsWith(".eth") ? name : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveEnsProfile(walletAddress: string, providedName?: unknown): Promise<EnsProfileIdentity> {
+  const knownName = normalizedEnsName(providedName);
   const provider = ethereumMainnetProvider();
-  if (!provider) return null;
+  if (!provider) return { name: knownName, avatarUrl: null };
   let normalizedAddress: string;
   try {
     normalizedAddress = getAddress(walletAddress);
   } catch {
-    return null;
+    return { name: knownName, avatarUrl: null };
   }
-  const cacheKey = normalizedAddress.toLowerCase();
-  const cached = ensNameCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.name;
-  if (cached) ensNameCache.delete(cacheKey);
-  const pending = ensNameLookups.get(cacheKey);
+  const cacheKey = `${normalizedAddress.toLowerCase()}|${knownName ?? ""}`;
+  const cached = ensProfileCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.identity;
+  if (cached) ensProfileCache.delete(cacheKey);
+  const pending = ensProfileLookups.get(cacheKey);
   if (pending) return pending;
 
   const lookup = (async () => {
     try {
       const network = await withTimeout(provider.getNetwork(), "ENS_RESOLUTION_TIMEOUT", 5_000);
-      if (Number(network.chainId) !== 1) return null;
-      const name = await withTimeout(provider.lookupAddress(normalizedAddress), "ENS_RESOLUTION_TIMEOUT", 5_000);
-      const resolvedName = name?.toLowerCase().endsWith(".eth") ? name : null;
-      if (ensNameCache.size >= ensNameCacheLimit) ensNameCache.delete(ensNameCache.keys().next().value!);
-      ensNameCache.set(cacheKey, {
-        name: resolvedName,
+      if (Number(network.chainId) !== 1) return { name: knownName, avatarUrl: null };
+      const resolvedName = knownName ?? normalizedEnsName(await withTimeout(provider.lookupAddress(normalizedAddress), "ENS_RESOLUTION_TIMEOUT", 5_000));
+      const avatarUrl = resolvedName
+        ? safeEnsAvatarUrl(await withTimeout(provider.getAvatar(resolvedName), "ENS_RESOLUTION_TIMEOUT", 5_000).catch(() => null))
+        : null;
+      const identity = { name: resolvedName, avatarUrl };
+      if (ensProfileCache.size >= ensNameCacheLimit) ensProfileCache.delete(ensProfileCache.keys().next().value!);
+      ensProfileCache.set(cacheKey, {
+        identity,
         expiresAt: Date.now() + (resolvedName ? ensNameCacheTtlMs : ensNameMissCacheTtlMs)
       });
-      return resolvedName;
+      return identity;
     } catch {
-      return null;
+      return { name: knownName, avatarUrl: null };
     }
   })();
-  ensNameLookups.set(cacheKey, lookup);
+  ensProfileLookups.set(cacheKey, lookup);
   try {
     return await lookup;
   } finally {
-    ensNameLookups.delete(cacheKey);
+    ensProfileLookups.delete(cacheKey);
   }
 }
 
@@ -455,8 +483,8 @@ async function resolveEnsAddress(name: string): Promise<string | null> {
 
 async function enrichPublicProfile(profile: PublicProfileRecord | null): Promise<PublicProfileRecord | null> {
   if (!profile?.wallet_address) return profile;
-  if (typeof profile.ens_name === "string" && profile.ens_name.toLowerCase().endsWith(".eth")) return profile;
-  return { ...profile, ens_name: await reverseEnsName(profile.wallet_address) };
+  const identity = await resolveEnsProfile(profile.wallet_address, profile.ens_name);
+  return { ...profile, ens_name: identity.name, ens_avatar_url: identity.avatarUrl };
 }
 
 async function enrichPublicProfiles(profiles: PublicProfileRecord[]): Promise<PublicProfileRecord[]> {
@@ -1264,7 +1292,7 @@ async function handle(request: Request, action: string): Promise<Response> {
   }
 
   if (action === "profiles/me" && method === "POST") {
-    const data = await callRpc("app_update_public_profile", {
+    const data = await callRpc<PublicProfileRecord>("app_update_public_profile", {
       p_actor_id: session.account_id,
       p_display_name: optionalString(body, "displayName"),
       p_profile_bio: optionalString(body, "profileBio"),
@@ -1273,15 +1301,15 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_categories: optionalStringArray(body, "categories"),
       p_custom_specialty: optionalString(body, "customSpecialty")
     });
-    return Response.json(data, { headers });
+    return Response.json(await enrichPublicProfile(data), { headers });
   }
 
   if (action === "profiles/visibility" && method === "POST") {
-    const data = await callRpc("app_set_profile_visibility", {
+    const data = await callRpc<PublicProfileRecord>("app_set_profile_visibility", {
       p_actor_id: session.account_id,
       p_visible: requiredBoolean(body, "visible")
     });
-    return Response.json(data, { headers });
+    return Response.json(await enrichPublicProfile(data), { headers });
   }
 
   if (action === "tokens/inspect" && method === "POST") {
