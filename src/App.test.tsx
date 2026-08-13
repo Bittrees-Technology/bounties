@@ -542,7 +542,12 @@ describe("App", () => {
     expect(within(profileCard).queryByText(/deactivate public profile/i)).not.toBeInTheDocument();
     await user.click(editControl);
     expect(within(profileCard).queryByRole("button", { name: /^edit profile$/i })).not.toBeInTheDocument();
-    expect(within(profileCard).getByRole("button", { name: /save public profile/i })).toBeInTheDocument();
+    const saveControl = within(profileCard).getByRole("button", { name: /save public profile/i });
+    expect(saveControl).toBeInTheDocument();
+    expect(saveControl).not.toBe(editControl);
+    expect(saveControl).toHaveAttribute("type", "button");
+    expect(saveControl).not.toHaveAttribute("form");
+    expect(vi.mocked(fetch).mock.calls.filter(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST")).toHaveLength(0);
     expect(within(profileCard).queryByLabelText(/profile work preferences/i)).not.toBeInTheDocument();
     expect(within(profileCard).getByText(/deactivate public profile/i).closest(".profile-visibility-control")).toBeInTheDocument();
 

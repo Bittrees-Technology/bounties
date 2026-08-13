@@ -365,6 +365,7 @@ export default function App() {
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
   const profileCardRef = useRef<HTMLElement | null>(null);
+  const publicProfileFormRef = useRef<HTMLFormElement | null>(null);
   const [otherWorkTypesEnabled, setOtherWorkTypesEnabled] = useState(false);
   const [otherCategoriesEnabled, setOtherCategoriesEnabled] = useState(false);
   const [customProfileWorkTypes, setCustomProfileWorkTypes] = useState<string[]>([]);
@@ -1827,14 +1828,14 @@ export default function App() {
                         </div>
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           profileEditorOpen ? (
-                            <button className="profile-editor-action" type="submit" form="public-profile-form" disabled={loading}>Save public profile</button>
+                            <button key="save-public-profile" className="profile-editor-action" type="button" disabled={loading} onClick={() => publicProfileFormRef.current?.requestSubmit()}>Save public profile</button>
                           ) : (
-                            <button className="profile-editor-action" type="button" onClick={() => setProfileEditorOpen(true)}>Edit profile</button>
+                            <button key="edit-public-profile" className="profile-editor-action" type="button" onClick={() => setProfileEditorOpen(true)}>Edit profile</button>
                           )
                         ) : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           profileEditorOpen ? <div className="profile-editor">
-                            <form id="public-profile-form" key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
+                            <form ref={publicProfileFormRef} id="public-profile-form" key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
                               event.preventDefault();
                               const form = new FormData(event.currentTarget);
                               void act(async () => {
