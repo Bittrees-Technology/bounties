@@ -1109,7 +1109,6 @@ export default function App() {
     ];
     const capitalRating = profile.rating_summaries.capital_provider;
     const laborRating = profile.rating_summaries.labor_provider;
-    const totalActivity = profile.activity_summary.capital_bounties + profile.activity_summary.labor_bounties;
     return (
       <article className="profile-directory-card" key={profile.account_id}>
         <header className="profile-directory-card-header">
@@ -1133,10 +1132,9 @@ export default function App() {
         {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
         {specialties.length ? <div className="profile-directory-specialties" aria-label={`${identity} specialties`}>{specialties.map((specialty, index) => <span key={`${specialty}-${index}`}>{specialty}</span>)}</div> : null}
         <div className="profile-directory-reputation">
-          <div><WalletCards size={16} /><span>As a capital provider</span><strong>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 · ${capitalRating.review_count} payment-experience review${capitalRating.review_count === 1 ? "" : "s"}` : "No payment-experience ratings"}</strong><small>{profile.activity_summary.capital_bounties} bount{profile.activity_summary.capital_bounties === 1 ? "y" : "ies"} posted</small></div>
-          <div><UsersRound size={16} /><span>As a labor provider</span><strong>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 · ${laborRating.review_count} service review${laborRating.review_count === 1 ? "" : "s"}` : "No service ratings"}</strong><small>{profile.activity_summary.labor_bounties} bount{profile.activity_summary.labor_bounties === 1 ? "y" : "ies"} worked</small></div>
+          <div><WalletCards size={16} /><strong>Capital provider</strong><span>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 average · ${capitalRating.review_count} rating${capitalRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.capital_bounties} bount{profile.activity_summary.capital_bounties === 1 ? "y" : "ies"} posted</span></div>
+          <div><UsersRound size={16} /><strong>Labor provider</strong><span>{laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} / 5 average · ${laborRating.review_count} rating${laborRating.review_count === 1 ? "" : "s"}` : "Not yet rated"} · {profile.activity_summary.labor_bounties} bount{profile.activity_summary.labor_bounties === 1 ? "y" : "ies"} worked</span></div>
         </div>
-        <p className="profile-directory-activity-total">{totalActivity} total bount{totalActivity === 1 ? "y" : "ies"} posted or worked</p>
       </article>
     );
   }
