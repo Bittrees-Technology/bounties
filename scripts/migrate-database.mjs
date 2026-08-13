@@ -1,15 +1,40 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import { URL } from "node:url";
 import postgres from "postgres";
 
 const databaseUrl = process.env.POSTGRES_URL_NON_POOLING?.trim() || process.env.POSTGRES_URL?.trim();
 const isVercelCloudBuild = process.env.VERCEL === "1" && process.env.CI === "true";
 const isVercelProductionBuild = isVercelCloudBuild && process.env.VERCEL_ENV === "production";
+const requiredProductionRpcVariables = [
+  "CHAIN_1_RPC_URL",
+  "CHAIN_11155111_RPC_URL",
+  "CHAIN_8453_RPC_URL",
+  "CHAIN_84532_RPC_URL",
+  "CHAIN_4663_RPC_URL",
+  "CHAIN_46630_RPC_URL"
+];
 
 if (isVercelCloudBuild && !isVercelProductionBuild) {
   process.stdout.write("Database migration skipped: preview and development builds are read-only.\n");
   process.exit(0);
+}
+
+if (isVercelProductionBuild) {
+  const invalidRpcVariables = requiredProductionRpcVariables.filter((name) => {
+    const value = process.env[name]?.trim();
+    if (!value) return true;
+    try {
+      const parsed = new URL(value);
+      return (parsed.protocol !== "https:" && parsed.protocol !== "http:") || Boolean(parsed.hash);
+    } catch {
+      return true;
+    }
+  });
+  if (invalidRpcVariables.length) {
+    throw new Error(`Production RPC configuration is unavailable: ${invalidRpcVariables.join(", ")}`);
+  }
 }
 
 if (!databaseUrl) {

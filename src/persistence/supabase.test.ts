@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { browsePublicProfiles, createBounty, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { browsePublicProfiles, createBounty, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -23,6 +23,14 @@ describe("Supabase marketplace mapping", () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "Proxy misconfigured." }, { status: 500 }));
 
     await expect(loadMarketplace()).rejects.toThrow("Bounties is temporarily unavailable. Please try again shortly.");
+  });
+
+  it("scopes token inspection outages to the selected network instead of the whole site", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "SERVICE_UNAVAILABLE" }, { status: 503 }));
+
+    await expect(inspectToken(84532, token.contract_address)).rejects.toThrow(
+      "Token inspection is temporarily unavailable on the selected network."
+    );
   });
 
   it("explains why a moderator-hidden profile cannot be self-reactivated", async () => {

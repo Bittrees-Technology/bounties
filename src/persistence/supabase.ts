@@ -36,6 +36,9 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "TOKEN_INSPECTION_CHAIN_MISMATCH") {
     return "The configured RPC endpoint does not match the selected network. Operations must correct it before this token can be added.";
   }
+  if (serverCode === "TOKEN_INSPECTION_SERVICE_UNAVAILABLE") {
+    return "Token inspection is temporarily unavailable on the selected network. Try again shortly or choose another network.";
+  }
   if (serverCode === "TOKEN_BYTECODE_MISSING") return "No smart contract was found at that address on the selected network.";
   if (serverCode === "TOKEN_DECIMALS_UNAVAILABLE") return "That contract does not expose the ERC20 decimals information required by Bounties.";
   if (serverCode === "TOKEN_TOTAL_SUPPLY_UNAVAILABLE") return "That contract does not expose the ERC20 total supply function required for token inspection.";
@@ -291,7 +294,16 @@ export async function createBounty(draft: RequestDraft, token: TokenRecord): Pro
   return mapBounty(row);
 }
 export const selectRole = (role: Role) => request("/roles", { method: "POST", body: JSON.stringify({ role }) });
-export const inspectToken = (chainId: number, contractAddress: string) => request<TokenRecord>("/tokens/inspect", { method: "POST", body: JSON.stringify({ chainId, contractAddress }) });
+export const inspectToken = async (chainId: number, contractAddress: string): Promise<TokenRecord> => {
+  try {
+    return await request<TokenRecord>("/tokens/inspect", { method: "POST", body: JSON.stringify({ chainId, contractAddress }) });
+  } catch (error) {
+    if (error instanceof PersistenceError && error.message === marketplaceErrorMessage(503)) {
+      throw new PersistenceError(marketplaceErrorMessage(503, "TOKEN_INSPECTION_SERVICE_UNAVAILABLE"));
+    }
+    throw error;
+  }
+};
 export const createProposal = (order: MarketplaceOrder, note: string) => request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), proposedMilestones: [] }) });
 export const acceptProposal = (bountyId: string, proposalId: string) => request("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) });
 export async function submitEvidence(milestoneId: string, uri: string, contentHash: string) {
