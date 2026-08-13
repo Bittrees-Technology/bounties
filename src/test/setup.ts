@@ -131,6 +131,62 @@ export function configureMockMilestoneEscrow(
   }];
 }
 
+export function configureMockProfileRoleBounties() {
+  const token = tokens.find((candidate) => candidate.symbol === "USDC")!;
+  const otherAccount = "00000000-0000-4000-8000-000000000444";
+  const baseRow = (id: string, creatorId: string, title: string) => ({
+    id,
+    creator_id: creatorId,
+    title,
+    description: `${title} description`,
+    scope_source: { project: title, buyer: "Marketplace participant", deliveryDeadline: "2099-12-31", criteria: [] },
+    scope_hash: `0x${"11".repeat(32)}`,
+    chain_id: token.chain_id,
+    token_id: token.id,
+    token_decimals: token.decimals,
+    budget_base_units: "250000000",
+    status: "accepted",
+    escrow_schedule_status: "structured",
+    created_at: new Date().toISOString(),
+    token,
+    milestones: [],
+    reviews: []
+  });
+  const providerRow = (id: string, title: string, onchainState: "ProviderAccepted" | "Released") => {
+    const proposalId = id.replace(/.$/, "9");
+    return {
+      ...baseRow(id, otherAccount, title),
+      accepted_proposal_id: proposalId,
+      proposals: [{
+        id: proposalId,
+        provider_id: "00000000-0000-4000-8000-000000000111",
+        provider_wallet_address: testWallet,
+        proposal_hash: `0x${"44".repeat(32)}`,
+        note: "Accepted delivery plan",
+        proposed_total_base_units: "250000000",
+        status: "accepted"
+      }],
+      escrow: {
+        status: "confirmed",
+        transaction_hash: `0x${"77".repeat(32)}`,
+        block_hash: `0x${"88".repeat(32)}`,
+        contract_address: "0x2222222222222222222222222222222222222222",
+        interface_version: "escrow-adapter.v1",
+        onchain_bounty_id: onchainState === "Released" ? "11" : "10",
+        received_base_units: "250000000",
+        requested_base_units: "250000000",
+        remaining_base_units: onchainState === "Released" ? "0" : "250000000",
+        onchain_state: onchainState
+      }
+    };
+  };
+  bounties = [
+    { ...baseRow("00000000-0000-4000-8000-000000000610", "00000000-0000-4000-8000-000000000111", "Capital research bounty"), proposals: [] },
+    providerRow("00000000-0000-4000-8000-000000000620", "Active audit bounty", "ProviderAccepted"),
+    providerRow("00000000-0000-4000-8000-000000000630", "Completed delivery bounty", "Released")
+  ];
+}
+
 export function configureMockSettlementProposal(
   proposer: "requester" | "provider",
   expiry: string

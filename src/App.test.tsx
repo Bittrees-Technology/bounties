@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockStaff } from "./test/setup";
+import { configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -451,7 +451,7 @@ describe("App", () => {
     expect(categoryLink).toHaveAttribute("href", "/profiles?category=Smart+Contracts+%26+Web3");
     expect(within(ownDirectoryCard).getByText(/^capital$/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/^labor$/i)).toBeInTheDocument();
-    expect(within(ownDirectoryCard).getByText(/5\.0 \(3\) · 3 worked/i)).toBeInTheDocument();
+    expect(within(ownDirectoryCard).getByText(/5\.0 \(3\) · 3 completed/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).queryByText(/total bounties posted or worked/i)).not.toBeInTheDocument();
     const otherProfileButton = screen.getByRole("button", { name: /view capital guide profile/i });
     const otherDirectoryCard = otherProfileButton.closest(".profile-directory-card") as HTMLElement;
@@ -627,6 +627,30 @@ describe("App", () => {
     const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
     expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 
+  });
+
+  it("lists role-specific bounties on a profile and opens the selected marketplace bounty", async () => {
+    configureMockProfileRoleBounties();
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^my profile$/i }));
+
+    const capitalCard = (await screen.findByRole("heading", { name: /as a capital provider/i })).closest(".profile-role-card") as HTMLElement;
+    const laborCard = screen.getByRole("heading", { name: /as a labor provider/i }).closest(".profile-role-card") as HTMLElement;
+    expect(within(capitalCard).getByText(/0 payment-experience reviews · 1 bounty posted/i)).toBeInTheDocument();
+    expect(within(capitalCard).getByRole("link", { name: /capital research bounty/i })).toHaveAttribute(
+      "href",
+      "/marketplace#bounty-00000000-0000-4000-8000-000000000610"
+    );
+    expect(within(laborCard).getByText(/0 service reviews · 1 bounty completed/i)).toBeInTheDocument();
+    expect(within(laborCard).getByRole("link", { name: /active audit bounty/i })).toHaveTextContent(/provider accepted onchain/i);
+    expect(within(laborCard).getByRole("link", { name: /completed delivery bounty/i })).toHaveTextContent(/paid onchain/i);
+
+    await user.click(within(laborCard).getByRole("link", { name: /active audit bounty/i }));
+    expect(window.location.pathname).toBe("/marketplace");
+    expect(window.location.hash).toBe("#bounty-00000000-0000-4000-8000-000000000620");
+    expect(await screen.findByRole("heading", { name: /active audit bounty/i })).toBeInTheDocument();
   });
 
   it("preserves a legacy specialty as a custom category on the next profile save", async () => {

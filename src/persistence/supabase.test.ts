@@ -85,6 +85,7 @@ describe("Supabase marketplace mapping", () => {
     };
 
     const order = mapBounty(row);
+    expect(order.persistenceStatus).toBe("accepted");
     expect(order.providerId).toBe("00000000-0000-4000-8000-000000000023");
     expect(order.providerAddress).toBe("0x3333333333333333333333333333333333333333");
     expect(order.proposalHash).toMatch(/^0x[0-9a-f]{64}$/);

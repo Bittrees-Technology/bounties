@@ -3,6 +3,7 @@ import {
   BadgeCheck,
   Bell,
   BriefcaseBusiness,
+  ChevronRight,
   CheckCircle2,
   ClipboardList,
   FileCheck2,
@@ -484,6 +485,19 @@ export default function App() {
         laborBounties: 0
       }
     : null;
+  const selectedProfileAccountId = publicProfile?.account_id
+    ?? (selectedProfileAddress && wallet?.toLowerCase() === selectedProfileAddress.toLowerCase() ? session?.account.id : undefined);
+  const profileCapitalOrders = (session?.orders ?? []).filter((order) => order.persistenceStatus !== "draft"
+    && order.moderationStatus !== "hidden"
+    && Boolean(selectedProfileAccountId)
+    && order.creatorId === selectedProfileAccountId);
+  const profileLaborOrders = (session?.orders ?? []).filter((order) => order.persistenceStatus !== "draft"
+    && order.moderationStatus !== "hidden"
+    && Boolean(order.acceptedProposalId)
+    && ((selectedProfileAccountId && order.providerId === selectedProfileAccountId)
+      || (selectedProfileAddress && order.providerAddress?.toLowerCase() === selectedProfileAddress.toLowerCase())));
+  const profileCompletedLaborOrders = profileLaborOrders.filter((order) => order.escrowObservation?.onchain_state === "Released"
+    || order.escrowObservation?.onchain_state === "Settled");
 
   const scheduleAmountsValid = Boolean(selectedToken) && milestoneSchedule.every((milestone) => {
     try { return BigInt(toBase(milestone.amount, selectedToken!.decimals)) > 0n; } catch { return false; }
@@ -547,6 +561,28 @@ export default function App() {
       })
       .catch(() => setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below."));
   }
+
+  function openBountyFromProfile(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const target = `${pageRoutes.marketplace}#bounty-${bountyId}`;
+    if (`${window.location.pathname}${window.location.hash}` !== target) window.history.pushState({}, "", target);
+    setProfileEditorOpen(false);
+    setNotice(null);
+    setActivePage("marketplace");
+  }
+
+  useEffect(() => {
+    if (activePage !== "marketplace" || !session?.orders.length || !window.location.hash.startsWith("#bounty-")) return;
+    const targetId = window.location.hash.slice(1);
+    if (!/^bounty-[0-9a-f-]{36}$/i.test(targetId)) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(targetId);
+      target?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activePage, session?.orders]);
 
   const runProfileSearch = useCallback(async (selection: ProfileSearchSelection) => {
     setProfileSearchQuery(selection.query);
@@ -1435,7 +1471,7 @@ export default function App() {
     const hiddenWorkTypeCount = Math.max(0, workTypes.length - visibleWorkTypes.length);
     const hiddenCategoryCount = Math.max(0, profileCategories.length - visibleCategories.length);
     const capitalSummary = `${capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} (${capitalRating.review_count})` : "Unrated"} · ${profile.activity_summary.capital_bounties} posted`;
-    const laborSummary = `${laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} (${laborRating.review_count})` : "Unrated"} · ${profile.activity_summary.labor_bounties} worked`;
+    const laborSummary = `${laborRating.review_count ? `${laborRating.average_rating?.toFixed(1)} (${laborRating.review_count})` : "Unrated"} · ${profile.activity_summary.labor_bounties} completed`;
     return (
       <article className={`profile-directory-card profile-directory-card--${profileDirectoryView}`} key={profile.account_id}>
         <header className="profile-directory-card-header">
@@ -1464,6 +1500,22 @@ export default function App() {
         </div>
         <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button>
       </article>
+    );
+  }
+
+  function profileBountyList(orders: MarketplaceOrder[], role: "capital" | "labor") {
+    const heading = role === "capital" ? "Bounties posted" : "Bounties accepted";
+    return (
+      <section className="profile-role-bounties" aria-label={heading}>
+        <strong>{heading}</strong>
+        {orders.length ? <div className="profile-role-bounty-list">{orders.map((order) => (
+          <a className="profile-role-bounty-row" href={`${pageRoutes.marketplace}#bounty-${order.id}`} onClick={(event) => openBountyFromProfile(event, order.id)} key={`${role}-${order.id}`}>
+            <span><strong>{order.title}</strong><small>{displayedOrderStatus(order)}</small></span>
+            <span className="profile-role-bounty-payment">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</span>
+            <ChevronRight size={17} aria-hidden="true" />
+          </a>
+        ))}</div> : <span className="profile-role-bounty-empty">{role === "capital" ? "No public bounties posted." : "No accepted bounties."}</span>}
+      </section>
     );
   }
 
@@ -1728,7 +1780,7 @@ export default function App() {
                     </div>
                   ) : session?.orders.length ? (
                     session.orders.map((order) => (
-                      <article id={`bounty-${order.id}`} className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
+                      <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`} key={order.id}>
                         <div className="bounty-card-header">
                           <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h4>{order.title}</h4></div>
                           <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
@@ -1953,13 +2005,15 @@ export default function App() {
                       <section className="profile-role-grid">
                         <article className="panel profile-role-card">
                           <div className="section-heading"><WalletCards /><h3>As a capital provider</h3></div>
-                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.capital_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.capitalReviews)}</strong><span>{publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length ?? 0} payment-experience review{(publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length) === 1 ? "" : "s"} · {publicProfile?.activity_summary?.capital_bounties ?? selectedProfile.capitalBounties} bounties posted</span></div>
+                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.capital_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.capitalReviews)}</strong><span>{publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length ?? 0} payment-experience review{(publicProfile?.rating_summaries.capital_provider.review_count ?? selectedProfile.capitalReviews?.length) === 1 ? "" : "s"} · {profileCapitalOrders.length} {profileCapitalOrders.length === 1 ? "bounty" : "bounties"} posted</span></div>
                           {publicProfile ? apiProfileReviewList("payment_received", "No labor provider has rated this wallet’s payment experience yet.") : profileReviewList(selectedProfile.capitalReviews, "No labor provider has rated this wallet’s payment experience yet.")}
+                          {profileBountyList(profileCapitalOrders, "capital")}
                         </article>
                         <article className="panel profile-role-card">
                           <div className="section-heading"><UsersRound /><h3>As a labor provider</h3></div>
-                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.labor_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.laborReviews)}</strong><span>{publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length ?? 0} service review{(publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length) === 1 ? "" : "s"} · {publicProfile?.activity_summary?.labor_bounties ?? selectedProfile.laborBounties} bounties worked</span></div>
+                          <div className="profile-rating"><strong>{publicProfile?.rating_summaries.labor_provider.average_rating?.toFixed(1) ?? averageRating(selectedProfile.laborReviews)}</strong><span>{publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length ?? 0} service review{(publicProfile?.rating_summaries.labor_provider.review_count ?? selectedProfile.laborReviews?.length) === 1 ? "" : "s"} · {profileCompletedLaborOrders.length} {profileCompletedLaborOrders.length === 1 ? "bounty" : "bounties"} completed</span></div>
                           {publicProfile ? apiProfileReviewList("service_received", "No capital provider has rated this wallet’s delivered work yet.") : profileReviewList(selectedProfile.laborReviews, "No capital provider has rated this wallet’s delivered work yet.")}
+                          {profileBountyList(profileLaborOrders, "labor")}
                         </article>
                       </section>
                     </>

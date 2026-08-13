@@ -1,5 +1,5 @@
 begin;
-select plan(11);
+select plan(12);
 
 insert into public.wallet_accounts (id, wallet_address, display_name, profile_moderation_status) values
   ('21000000-0000-4000-8000-000000000001','0x1111111111111111111111111111111111111111','Alice Builder','visible'),
@@ -36,13 +36,31 @@ update public.bounties
 set accepted_proposal_id='21000000-0000-4000-8000-000000000030',status='accepted'
 where id='21000000-0000-4000-8000-000000000020';
 
+insert into public.escrow_records (
+  bounty_id,chain_id,token_id,contract_address,onchain_bounty_id,
+  requested_base_units,received_base_units,status,transaction_hash,
+  block_hash,log_index,onchain_state,remaining_base_units,state_checked_at
+) values (
+  '21000000-0000-4000-8000-000000000020',84532,
+  '21000000-0000-4000-8000-000000000010',
+  '0x5555555555555555555555555555555555555555','1',
+  100,100,'confirmed','0x' || repeat('1',64),
+  '0x' || repeat('2',64),0,'ProviderAccepted',100,now()
+);
+
 select is(
   public.app_public_wallet_profile('0x2222222222222222222222222222222222222222')#>>'{activity_summary,capital_bounties}',
   '1','profile includes capital-provider activity count'
 );
 select is(
   public.app_public_wallet_profile('0x1111111111111111111111111111111111111111')#>>'{activity_summary,labor_bounties}',
-  '1','profile includes labor-provider activity count'
+  '0','accepted in-progress work is not counted as completed labor activity'
+);
+update public.escrow_records set onchain_state='Released',remaining_base_units=0
+where bounty_id='21000000-0000-4000-8000-000000000020';
+select is(
+  public.app_public_wallet_profile('0x1111111111111111111111111111111111111111')#>>'{activity_summary,labor_bounties}',
+  '1','released work is counted as completed labor activity'
 );
 select is(
   public.app_search_public_wallet_profiles('alice',12)#>>'{0,display_name}',
