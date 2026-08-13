@@ -1926,6 +1926,8 @@ textarea {
 }
 
 .classification-field {
+  align-content: start;
+  align-self: start;
   display: grid;
   gap: 10px;
   min-width: 0;
