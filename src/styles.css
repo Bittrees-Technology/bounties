@@ -1136,8 +1136,8 @@ li {
 .profile-review p { margin: 0; }
 
 .editable-profile-card { position: relative; }
-.editable-profile-card .profile-hero { padding-right: 150px; }
-.profile-editor > summary {
+.editable-profile-card .profile-hero { padding-right: 190px; }
+.profile-editor-action {
   align-items: center;
   background: #eef7f2;
   border: 1px solid #9ccfbe;
@@ -1153,10 +1153,9 @@ li {
   right: 24px;
   top: 24px;
 }
-.profile-editor > summary::-webkit-details-marker { display: none; }
-.profile-editor > summary:hover { background: #e1f1ea; }
-.profile-editor > summary:focus-visible { outline: 3px solid rgba(15, 107, 87, .3); outline-offset: 2px; }
-.profile-editor[open] form { border-top: 1px solid #dce5df; display: grid; gap: 12px; margin-top: 20px; padding-top: 20px; }
+.profile-editor-action:hover { background: #e1f1ea; }
+.profile-editor-action:focus-visible { outline: 3px solid rgba(15, 107, 87, .3); outline-offset: 2px; }
+.profile-editor form { border-top: 1px solid #dce5df; display: grid; gap: 12px; margin-top: 20px; padding-top: 20px; }
 .profile-editor form button { justify-self: start; }
 
 .profile-visibility-control {
@@ -2709,7 +2708,7 @@ textarea {
   .profile-custom-row .secondary-button,
   .profile-add-custom { width: 100%; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
-  .profile-editor > summary { right: 18px; top: 18px; }
+  .profile-editor-action { right: 18px; top: 18px; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }
   .landing-hero h1 { font-size: clamp(2.6rem, 13vw, 3.6rem); }
   .landing-actions { align-items: stretch; flex-direction: column; }
