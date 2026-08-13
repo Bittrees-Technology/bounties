@@ -317,6 +317,10 @@ describe("App", () => {
     expect(directoryPreferenceGroups).toHaveLength(2);
     expect(directoryPreferenceGroups[0]).toHaveAttribute("aria-label", "Work types");
     expect(directoryPreferenceGroups[1]).toHaveAttribute("aria-label", "Categories");
+    const workTypeLink = within(ownSpecialties).getByRole("link", { name: /^defined task$/i });
+    const categoryLink = within(ownSpecialties).getByRole("link", { name: /^smart contracts & web3$/i });
+    expect(workTypeLink).toHaveAttribute("href", "/profiles?workType=task");
+    expect(categoryLink).toHaveAttribute("href", "/profiles?category=Smart+Contracts+%26+Web3");
     expect(within(ownDirectoryCard).getByText(/^capital provider$/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/^labor provider$/i)).toBeInTheDocument();
     expect(within(ownDirectoryCard).getByText(/5\.0 \/ 5 average · 3 ratings · 3 bounties worked/i)).toBeInTheDocument();
@@ -356,6 +360,39 @@ describe("App", () => {
     expect(screen.getAllByText(/^testparticipant\.eth$/i)).toHaveLength(1);
     expect(screen.getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
     expect(screen.queryByText(/^ENS ·/i)).not.toBeInTheDocument();
+  });
+
+  it("filters the profile directory from a linked profile category", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(screen.getByRole("link", { name: /^profiles$/i }));
+    await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+
+    const ownProfileButton = await screen.findByRole("button", { name: /view test participant profile/i });
+    const ownDirectoryCard = ownProfileButton.closest(".profile-directory-card") as HTMLElement;
+    const categoryLink = within(ownDirectoryCard).getByRole("link", { name: /^smart contracts & web3$/i });
+    await user.click(categoryLink);
+
+    expect(window.location.pathname).toBe("/profiles");
+    expect(new URLSearchParams(window.location.search).get("category")).toBe("Smart Contracts & Web3");
+    expect(screen.getByLabelText(/^category$/i)).toHaveValue("Smart Contracts & Web3");
+    expect(await screen.findByText(/1 public profile/i)).toBeInTheDocument();
+    const linkedFilterCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("/api/bounties/profiles/search?category=Smart+Contracts"));
+    expect(linkedFilterCall).toBeDefined();
+  });
+
+  it("restores a shared profile-preference link after wallet connection", async () => {
+    window.history.replaceState({}, "", "/profiles?workType=audit");
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+
+    expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^work type$/i)).toHaveValue("audit");
+    expect(await screen.findByText(/1 public profile/i)).toBeInTheDocument();
+    const routeFilterCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).includes("/api/bounties/profiles/search?workType=audit"));
+    expect(routeFilterCall).toBeDefined();
   });
 
   it("loads separate participant roles on a public wallet profile and limits editing to its owner", async () => {

@@ -1189,6 +1189,7 @@ li {
   min-width: 0;
 }
 
+.profile-specialty-values a,
 .profile-specialty-values span {
   background: #e7f3ef;
   border-radius: 999px;
@@ -1199,6 +1200,10 @@ li {
   overflow-wrap: anywhere;
   padding: 6px 9px;
 }
+
+.profile-specialty-values a { text-decoration: none; }
+.profile-specialty-values a:hover { background: #d8ece5; color: #084c3f; }
+.profile-specialty-values a:focus-visible { outline: 3px solid rgba(15, 107, 87, .3); outline-offset: 2px; }
 
 .profile-report-action {
   border-top: 1px solid #dce5df;
