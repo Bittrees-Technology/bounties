@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { browsePublicProfiles, createBounty, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { browsePublicProfiles, createBounty, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, recordEscrowObservation, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -36,6 +36,24 @@ describe("Supabase marketplace mapping", () => {
   it("explains why a moderator-hidden profile cannot be self-reactivated", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "PROFILE_MODERATOR_HIDDEN" }, { status: 403 }));
     await expect(setMyProfileVisibility(true)).rejects.toThrow("hidden by a moderator");
+  });
+
+  it("explains a reverted escrow transaction instead of showing a generic request error", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "ESCROW_TX_NOT_SUCCESSFUL" }, { status: 400 }));
+
+    await expect(recordEscrowObservation(
+      "00000000-0000-4000-8000-000000000020",
+      `0x${"11".repeat(32)}`
+    )).rejects.toThrow("failed onchain, so no escrow was created or funded");
+  });
+
+  it("explains that escrow confirmations are recorded automatically", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "ESCROW_CONFIRMATIONS_PENDING" }, { status: 409 }));
+
+    await expect(recordEscrowObservation(
+      "00000000-0000-4000-8000-000000000020",
+      `0x${"22".repeat(32)}`
+    )).rejects.toThrow("record the escrow automatically");
   });
 
   it("keeps database account identity separate from the provider wallet address", () => {
