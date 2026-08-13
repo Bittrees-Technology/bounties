@@ -98,6 +98,19 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
   { value: "audit", label: "Review or audit" },
   { value: "retainer", label: "Ongoing retainer" }
 ];
+const standardWorkTypeValues = new Set<string>(scopes.map((scope) => scope.value));
+const standardCategoryValues = new Set<string>(categories.map((category) => category.value));
+const maxCustomProfileSelections = 6;
+
+function uniqueProfileSelections(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values.map((value) => value.trim()).filter((value) => {
+    const key = value.toLowerCase();
+    if (!value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
 
 const workTypeLabel = (value: string) => scopes.find((scope) => scope.value === value)?.label ?? value;
 const ethereumExplorerUrl = (walletAddress: string) => `https://etherscan.io/address/${walletAddress}`;
@@ -302,6 +315,10 @@ export default function App() {
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
+  const [otherWorkTypesEnabled, setOtherWorkTypesEnabled] = useState(false);
+  const [otherCategoriesEnabled, setOtherCategoriesEnabled] = useState(false);
+  const [customProfileWorkTypes, setCustomProfileWorkTypes] = useState<string[]>([]);
+  const [customProfileCategories, setCustomProfileCategories] = useState<string[]>([]);
   const [profileSearchQuery, setProfileSearchQuery] = useState(initialProfileSearch?.query ?? "");
   const [profileWorkTypeFilter, setProfileWorkTypeFilter] = useState(initialProfileSearch?.workType ?? "");
   const [profileCategoryFilter, setProfileCategoryFilter] = useState(initialProfileSearch?.category ?? "");
@@ -315,6 +332,19 @@ export default function App() {
   const [profileDirectoryMessage, setProfileDirectoryMessage] = useState<string | null>(null);
   const actionPending = useRef(false);
   const initialProfileSearchHydrated = useRef(false);
+
+  useEffect(() => {
+    const customWorkTypes = uniqueProfileSelections((publicProfile?.work_types ?? []).filter((value) => !standardWorkTypeValues.has(value)));
+    const legacySpecialty = publicProfile?.custom_specialty?.trim();
+    const customCategories = uniqueProfileSelections([
+      ...(publicProfile?.categories ?? []).filter((value) => !standardCategoryValues.has(value)),
+      ...(legacySpecialty ? [legacySpecialty] : [])
+    ]);
+    setCustomProfileWorkTypes(customWorkTypes);
+    setCustomProfileCategories(customCategories);
+    setOtherWorkTypesEnabled(customWorkTypes.length > 0);
+    setOtherCategoriesEnabled(customCategories.length > 0);
+  }, [publicProfile]);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -1574,10 +1604,12 @@ export default function App() {
                           <label>Work type<select value={profileWorkTypeFilter} onChange={(event) => setProfileWorkTypeFilter(event.target.value)}>
                             <option value="">Any work type</option>
                             {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
+                            {profileWorkTypeFilter && !standardWorkTypeValues.has(profileWorkTypeFilter) ? <option value={profileWorkTypeFilter}>{profileWorkTypeFilter}</option> : null}
                           </select></label>
                           <label>Category<select value={profileCategoryFilter} onChange={(event) => setProfileCategoryFilter(event.target.value)}>
                             <option value="">Any category</option>
                             {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
+                            {profileCategoryFilter && !standardCategoryValues.has(profileCategoryFilter) ? <option value={profileCategoryFilter}>{profileCategoryFilter}</option> : null}
                           </select></label>
                           <button type="submit" disabled={profileSearching}>{profileSearching ? "Searching…" : "Search profiles"}</button>
                         </form>
@@ -1613,7 +1645,7 @@ export default function App() {
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           <details className="profile-editor" onToggle={(event) => setProfileEditorOpen(event.currentTarget.open)}>
                             <summary>Edit profile</summary>
-                            <form onSubmit={(event) => {
+                            <form key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
                               event.preventDefault();
                               const form = new FormData(event.currentTarget);
                               void act(async () => {
@@ -1621,9 +1653,15 @@ export default function App() {
                                   displayName: String(form.get("displayName") ?? "") || null,
                                   profileBio: String(form.get("profileBio") ?? "") || null,
                                   profileUrl: String(form.get("profileUrl") ?? "") || null,
-                                  workTypes: form.getAll("workTypes").map(String),
-                                  categories: form.getAll("categories").map(String),
-                                  customSpecialty: String(form.get("customSpecialty") ?? "").trim() || null
+                                  workTypes: uniqueProfileSelections([
+                                    ...form.getAll("workTypes").map(String),
+                                    ...(otherWorkTypesEnabled ? customProfileWorkTypes : [])
+                                  ]),
+                                  categories: uniqueProfileSelections([
+                                    ...form.getAll("categories").map(String),
+                                    ...(otherCategoriesEnabled ? customProfileCategories : [])
+                                  ]),
+                                  customSpecialty: null
                                 });
                                 setPublicProfile(updated);
                               }, "Public profile updated.");
@@ -1631,9 +1669,46 @@ export default function App() {
                               <label>Custom profile name (optional)<input name="displayName" defaultValue={publicProfile?.display_name ?? ""} maxLength={80} /><span className="form-hint">If left blank, your primary ENS name is used when available; otherwise your wallet is shown.</span></label>
                               <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
                               <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
-                              <fieldset className="profile-preference-fieldset"><legend>Work types</legend><p className="form-hint">Choose the kinds of engagement you want visitors to find.</p><div className="profile-checkbox-grid">{scopes.map((scope) => <label key={scope.value}><input type="checkbox" name="workTypes" value={scope.value} defaultChecked={publicProfile?.work_types?.includes(scope.value)} />{scope.label}</label>)}</div></fieldset>
-                              <fieldset className="profile-preference-fieldset"><legend>Categories</legend><p className="form-hint">Choose the areas that best describe your work or hiring interests.</p><div className="profile-checkbox-grid">{categories.map((category) => <label key={category.value}><input type="checkbox" name="categories" value={category.value} defaultChecked={publicProfile?.categories?.includes(category.value)} />{category.label}</label>)}</div></fieldset>
-                              <label>Other specialty (optional)<input name="customSpecialty" defaultValue={publicProfile?.custom_specialty ?? ""} maxLength={120} placeholder="Add a specialty not covered above" /></label>
+                              <fieldset className="profile-preference-fieldset">
+                                <legend>Work types</legend>
+                                <p className="form-hint">Choose the kinds of engagement you want visitors to find.</p>
+                                <div className="profile-checkbox-grid">{scopes.map((scope) => <label key={scope.value}><input type="checkbox" name="workTypes" value={scope.value} defaultChecked={publicProfile?.work_types?.includes(scope.value)} />{scope.label}</label>)}</div>
+                                <label className="profile-other-toggle"><input type="checkbox" checked={otherWorkTypesEnabled} onChange={(event) => {
+                                  setOtherWorkTypesEnabled(event.target.checked);
+                                  setCustomProfileWorkTypes(event.target.checked ? (customProfileWorkTypes.length ? customProfileWorkTypes : [""]) : []);
+                                }} />Other (optional)</label>
+                                {otherWorkTypesEnabled ? <div className="profile-custom-list">
+                                  {customProfileWorkTypes.map((value, index) => <div className="profile-custom-row" key={`custom-work-${index}`}>
+                                    <label>Other work type {index + 1}<input value={value} onChange={(event) => setCustomProfileWorkTypes((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={64} required placeholder="Enter another work type" /></label>
+                                    <button className="secondary-button" type="button" onClick={() => {
+                                      const next = customProfileWorkTypes.filter((_, itemIndex) => itemIndex !== index);
+                                      setCustomProfileWorkTypes(next);
+                                      if (!next.length) setOtherWorkTypesEnabled(false);
+                                    }}>Remove</button>
+                                  </div>)}
+                                  <button className="secondary-button profile-add-custom" type="button" disabled={customProfileWorkTypes.length >= maxCustomProfileSelections} onClick={() => setCustomProfileWorkTypes((current) => [...current, ""])}>Add another work type</button>
+                                </div> : null}
+                              </fieldset>
+                              <fieldset className="profile-preference-fieldset">
+                                <legend>Categories</legend>
+                                <p className="form-hint">Choose the areas that best describe your work or hiring interests.</p>
+                                <div className="profile-checkbox-grid">{categories.map((category) => <label key={category.value}><input type="checkbox" name="categories" value={category.value} defaultChecked={publicProfile?.categories?.includes(category.value)} />{category.label}</label>)}</div>
+                                <label className="profile-other-toggle"><input type="checkbox" checked={otherCategoriesEnabled} onChange={(event) => {
+                                  setOtherCategoriesEnabled(event.target.checked);
+                                  setCustomProfileCategories(event.target.checked ? (customProfileCategories.length ? customProfileCategories : [""]) : []);
+                                }} />Other (optional)</label>
+                                {otherCategoriesEnabled ? <div className="profile-custom-list">
+                                  {customProfileCategories.map((value, index) => <div className="profile-custom-row" key={`custom-category-${index}`}>
+                                    <label>Other category {index + 1}<input value={value} onChange={(event) => setCustomProfileCategories((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={64} required placeholder="Enter another category" /></label>
+                                    <button className="secondary-button" type="button" onClick={() => {
+                                      const next = customProfileCategories.filter((_, itemIndex) => itemIndex !== index);
+                                      setCustomProfileCategories(next);
+                                      if (!next.length) setOtherCategoriesEnabled(false);
+                                    }}>Remove</button>
+                                  </div>)}
+                                  <button className="secondary-button profile-add-custom" type="button" disabled={customProfileCategories.length >= maxCustomProfileSelections} onClick={() => setCustomProfileCategories((current) => [...current, ""])}>Add another category</button>
+                                </div> : null}
+                              </fieldset>
                               <button type="submit">Save public profile</button>
                             </form>
                             {publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (

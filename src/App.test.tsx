@@ -2,7 +2,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockMilestoneEscrow, configureMockStaff } from "./test/setup";
+import { configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -434,15 +434,28 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/custom profile name/i), "Updated participant");
     await user.click(screen.getByLabelText(/defined task/i));
     await user.click(screen.getByLabelText(/software engineering/i));
-    await user.type(screen.getByLabelText(/other specialty/i), "Protocol documentation");
+    const workTypesGroup = screen.getByRole("group", { name: /^work types$/i });
+    const categoriesGroup = screen.getByRole("group", { name: /^categories$/i });
+    expect(within(workTypesGroup).queryByLabelText(/other work type 1/i)).not.toBeInTheDocument();
+    expect(within(categoriesGroup).queryByLabelText(/other category 1/i)).not.toBeInTheDocument();
+
+    await user.click(within(workTypesGroup).getByLabelText(/other \(optional\)/i));
+    await user.type(within(workTypesGroup).getByLabelText(/other work type 1/i), "Incident response");
+    await user.click(within(workTypesGroup).getByRole("button", { name: /add another work type/i }));
+    await user.type(within(workTypesGroup).getByLabelText(/other work type 2/i), "Protocol documentation");
+
+    await user.click(within(categoriesGroup).getByLabelText(/other \(optional\)/i));
+    await user.type(within(categoriesGroup).getByLabelText(/other category 1/i), "Public goods");
+    await user.click(within(categoriesGroup).getByRole("button", { name: /add another category/i }));
+    await user.type(within(categoriesGroup).getByLabelText(/other category 2/i), "Developer education");
     await user.click(screen.getByRole("button", { name: /save public profile/i }));
     expect(await screen.findByRole("heading", { name: /updated participant/i })).toBeInTheDocument();
 
     const profileUpdateCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST");
     expect(JSON.parse(String(profileUpdateCall?.[1]?.body))).toMatchObject({
-      workTypes: ["task"],
-      categories: ["Software Engineering"],
-      customSpecialty: "Protocol documentation"
+      workTypes: expect.arrayContaining(["task", "Incident response", "Protocol documentation"]),
+      categories: expect.arrayContaining(["Software Engineering", "Public goods", "Developer education"]),
+      customSpecialty: null
     });
 
     await user.click(screen.getByText(/deactivate public profile/i));
@@ -462,6 +475,26 @@ describe("App", () => {
     const ratingContext = screen.getByText(/capital-provider and labor-provider ratings stay separate/i);
     expect(ratingContext.nextElementSibling).toHaveClass("profile-role-grid");
 
+  });
+
+  it("preserves a legacy specialty as a custom category on the next profile save", async () => {
+    configureMockProfileLegacySpecialty("Protocol documentation");
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^my profile$/i }));
+
+    await user.click(screen.getByText(/^edit profile$/i));
+    const categoriesGroup = screen.getByRole("group", { name: /^categories$/i });
+    expect(within(categoriesGroup).getByLabelText(/other \(optional\)/i)).toBeChecked();
+    expect(within(categoriesGroup).getByLabelText(/other category 1/i)).toHaveValue("Protocol documentation");
+
+    await user.click(screen.getByRole("button", { name: /save public profile/i }));
+    const profileUpdateCall = vi.mocked(fetch).mock.calls.find(([input, init]) => String(input).endsWith("/api/bounties/profiles/me") && init?.method === "POST");
+    expect(JSON.parse(String(profileUpdateCall?.[1]?.body))).toMatchObject({
+      categories: ["Smart Contracts & Web3", "Protocol documentation"],
+      customSpecialty: null
+    });
   });
 
   it("falls back to the wallet address when a public profile has no ENS name", async () => {

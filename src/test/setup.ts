@@ -30,6 +30,7 @@ let snapshotStaffRole: "moderator" | "admin" | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
 let profileVisibility: "visible" | "hidden" = "visible";
+let profileLegacySpecialty: string | null = null;
 
 export function configureMockStaff(
   role: "moderator" | "admin" | null,
@@ -37,6 +38,10 @@ export function configureMockStaff(
 ) {
   snapshotStaffRole = role;
   snapshotModerationReports = reports;
+}
+
+export function configureMockProfileLegacySpecialty(value: string | null) {
+  profileLegacySpecialty = value;
 }
 
 export function configureMockMilestoneEscrow(
@@ -125,6 +130,7 @@ beforeEach(() => {
   snapshotModerationReports = [];
   snapshotMyReports = [];
   profileVisibility = "visible";
+  profileLegacySpecialty = null;
   if (typeof window === "undefined") return;
   window.history.replaceState({}, "", "/");
   Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
@@ -201,7 +207,7 @@ beforeEach(() => {
         profile_url: init?.method === "POST" ? body.profileUrl || null : "https://example.test/profile",
         work_types: init?.method === "POST" ? body.workTypes || [] : ["audit"],
         categories: init?.method === "POST" ? body.categories || [] : ["Smart Contracts & Web3"],
-        custom_specialty: init?.method === "POST" ? body.customSpecialty || null : null,
+        custom_specialty: init?.method === "POST" ? body.customSpecialty || null : profileLegacySpecialty,
         profile_moderation_status: profileVisibility,
         visibility_source: profileVisibility === "hidden" ? "owner" : null,
         profile_updated_at: new Date().toISOString(),

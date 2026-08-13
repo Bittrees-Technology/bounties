@@ -1230,6 +1230,20 @@ li {
 .profile-checkbox-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
 .profile-checkbox-grid label { align-items: center; display: flex; gap: 8px; min-width: 0; }
 .profile-checkbox-grid input { flex: 0 0 auto; min-height: 0; width: auto; }
+.profile-other-toggle {
+  align-items: center;
+  border-top: 1px solid #e3eae6;
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 12px;
+}
+.profile-other-toggle input { flex: 0 0 auto; min-height: 0; width: auto; }
+.profile-custom-list { display: grid; gap: 10px; }
+.profile-custom-row { align-items: end; display: grid; gap: 10px; grid-template-columns: minmax(0, 1fr) auto; }
+.profile-custom-row label { min-width: 0; }
+.profile-custom-row .secondary-button { min-height: 46px; }
+.profile-add-custom { justify-self: start; }
 
 .rating-context {
   color: #5a6861;
@@ -2629,6 +2643,9 @@ textarea {
   .profile-visibility-status button { width: 100%; }
   .profile-specialty-group { gap: 5px; grid-template-columns: 1fr; }
   .profile-specialty-group > strong { padding-top: 0; }
+  .profile-custom-row { align-items: stretch; grid-template-columns: 1fr; }
+  .profile-custom-row .secondary-button,
+  .profile-add-custom { width: 100%; }
   .editable-profile-card .profile-hero { padding-right: 0; padding-top: 52px; }
   .profile-editor > summary { right: 18px; top: 18px; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }
