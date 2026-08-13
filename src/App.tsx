@@ -97,7 +97,7 @@ const scopes: Array<{ value: WorkScope; label: string }> = [
   { value: "retainer", label: "Ongoing retainer" }
 ];
 
-type ProductPage = "marketplace" | "create" | "profile" | "moderator";
+type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
   current_milestone?: number | null;
@@ -111,17 +111,19 @@ const reportEntityLabel = (entityType: ReportableEntity) => entityType === "boun
 const reportEntityNoun = (entityType: ReportableEntity) => reportEntityLabel(entityType).toLowerCase();
 
 const pageRoutes: Record<ProductPage, string> = {
-  marketplace: "/",
+  home: "/",
+  marketplace: "/marketplace",
   create: "/create",
   profile: "/profiles",
   moderator: "/moderator"
 };
 
 function pageFromPath(pathname: string): ProductPage {
+  if (pathname === "/marketplace") return "marketplace";
   if (pathname === "/create") return "create";
   if (pathname === "/profiles" || pathname.startsWith("/profiles/")) return "profile";
   if (pathname === "/moderator") return "moderator";
-  return "marketplace";
+  return "home";
 }
 
 function deadlineTimestamp(value?: string | null): number | null {
@@ -1101,7 +1103,7 @@ export default function App() {
       <section className="workspace">
         <aside className="sidebar">
           <header className="sidebar-header" role="banner" aria-label="Bounties account controls">
-            <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "marketplace")} aria-label="Bounties marketplace home">
+            <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "home")} aria-label="Bounties home">
               <span className="brand-mark" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
               <span><span className="eyebrow">Token-funded work</span><span className="brand-wordmark">Bounties</span></span>
             </a>
@@ -1136,7 +1138,7 @@ export default function App() {
             </div>
           </header>
           <nav className="primary-nav" aria-label="Primary navigation">
-            <a href="/" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
+            <a href="/marketplace" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
             <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
             <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
             {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
@@ -1145,7 +1147,7 @@ export default function App() {
         </aside>
 
         <section className={`content content-${visiblePage}`}>
-          {visiblePage !== "profile" ? (
+          {visiblePage !== "profile" && visiblePage !== "home" ? (
             <header className="topbar">
               <div className="topbar-copy">
                 <p className="eyebrow">{visiblePage === "marketplace" ? "Find the right work" : visiblePage === "create" ? "Fund a clear outcome" : "Authorized workspace"}</p>
@@ -1153,6 +1155,80 @@ export default function App() {
                 <p>{visiblePage === "marketplace" ? "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Set the scope, payment, timeline, and approval conditions in one place." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
               </div>
             </header>
+          ) : null}
+
+          {visiblePage === "home" ? (
+            <section className="landing-page" aria-label="Bounties product overview">
+              <header className="landing-hero">
+                <div className="landing-hero-copy">
+                  <p className="eyebrow">Clear terms. Visible progress.</p>
+                  <h1>Clear work. Token‑funded bounties.</h1>
+                  <p>Bounties gives capital providers and labor providers one shared workflow for scope, applications, milestones, delivery evidence, and reputation.</p>
+                  <div className="landing-actions">
+                    <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
+                    <a className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
+                  </div>
+                  <ul className="landing-assurances" aria-label="Product foundations">
+                    <li><WalletCards size={16} />Wallet-based access</li>
+                    <li><Search size={16} />Inspectable ERC20 contracts</li>
+                    <li><FileCheck2 size={16} />Milestone-ready terms</li>
+                  </ul>
+                </div>
+                <aside className="landing-overview" aria-label="What stays visible">
+                  <p className="eyebrow">One shared record</p>
+                  <h2>Know the terms before work begins.</h2>
+                  <ul>
+                    <li><BadgeCheck size={17} /><span><strong>Defined outcomes</strong>Scope, acceptance criteria, and deadlines stay attached to the bounty.</span></li>
+                    <li><UsersRound size={17} /><span><strong>Deliberate selection</strong>Applicants propose a plan before a capital provider chooses who delivers.</span></li>
+                    <li><Star size={17} /><span><strong>Relevant reputation</strong>Payment and service ratings remain separate and easier to interpret.</span></li>
+                  </ul>
+                  <p className="landing-wallet-note">Connecting proves wallet ownership. It does not authorize a transaction or token spending.</p>
+                </aside>
+              </header>
+
+              <section className="panel workflow-panel landing-workflow">
+                <div className="landing-section-heading"><p className="eyebrow">From idea to accepted delivery</p><h2>How a bounty works</h2><p>Each step leaves both participants with a clearer understanding of what happens next.</p></div>
+                <ol className="workflow-guide">
+                  <li><span>1</span><strong>Create</strong><small>Publish clear work and payment terms.</small></li>
+                  <li><span>2</span><strong>Apply</strong><small>A labor provider submits a plan.</small></li>
+                  <li><span>3</span><strong>Accept applicant</strong><small>The capital provider chooses who will deliver.</small></li>
+                  <li><span>4</span><strong>Submit work</strong><small>Delivery evidence is shared within the timeline.</small></li>
+                  <li><span>5</span><strong>Accept work</strong><small>The capital provider reviews delivery.</small></li>
+                </ol>
+              </section>
+
+              <section className="landing-value-section" aria-labelledby="landing-value-title">
+                <div className="landing-section-heading"><p className="eyebrow">Useful context, kept together</p><h2 id="landing-value-title">Make decisions with the important details in view.</h2><p>Bounties is designed to reduce ambiguity without taking control away from the participants doing the work.</p></div>
+                <div className="landing-feature-grid">
+                  <article><FileCheck2 /><h3>Milestone clarity</h3><p>Allocate payment to specific deliverables and dates so larger projects can move forward in accountable stages.</p></article>
+                  <article><Search /><h3>Token transparency</h3><p>Choose standard payment options or inspect another ERC20 contract and open its block-explorer record before using it.</p></article>
+                  <article><UsersRound /><h3>Discoverable profiles</h3><p>Find participants by name, ENS, bio, work type, or category and review their marketplace activity before engaging.</p></article>
+                  <article><Star /><h3>Role-specific reputation</h3><p>See how someone performs as a capital provider separately from how they perform as a labor provider.</p></article>
+                  <article><WalletCards /><h3>Wallet-first identity</h3><p>Sign in with Ethereum to prove wallet ownership without creating a password or granting token-spending permission.</p></article>
+                  <article><ShieldCheck /><h3>Participant-led outcomes</h3><p>Structured delivery, review, revision, timeout, and mutual-settlement paths keep the agreement centered on both parties.</p></article>
+                </div>
+              </section>
+
+              <section className="landing-participant-grid" aria-label="Ways to participate">
+                <article className="landing-participant-card capital-card">
+                  <p className="eyebrow">For capital providers</p>
+                  <h2>Commission work with fewer assumptions.</h2>
+                  <p>Define the outcome, compare plans, select a provider, and review evidence against terms everyone could see from the start.</p>
+                  <a href="/create" onClick={(event) => handlePageLink(event, "create")}>Create clear work terms <ExternalLink size={14} /></a>
+                </article>
+                <article className="landing-participant-card labor-card">
+                  <p className="eyebrow">For labor providers</p>
+                  <h2>Find work you can evaluate before applying.</h2>
+                  <p>Review scope, milestones, token contracts, and timelines before proposing how you would complete the bounty.</p>
+                  <a href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Explore available work <ExternalLink size={14} /></a>
+                </article>
+              </section>
+
+              <section className="landing-closing-cta">
+                <div><p className="eyebrow">Start with shared expectations</p><h2>Put the work, payment structure, and progress in one place.</h2></div>
+                <div className="landing-actions"><a className="landing-primary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}>Create a bounty</a><a className="landing-secondary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Browse marketplace</a></div>
+              </section>
+            </section>
           ) : null}
 
           {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Connect wallet again</button></div> : null}
@@ -1254,16 +1330,6 @@ export default function App() {
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
-                  <section className="panel workflow-panel">
-                    <div className="section-heading"><FileCheck2 /><h2>How a bounty works</h2></div>
-                    <ol className="workflow-guide">
-                      <li><span>1</span><strong>Create</strong><small>Publish clear work and payment terms.</small></li>
-                      <li><span>2</span><strong>Apply</strong><small>A labor provider submits a plan.</small></li>
-                      <li><span>3</span><strong>Accept applicant</strong><small>The capital provider chooses who will deliver.</small></li>
-                      <li><span>4</span><strong>Submit work</strong><small>Delivery evidence is shared within the timeline.</small></li>
-                      <li><span>5</span><strong>Accept work</strong><small>The capital provider reviews delivery.</small></li>
-                    </ol>
-                  </section>
                 <section id="orders" className="panel queue marketplace-page">
                   <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace</h2></div>
                   <p className="section-copy">Review the scope, timeline, token contract, and application activity before participating.</p>

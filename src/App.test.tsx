@@ -8,6 +8,8 @@ afterEach(() => cleanup());
 
 async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
+  await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
   expect(await screen.findByRole("heading", { name: /how would you like to participate/i })).toBeInTheDocument();
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 }
@@ -44,13 +46,24 @@ describe("App", () => {
 
     expect(screen.getAllByRole("button", { name: /^connect wallet$/i })).toHaveLength(1);
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
-    expect(screen.getByRole("heading", { level: 1, name: /work with clear terms and visible progress/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: /clear work.*token.funded bounties/i })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^bounties$/i })).not.toBeInTheDocument();
     expect(screen.queryByText(/explore bounties, then sign in when you.re ready/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/won.t send a transaction or give bounties access to your tokens/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /how a bounty works/i })).toBeInTheDocument();
+    expect(screen.getByText(/milestone clarity/i)).toBeInTheDocument();
+    expect(screen.getByText(/role-specific reputation/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^browse bounties$/i })).toHaveAttribute("href", "/marketplace");
+    expect(screen.getByRole("link", { name: /^marketplace$/i })).not.toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("href", "/marketplace");
+    expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("href", "/create");
+
+    await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
+    expect(window.location.pathname).toBe("/marketplace");
+    expect(screen.getByRole("heading", { level: 1, name: /work with clear terms and visible progress/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("link", { name: /^create bounty$/i })).toHaveAttribute("href", "/create");
+    expect(screen.queryByRole("heading", { name: /how a bounty works/i })).not.toBeInTheDocument();
     expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
     expect(screen.getByText(/connecting does not authorize a transaction or token spending/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /connect to marketplace/i })).toBeInTheDocument();
