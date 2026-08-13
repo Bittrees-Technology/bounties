@@ -226,10 +226,17 @@ const contactMethods = [
   { value: "Wallet message", label: "Wallet message" }
 ];
 
+function tokenIdentityLabel(token: Pick<TokenRecord, "name" | "symbol">, detail = false) {
+  const name = token.name?.trim() ?? "";
+  const symbol = token.symbol?.trim() ?? "";
+  if (name && symbol && name.toLocaleLowerCase() === symbol.toLocaleLowerCase()) return symbol;
+  if (name && symbol) return detail ? `${name} (${symbol})` : `${name} · ${symbol}`;
+  return name || symbol || "Unnamed ERC20";
+}
+
 function tokenOptionLabel(token: TokenRecord) {
   const network = chains[token.chain_id as SupportedChainId]?.name ?? "Supported network";
-  const identity = [token.name, token.symbol].filter(Boolean).join(" · ") || "Unnamed ERC20";
-  return `${identity} · ${network} · ${short(token.checksum_address)}`;
+  return `${tokenIdentityLabel(token)} · ${network} · ${short(token.checksum_address)}`;
 }
 
 function averageRating(reviews: MarketplaceOrder["reviews"]): string {
@@ -1348,7 +1355,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{selectedToken.name ?? "Unnamed ERC20"} {selectedToken.symbol ? `(${selectedToken.symbol})` : ""}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a></div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -1385,7 +1392,7 @@ export default function App() {
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => setInspectAddress(event.target.value)} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
                     <button type={wallet ? "submit" : "button"} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                   </form>
-                  {inspected ? <article className="inspected-token-card"><h4>{inspected.name ?? "Unnamed ERC20"} {inspected.symbol ? `(${inspected.symbol})` : ""}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Automated checks do not guarantee that a token is safe.</p></article> : null}
+                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Automated checks do not guarantee that a token is safe.</p></article> : null}
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
@@ -1411,7 +1418,7 @@ export default function App() {
                         <p className="bounty-description">{linkedDescription(order.project)}</p>
                         <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {order.dueDate}</p>
                         <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
-                        {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{order.tokenRecord.name ?? "Unnamed ERC20"} {order.tokenRecord.symbol ? `(${order.tokenRecord.symbol})` : ""}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
+                        {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
                         {cardProgress(order)}
                         <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Open marketplace bounty"}</span></div>
                         {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}

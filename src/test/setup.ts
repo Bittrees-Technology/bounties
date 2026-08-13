@@ -15,7 +15,7 @@ const defaultTokens = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "USDT", "CUSTOM"]
   chain_id: 84532,
   contract_address: `0x${String(index + 2).repeat(40).slice(0, 40)}`,
   checksum_address: `0x${String(index + 2).repeat(40).slice(0, 40)}`,
-  name: `${symbol} test token`,
+  name: symbol === "BIT" ? "BIT" : `${symbol} test token`,
   total_supply: "1000000000",
   explorer_url: `https://sepolia.basescan.org/address/0x${String(index + 2).repeat(40).slice(0, 40)}`,
   proxy_status: "unknown",

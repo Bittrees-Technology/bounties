@@ -237,6 +237,8 @@ describe("App", () => {
     expect(screen.queryByText(/84532/)).not.toBeInTheDocument();
     expect(screen.getByRole("option", { name: /WETH.*Wrapped Ether/i })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /USDC.*USD Coin/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /^BIT · Base Sepolia · 0x4444.*4444$/i })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /BIT · BIT/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add weth/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add usdc/i })).not.toBeInTheDocument();
   });
