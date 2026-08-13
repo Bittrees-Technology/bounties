@@ -1099,6 +1099,79 @@ contract BountyEscrowTest is Test {
         escrow.release(bountyId);
     }
 
+    function testPayoutRejectsTransferFeeEnabledAfterFunding() public {
+        uint256 amount = 250 ether;
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(42)));
+        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+
+        FeeOnTransferERC20 feeToken = new FeeOnTransferERC20();
+        feeToken.setFeeEnabled(false);
+        feeToken.mint(requester, amount);
+        vm.prank(requester);
+        feeToken.approve(address(escrow), amount);
+        vm.prank(requester);
+        uint256 feeBountyId =
+            escrow.createBounty(address(feeToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        vm.prank(provider);
+        escrow.acceptBounty(feeBountyId, termsHash);
+        bytes32 feeEvidenceHash = _evidenceHash(
+            feeBountyId, scopeHash, termsHash, provider, EVIDENCE_CONTENT_HASH, EVIDENCE_URI_HASH, bytes32(uint256(43))
+        );
+        bytes32 feeApprovalHash =
+            _approvalHash(feeBountyId, feeEvidenceHash, requester, APPROVAL_DECISION_HASH, bytes32(uint256(44)));
+        vm.prank(provider);
+        escrow.submitDelivery(feeBountyId, feeEvidenceHash);
+        vm.prank(requester);
+        escrow.approveDelivery(feeBountyId, feeApprovalHash);
+
+        feeToken.setFeeEnabled(true);
+        vm.expectPartialRevert(IBountyEscrow.SettlementAmountMismatch.selector);
+        escrow.release(feeBountyId);
+        assertEq(uint256(escrow.getBounty(feeBountyId).state), uint256(IBountyEscrow.State.BuyerApproved));
+        assertEq(feeToken.balanceOf(address(escrow)), amount);
+        assertEq(feeToken.balanceOf(provider), 0);
+        assertEq(escrow.totalLiability(address(feeToken)), amount);
+    }
+
+    function testPayoutRejectsSenderTaxEnabledAfterFunding() public {
+        uint256 amount = 250 ether;
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(45)));
+        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+
+        SenderTaxERC20 senderTaxToken = new SenderTaxERC20();
+        senderTaxToken.setFeeEnabled(false);
+        senderTaxToken.mint(requester, amount);
+        vm.prank(requester);
+        senderTaxToken.approve(address(escrow), amount);
+        vm.prank(requester);
+        uint256 senderTaxBountyId =
+            escrow.createBounty(address(senderTaxToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        vm.prank(provider);
+        escrow.acceptBounty(senderTaxBountyId, termsHash);
+        bytes32 senderTaxEvidenceHash = _evidenceHash(
+            senderTaxBountyId, scopeHash, termsHash, provider, EVIDENCE_CONTENT_HASH, EVIDENCE_URI_HASH, bytes32(uint256(46))
+        );
+        bytes32 senderTaxApprovalHash = _approvalHash(
+            senderTaxBountyId, senderTaxEvidenceHash, requester, APPROVAL_DECISION_HASH, bytes32(uint256(47))
+        );
+        vm.prank(provider);
+        escrow.submitDelivery(senderTaxBountyId, senderTaxEvidenceHash);
+        vm.prank(requester);
+        escrow.approveDelivery(senderTaxBountyId, senderTaxApprovalHash);
+
+        uint256 senderTax = amount / 100;
+        senderTaxToken.mint(address(escrow), senderTax);
+        senderTaxToken.setFeeEnabled(true);
+        vm.expectPartialRevert(IBountyEscrow.SettlementAmountMismatch.selector);
+        escrow.release(senderTaxBountyId);
+        assertEq(uint256(escrow.getBounty(senderTaxBountyId).state), uint256(IBountyEscrow.State.BuyerApproved));
+        assertEq(senderTaxToken.balanceOf(address(escrow)), amount + senderTax);
+        assertEq(senderTaxToken.balanceOf(provider), 0);
+        assertEq(escrow.totalLiability(address(senderTaxToken)), amount);
+    }
+
     function testGetBountyAndMissingBountyChecks() public {
         vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.BountyNotFound.selector, 1));
         escrow.getBounty(1);
