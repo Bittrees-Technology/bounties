@@ -22,7 +22,7 @@ async function openCreatePage(user: ReturnType<typeof userEvent.setup>) {
 async function completeCreateForm(
   user: ReturnType<typeof userEvent.setup>,
   title: string,
-  tokenName: RegExp = /USDC test token.*USDC/i
+  tokenName: RegExp = /USDC.*USDC test token/i
 ) {
   await user.type(screen.getByLabelText(/bounty title/i), title);
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
@@ -32,7 +32,7 @@ async function completeCreateForm(
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: tokenName }));
 }
 
-async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "Ship provider storefront", tokenName: RegExp = /USDC test token.*USDC/i) {
+async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "Ship provider storefront", tokenName: RegExp = /USDC.*USDC test token/i) {
   await openCreatePage(user);
   await completeCreateForm(user, title, tokenName);
   await user.click(screen.getByRole("button", { name: /publish bounty/i }));
@@ -215,7 +215,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/budget/i), exact);
     await user.clear(screen.getByLabelText(/^amount$/i));
     await user.type(screen.getByLabelText(/^amount$/i), exact);
-    await completeCreateForm(user, "Exact decimal bounty", /WETH test token.*WETH/i);
+    await completeCreateForm(user, "Exact decimal bounty", /WETH.*WETH test token/i);
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
     const order = within((await screen.findByRole("heading", { name: "Exact decimal bounty" })).closest("article") as HTMLElement);
     expect(order.getByText(/0\.123456789012345678 WETH/i)).toBeInTheDocument();
@@ -226,7 +226,7 @@ describe("App", () => {
     render(<App />);
     await connectWallet(user);
     await openCreatePage(user);
-    expect(screen.getByRole("option", { name: /WETH test token.*WETH.*Base Sepolia.*0x2222/i })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /WETH.*WETH test token.*Base Sepolia.*0x2222/i })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /ETH \(backed by verified WETH\)/i })).not.toBeInTheDocument();
   });
 
@@ -241,6 +241,13 @@ describe("App", () => {
     expect(screen.getByRole("option", { name: /USDC.*USD Coin/i })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: /^BIT · Base Sepolia · 0x4444.*4444$/i })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /BIT · BIT/i })).not.toBeInTheDocument();
+    const paymentTokenLabels = within(screen.getByLabelText(/payment token/i)).getAllByRole("option")
+      .slice(1)
+      .map((option) => option.textContent ?? "");
+    const paymentTokenSymbols = paymentTokenLabels.map((label) => label.split(" · ")[0]);
+    expect(paymentTokenSymbols).toEqual([...paymentTokenSymbols].sort((left, right) => left.localeCompare(right, undefined, { sensitivity: "base" })));
+    expect(paymentTokenLabels.every((label) => label.includes(" · Base Sepolia · 0x"))).toBe(true);
+    expect(screen.getByRole("option", { name: /^USDC · USD Coin · Base Sepolia · 0x036c…cf7c$/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add weth/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /add usdc/i })).not.toBeInTheDocument();
   });
@@ -540,7 +547,7 @@ describe("App", () => {
     await user.type(screen.getByLabelText(/contact alias/i), "build-team");
     await user.type(screen.getByLabelText(/resources provided/i), "Product brief");
     await user.type(screen.getByLabelText(/acceptance criteria/i), "Specification is satisfied");
-    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC test token.*USDC/i }));
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC.*USDC test token/i }));
     expect(screen.getByLabelText(/preferred contact method/i)).toHaveValue("Chirpy");
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
