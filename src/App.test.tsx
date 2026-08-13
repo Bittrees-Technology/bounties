@@ -169,8 +169,10 @@ describe("App", () => {
 
     await user.click(screen.getByRole("button", { name: /i want to hire/i }));
     expect(await screen.findByRole("heading", { name: /^create a bounty$/i })).toBeInTheDocument();
+    expect(await screen.findByText(/ready to create a bounty/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("link", { name: /^marketplace$/i }));
+    expect(screen.queryByText(/ready to create a bounty/i)).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /i want to work/i }));
     expect(await screen.findByRole("heading", { name: /^marketplace$/i })).toBeInTheDocument();
   });

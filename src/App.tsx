@@ -374,6 +374,7 @@ export default function App() {
   function navigateToPage(page: ProductPage) {
     const target = pageRoutes[page];
     if (window.location.pathname !== target) window.history.pushState({}, "", target);
+    setNotice(null);
     setActivePage(page);
   }
 
@@ -516,6 +517,7 @@ export default function App() {
     const handlePopState = () => {
       setSelectedProfileAddress(null);
       setPublicProfile(null);
+      setNotice(null);
       setActivePage(pageFromPath(window.location.pathname));
     };
     window.addEventListener("popstate", handlePopState);
