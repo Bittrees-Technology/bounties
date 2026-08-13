@@ -97,6 +97,20 @@ describe("App", () => {
     expect(vi.mocked(window.ethereum!.request)).not.toHaveBeenCalled();
   });
 
+  it("keeps the bounty deadline and final delivery date synchronized", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await openCreatePage(user);
+
+    const deadline = screen.getByLabelText(/^deadline$/i);
+    const deliveryDate = screen.getByLabelText(/^delivery date$/i);
+    await user.clear(deadline);
+    await user.type(deadline, "2026-12-31");
+
+    expect(deadline).toHaveValue("2026-12-31");
+    expect(deliveryDate).toHaveValue("2026-12-31");
+  });
+
   it("connects a wallet and publishes a persisted bounty through the API boundary", async () => {
     const user = userEvent.setup();
     render(<App />);

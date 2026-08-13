@@ -560,6 +560,30 @@ export default function App() {
 
   function updateMilestone(index: number, field: "title" | "amount" | "deliveryDeadline", value: string) {
     setMilestoneSchedule((current) => current.map((milestone, milestoneIndex) => milestoneIndex === index ? { ...milestone, [field]: value } : milestone));
+    if (field === "deliveryDeadline" && index === milestoneSchedule.length - 1) {
+      setDraft((current) => ({ ...current, deliveryDeadline: value }));
+    }
+  }
+
+  function updateDeadline(value: string) {
+    setDraft((current) => ({ ...current, deliveryDeadline: value }));
+    setMilestoneSchedule((current) => current.map((milestone, index) => index === current.length - 1 ? { ...milestone, deliveryDeadline: value } : milestone));
+  }
+
+  function removeMilestone(index: number) {
+    const nextSchedule = milestoneSchedule.filter((_, milestoneIndex) => milestoneIndex !== index);
+    setMilestoneSchedule(nextSchedule);
+    const finalDeadline = nextSchedule.at(-1)?.deliveryDeadline;
+    if (finalDeadline) setDraft((current) => ({ ...current, deliveryDeadline: finalDeadline }));
+  }
+
+  function addMilestone() {
+    const previous = milestoneSchedule.at(-1);
+    const nextDate = new Date(`${previous?.deliveryDeadline ?? defaultDeliveryDeadline()}T12:00:00Z`);
+    nextDate.setUTCDate(nextDate.getUTCDate() + 22);
+    const deliveryDeadline = nextDate.toISOString().slice(0, 10);
+    setMilestoneSchedule((current) => [...current, { title: `Milestone ${current.length + 1}`, amount: "", deliveryDeadline }]);
+    setDraft((current) => ({ ...current, deliveryDeadline }));
   }
 
   async function inspectContract(chainId: number, contractAddress: string) {
@@ -1301,7 +1325,7 @@ export default function App() {
                   <div className="form-grid">
                     <label>Contact alias<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} placeholder="A public alias, not a private email or phone number" maxLength={80} required /><span className="form-hint">Share only the name you want bounty applicants to see.</span></label>
                     <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
-                    <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => setDraft({ ...draft, deliveryDeadline: event.target.value })} required /></label>
+                    <label>Deadline<input type="date" value={draft.deliveryDeadline} min={new Date().toISOString().slice(0, 10)} onChange={(event) => updateDeadline(event.target.value)} required /></label>
                   </div>
                   <div className="form-grid payment-setup-grid">
                     <label>Total budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
@@ -1337,15 +1361,10 @@ export default function App() {
                         <label>Deliverable<input value={milestone.title} onChange={(event) => updateMilestone(index, "title", event.target.value)} placeholder="Completed deliverable" required /></label>
                         <label>Amount<input inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={milestone.amount} onChange={(event) => updateMilestone(index, "amount", event.target.value)} required /></label>
                         <label>Delivery date<input type="date" min={index === 0 ? new Date().toISOString().slice(0, 10) : (() => { const minimum = new Date(`${milestoneSchedule[index - 1].deliveryDeadline}T12:00:00Z`); minimum.setUTCDate(minimum.getUTCDate() + 22); return minimum.toISOString().slice(0, 10); })()} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
-                        {milestoneSchedule.length > 1 ? <button className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => setMilestoneSchedule((current) => current.filter((_, milestoneIndex) => milestoneIndex !== index))}>Remove</button> : null}
+                        {milestoneSchedule.length > 1 ? <button className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => removeMilestone(index)}>Remove</button> : null}
                       </div>
                     ))}
-                    {milestoneSchedule.length < 32 ? <button className="secondary-button add-milestone" type="button" onClick={() => {
-                      const previous = milestoneSchedule.at(-1);
-                      const nextDate = new Date(`${previous?.deliveryDeadline ?? defaultDeliveryDeadline()}T12:00:00Z`);
-                      nextDate.setUTCDate(nextDate.getUTCDate() + 22);
-                      setMilestoneSchedule((current) => [...current, { title: `Milestone ${current.length + 1}`, amount: "", deliveryDeadline: nextDate.toISOString().slice(0, 10) }]);
-                    }}>Add milestone</button> : null}
+                    {milestoneSchedule.length < 32 ? <button className="secondary-button add-milestone" type="button" onClick={addMilestone}>Add milestone</button> : null}
                     {selectedToken && !scheduleTotalsBudget ? <p className="schedule-error">Deliverable amounts must total exactly {draft.budget || "0"} {selectedToken.symbol || "tokens"}.</p> : null}
                     {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be in the future and at least 22 days after the previous deliverable.</p> : null}
                   </fieldset>
