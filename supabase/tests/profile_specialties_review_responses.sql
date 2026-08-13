@@ -1,5 +1,5 @@
 begin;
-select plan(35);
+select plan(36);
 
 insert into public.wallet_accounts (id, wallet_address) values
   ('22000000-0000-4000-8000-000000000001','0x1111111111111111111111111111111111111111'),
@@ -90,8 +90,12 @@ select throws_ok(
 select throws_ok(
   $$ select public.app_update_public_profile(
        '22000000-0000-4000-8000-000000000002',null,null,null,
-       array['1','2','3','4','5','6','7','8','9','10','11','12','13'],'{}'::text[],null) $$,
+       array['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16','17'],'{}'::text[],null) $$,
   '22023',null,'the number of public profile selections is bounded'
+);
+select ok(
+  public.app_profile_selections_valid(array['1','2','3','4','5','6','7','8','9','10','11','12','13','14','15','16']),
+  'profiles can combine standard preferences with several custom selections'
 );
 select throws_ok(
   $$ select public.app_update_public_profile(

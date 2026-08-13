@@ -1,10 +1,12 @@
 const SEGMENT_PATTERN = /^[a-z0-9-]+$/i;
 const PROFILE_SEARCH_FIELDS = new Set(["all", "identity", "bio", "specialty"]);
-const PROFILE_WORK_TYPES = new Set(["task", "deliverable", "milestone", "project", "consultation", "audit", "retainer"]);
-const PROFILE_CATEGORIES = new Set([
-  "Software Engineering", "Smart Contracts & Web3", "Product & UX Design", "Data & Analytics", "Research & Writing",
-  "Marketing & Growth", "Legal & Compliance", "Finance & Accounting", "Operations & Support", "Media & Creative"
-]);
+
+function isValidProfileSelection(value: string): boolean {
+  return value.length >= 1 && value.length <= 64 && ![...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
+}
 
 export type DirectRoute = {
   handler: "wallet-auth" | "bounties";
@@ -70,8 +72,8 @@ export function resolveDirectRoute(requestUrl: string, method: string): DirectRo
       const categoryValues = values("category");
       const queryValid = queryValues.length <= 1 && (!queryValues.length || (queryValues[0].length >= 2 && queryValues[0].length <= 80));
       const fieldValid = fieldValues.length <= 1 && (!fieldValues.length || PROFILE_SEARCH_FIELDS.has(fieldValues[0]));
-      const workTypeValid = workTypeValues.length <= 1 && (!workTypeValues.length || PROFILE_WORK_TYPES.has(workTypeValues[0]));
-      const categoryValid = categoryValues.length <= 1 && (!categoryValues.length || PROFILE_CATEGORIES.has(categoryValues[0]));
+      const workTypeValid = workTypeValues.length <= 1 && (!workTypeValues.length || isValidProfileSelection(workTypeValues[0]));
+      const categoryValid = categoryValues.length <= 1 && (!categoryValues.length || isValidProfileSelection(categoryValues[0]));
       const validPublicSearch = effectiveAction === "profiles/search"
         && normalizedMethod === "GET"
         && queryValid && fieldValid && workTypeValid && categoryValid

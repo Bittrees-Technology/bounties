@@ -102,11 +102,6 @@ const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const jsonBodyLimitBytes = 256 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
 const profileSearchFields = new Set(["all", "identity", "bio", "specialty"]);
-const profileWorkTypes = new Set(["task", "deliverable", "milestone", "project", "consultation", "audit", "retainer"]);
-const profileCategories = new Set([
-  "Software Engineering", "Smart Contracts & Web3", "Product & UX Design", "Data & Analytics", "Research & Writing",
-  "Marketing & Growth", "Legal & Compliance", "Finance & Accounting", "Operations & Support", "Media & Creative"
-]);
 const ensNameCache = new Map<string, { name: string | null; expiresAt: number }>();
 const ensNameLookups = new Map<string, Promise<string | null>>();
 const ensNameCacheLimit = 512;
@@ -263,7 +258,7 @@ function optionalString(body: Record<string, unknown>, field: string): string | 
 function optionalStringArray(body: Record<string, unknown>, field: string): string[] {
   const value = body[field];
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.length > 12) throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
+  if (!Array.isArray(value) || value.length > 16) throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
   const normalized = value.map((entry) => {
     if (typeof entry !== "string") throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
     const item = entry.trim();
@@ -279,6 +274,13 @@ function optionalStringArray(body: Record<string, unknown>, field: string): stri
     throw new ApiError(`INVALID_${field.toUpperCase()}`, 400);
   }
   return normalized;
+}
+
+function isValidProfileSelection(value: string): boolean {
+  return value.length >= 1 && value.length <= 64 && ![...value].some((character) => {
+    const code = character.charCodeAt(0);
+    return code < 32 || code === 127;
+  });
 }
 
 function requiredUuid(body: Record<string, unknown>, field: string): string {
@@ -1167,8 +1169,8 @@ async function handle(request: Request, action: string): Promise<Response> {
     const category = searchParams.get("category")?.trim() ?? "";
     if ((query && (query.length < 2 || query.length > 80))
       || !profileSearchFields.has(field)
-      || (workType && !profileWorkTypes.has(workType))
-      || (category && !profileCategories.has(category))
+      || (workType && !isValidProfileSelection(workType))
+      || (category && !isValidProfileSelection(category))
       || (!query && !workType && !category)) {
       throw new ApiError("INVALID_PROFILE_QUERY", 400);
     }

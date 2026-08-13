@@ -319,6 +319,18 @@ describe("public profile discovery", () => {
     });
   });
 
+  it("supports safe custom profile filters", async () => {
+    rpcMock.mockResolvedValue({ data: [], error: null });
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/profiles/search?workType=Incident%20response&category=Public%20goods"
+    ), "profiles/search");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_filter_public_wallet_profiles", {
+      p_query: null, p_search_field: "all", p_work_type: "Incident response", p_category: "Public goods", p_limit: 12
+    });
+  });
+
   it("fails closed with an actionable error when ENS search lacks mainnet RPC", async () => {
     rpcMock.mockResolvedValue({ data: [], error: null });
     const response = await handleBountiesApi(new Request(
@@ -440,9 +452,9 @@ describe("profile specialties and review responses", () => {
           displayName: "Alice Protocol",
           profileBio: "Builds secure products",
           profileUrl: "https://example.test/alice",
-          workTypes: ["Project", "Audit"],
-          categories: ["Engineering", "Smart Contracts & Web3"],
-          customSpecialty: "Zero-knowledge systems",
+          workTypes: ["Project", "Audit", "Incident response", "Protocol documentation"],
+          categories: ["Engineering", "Smart Contracts & Web3", "Public goods", "Developer education"],
+          customSpecialty: null,
           accountId: "forged-account-id"
         })
       }
@@ -454,9 +466,9 @@ describe("profile specialties and review responses", () => {
       p_display_name: "Alice Protocol",
       p_profile_bio: "Builds secure products",
       p_profile_url: "https://example.test/alice",
-      p_work_types: ["Project", "Audit"],
-      p_categories: ["Engineering", "Smart Contracts & Web3"],
-      p_custom_specialty: "Zero-knowledge systems"
+      p_work_types: ["Project", "Audit", "Incident response", "Protocol documentation"],
+      p_categories: ["Engineering", "Smart Contracts & Web3", "Public goods", "Developer education"],
+      p_custom_specialty: null
     });
   });
 
