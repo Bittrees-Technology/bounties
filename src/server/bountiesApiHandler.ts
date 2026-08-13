@@ -610,8 +610,7 @@ async function inspectToken(session: Session, body: Record<string, unknown>) {
   const riskFlags = [
     ...(existing?.length ? ["symbol_collision"] : []),
     ...(name === null || symbol === null ? ["metadata_call_failed"] : []),
-    ...(decimalsValue > 36 ? ["unusual_decimals"] : []),
-    "source_verification_unavailable"
+    ...(decimalsValue > 36 ? ["unusual_decimals"] : [])
   ];
 
   return callRpc("app_upsert_inspected_token", {

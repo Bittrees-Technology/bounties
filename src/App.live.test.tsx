@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockMilestoneEscrow, configureMockSettlementProposal } from "./test/setup";
+import { configureMockMilestoneEscrow, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -76,11 +76,33 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(order.getByText(/hash the exact delivered file.*do not hash the link/i)).toBeInTheDocument();
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
   expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
-  expect(order.getByRole("link", { name: /submit work for the active milestone/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
+  expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(order.getByLabelText(/funded escrow/i)).toHaveTextContent(/250 USDC/i);
-  expect(order.getByRole("link", { name: /view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
+  expect(order.getByRole("link", { name: /funded.*view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
+  expect(within(order.getByLabelText(/funded escrow/i)).getByRole("link", { name: /^view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
   const finalDue = order.getAllByText(/^Due /i).at(-1)?.textContent?.replace(/^Due /i, "");
   expect(order.getByText(/Delivery by/i)).toHaveTextContent(finalDue!);
+});
+
+it("shows selected providers why proof submission is locked before funding", async () => {
+  configureMockSelectedUnfundedProvider();
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+
+  render(<App />);
+  await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const directoryCard = (await screen.findByRole("heading", { name: /selected unfunded work/i })).closest("article") as HTMLElement;
+  await user.click(within(directoryCard).getByRole("link", { name: /view bounty/i }));
+  const order = within((await screen.findByRole("heading", { level: 2, name: /selected unfunded work/i })).closest("article") as HTMLElement);
+  expect(order.getByRole("link", { name: /unfunded.*view funding status/i })).toHaveAttribute("href", "#escrow-actions-00000000-0000-4000-8000-000000000411");
+  expect(order.getByText(/^applicant accepted$/i).closest("li")).toHaveClass("current");
+  expect(order.queryByLabelText(/work evidence link/i)).not.toBeInTheDocument();
+  expect(order.getByText(/work submission is not open yet/i)).toBeInTheDocument();
+  expect(order.getByText(/after funding, accept the committed terms.*proof form will then appear/i)).toBeInTheDocument();
 });
 
 it("requires wallet approval before offering offchain acceptance", async () => {

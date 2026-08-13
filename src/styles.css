@@ -471,6 +471,23 @@ li {
   text-decoration: none;
 }
 
+.work-submission-guidance {
+  align-items: center;
+  background: #fff9e8;
+  border: 1px solid #dccb91;
+  border-radius: 14px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  margin-top: 12px;
+  padding: 14px;
+}
+
+.work-submission-guidance > svg { color: #725b12; }
+.work-submission-guidance > div { display: grid; gap: 3px; }
+.work-submission-guidance span { color: #5a6862; font-size: .84rem; line-height: 1.45; }
+.work-submission-guidance a { color: #0f6b57; font-size: .84rem; font-weight: 800; white-space: nowrap; }
+
 .delivery-submission-form {
   background: #f1f8f4;
   border: 1px solid #bdd8c7;
@@ -793,6 +810,9 @@ li {
 .inspected-token-card a,
 .token-identity-card a { color: #0f6b57; font-weight: 700; justify-self: start; }
 
+.token-identity-card small { color: #5a6862; line-height: 1.45; }
+.token-identity-card .token-risk-note { color: #7b5a00; }
+
 .token-accounting-note {
   align-items: flex-start;
   color: #405e54;
@@ -1066,6 +1086,11 @@ li {
 .bounty-detail-card .bounty-card-header h2 { font-size: clamp(1.5rem, 3vw, 2.15rem); margin: 8px 0 0; }
 .order-card { overflow: hidden; }
 .bounty-budget { text-align: right; }
+.bounty-funding-summary { align-items: end; display: grid; gap: 4px; justify-items: end; text-align: right; }
+.bounty-funding-summary strong { color: #17201c; white-space: nowrap; }
+.bounty-funding-summary a,
+.bounty-funding-summary span { align-items: center; color: #0f6b57; display: inline-flex; font-size: .78rem; font-weight: 800; gap: 4px; }
+.bounty-funding-summary span { color: #725b12; }
 .participant-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
 
 .marketplace-access-state {
@@ -1110,7 +1135,8 @@ li {
 
 .card-progress li.complete,
 .card-progress li.current { color: #173c35; font-weight: 750; }
-.card-progress li.complete > span { background: #0f6b57; color: #fff; }
+.card-progress li.complete > span,
+.card-progress li.current > span { background: #0f6b57; color: #fff; }
 .card-progress li.current > span { box-shadow: 0 0 0 3px rgba(15, 107, 87, .16); }
 
 .profile-hero {
@@ -2661,6 +2687,13 @@ textarea {
   margin-top: 12px;
 }
 
+.bounty-report-action {
+  border-top: 1px solid #dce5df;
+  justify-content: flex-start;
+  margin-top: 18px;
+  padding-top: 16px;
+}
+
 .report-control summary {
   align-items: center;
   color: #5a6861;
@@ -3080,6 +3113,8 @@ textarea {
   .profile-timezone-editor,
   .funded-escrow-summary { grid-template-columns: 1fr; }
   .funded-escrow-summary a { justify-content: center; width: 100%; }
+  .work-submission-guidance { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
+  .work-submission-guidance a { grid-column: 1 / -1; white-space: normal; }
   .landing-hero { border-radius: 22px; padding: 26px 22px; }
   .landing-hero h1 { font-size: clamp(2.4rem, 10.5vw, 3.25rem); }
   .landing-actions { align-items: stretch; flex-direction: column; }
@@ -3139,6 +3174,8 @@ textarea {
     align-items: flex-start;
     flex-direction: column;
   }
+
+  .bounty-funding-summary { align-items: start; justify-items: start; text-align: left; }
 
   .onchain-controls,
   .onchain-actions,

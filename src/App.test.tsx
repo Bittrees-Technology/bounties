@@ -154,6 +154,8 @@ describe("App", () => {
     expect(order.getByText(/Marketplace Ops/i)).toBeInTheDocument();
     expect(order.getByText(/250 USDC/i)).toBeInTheDocument();
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
+    expect(order.queryByText(/source_verification_unavailable/i)).not.toBeInTheDocument();
+    expect(order.getByText(/source verification was not available during inspection/i)).toBeInTheDocument();
   });
 
   it("closes an open listing report after a click outside its controls", async () => {
@@ -163,6 +165,8 @@ describe("App", () => {
     const order = await publishBounty(user, "Report interaction boundary");
     const reportSummary = order.getByText(/report this listing/i);
     const reportControl = reportSummary.closest("details") as HTMLDetailsElement;
+    const reviewPanel = order.getByRole("heading", { name: /^participant reviews$/i }).closest("section") as HTMLElement;
+    expect(reviewPanel.compareDocumentPosition(reportControl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 
     await user.click(reportSummary);
     expect(reportControl.open).toBe(true);

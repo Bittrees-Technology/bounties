@@ -342,6 +342,24 @@ function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id
   return `${identity} · ${network} · ${short(token.checksum_address)}`;
 }
 
+const tokenRiskLabels: Record<string, string> = {
+  metadata_call_failed: "Some token metadata could not be read",
+  symbol_collision: "Another token on this network uses the same symbol",
+  unusual_decimals: "This token uses an unusual number of decimals"
+};
+
+function meaningfulTokenRisks(token: Pick<TokenRecord, "risk_flags">): string[] {
+  return token.risk_flags
+    .filter((flag) => flag !== "source_verification_unavailable")
+    .map((flag) => tokenRiskLabels[flag] ?? flag.replaceAll("_", " "));
+}
+
+function tokenVerificationCopy(token: Pick<TokenRecord, "source_verification_status">): string {
+  return token.source_verification_status === "verified"
+    ? "Explorer source code verified"
+    : "Source verification was not available during inspection. Review the contract on the block explorer before using it.";
+}
+
 function averageRating(reviews: MarketplaceOrder["reviews"]): string {
   if (!reviews?.length) return "No ratings yet";
   const average = reviews.reduce((total, review) => total + review.rating, 0) / reviews.length;
@@ -1451,9 +1469,39 @@ export default function App() {
       return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Commit submitted work onchain</a>;
     }
     if (state === "ProviderAccepted" && milestone) {
-      return <a className="submit-work-shortcut" href={`#delivery-${milestone.id}`}><FileCheck2 size={16} />Submit work for the active milestone</a>;
+      return <a className="submit-work-shortcut" href={`#delivery-${milestone.id}`}><FileCheck2 size={16} />Submit proof of completed work</a>;
     }
     return null;
+  }
+
+  function providerSubmissionGuidance(order: MarketplaceOrder) {
+    if (!isProvider(order) || order.escrowObservation) return null;
+    return (
+      <aside className="work-submission-guidance">
+        <FileCheck2 size={20} aria-hidden="true" />
+        <div><strong>Work submission is not open yet</strong><span>You have been selected, but escrow funding has not been confirmed. After funding, accept the committed terms in your wallet; the completed-work proof form will then appear on this page.</span></div>
+        <a href={`#escrow-actions-${order.id}`}>View funding status</a>
+      </aside>
+    );
+  }
+
+  function fundingSummary(order: MarketplaceOrder) {
+    const observation = order.escrowObservation;
+    const token = order.tokenRecord;
+    const chain = token ? chains[token.chain_id as SupportedChainId] : null;
+    const transactionUrl = observation && chain ? `${chain.blockExplorer}/tx/${observation.transaction_hash}` : null;
+    const funded = Boolean(observation && BigInt(observation.received_base_units || "0") >= BigInt(observation.requested_base_units || "0"));
+
+    return (
+      <div className="bounty-funding-summary">
+        <strong>{order.budgetDisplay ?? order.budget} {token?.symbol || "ERC20"}</strong>
+        {funded && transactionUrl ? (
+          <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label="Funded — view funding transaction">Funded <ExternalLink size={12} /></a>
+        ) : (
+          <a href={`#escrow-actions-${order.id}`} aria-label="Unfunded — view funding status">Unfunded</a>
+        )}
+      </div>
+    );
   }
 
   function cardProgress(order: MarketplaceOrder) {
@@ -1480,19 +1528,20 @@ export default function App() {
         <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card bounty-detail-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`}>
           <div className="bounty-card-header">
             <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h2>{order.title}</h2></div>
-            <strong className="bounty-budget">{order.budgetDisplay ?? order.budget} {order.tokenRecord?.symbol || "ERC20"}</strong>
+            {fundingSummary(order)}
           </div>
           <p className="bounty-description">{linkedDescription(order.project)}</p>
           <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
           <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
-          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>{order.tokenRecord.risk_flags.length ? <small>Automated warnings: {order.tokenRecord.risk_flags.join(", ")}</small> : null}</div> : null}
+          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
           {providerNextAction(order)}
+          {providerSubmissionGuidance(order)}
           {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
-          <div className="content-actions">{reportForm("bounty", order.id)}</div>
           {lifecycle(order)}
           {reviews(order)}
+          <div className="content-actions bounty-report-action">{reportForm("bounty", order.id)}</div>
         </article>
       </>
     );
@@ -1870,7 +1919,7 @@ export default function App() {
                     <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                     <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>
                   </form>
-                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>Contract source: {inspected.source_verification_status} · Upgradeability: {inspected.proxy_status}</p><p>Automated warnings: {inspected.risk_flags.length ? inspected.risk_flags.join(", ") : "No automated warnings found"}</p><a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Exact accounting is enforced when escrow funding and payouts execute.</p></article> : null}
+                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>{tokenVerificationCopy(inspected)}</p>{meaningfulTokenRisks(inspected).length ? <p>Review before use: {meaningfulTokenRisks(inspected).join("; ")}.</p> : <p>No automated contract warnings were found.</p>}<a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Exact accounting is enforced when escrow funding and payouts execute.</p></article> : null}
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
