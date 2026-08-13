@@ -1535,6 +1535,15 @@ export default function App() {
                               <label>Other specialty (optional)<input name="customSpecialty" defaultValue={publicProfile?.custom_specialty ?? ""} maxLength={120} placeholder="Add a specialty not covered above" /></label>
                               <button type="submit">Save public profile</button>
                             </form>
+                            {publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (
+                              <details className="profile-visibility-control">
+                                <summary>Deactivate public profile</summary>
+                                <div>
+                                  <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
+                                  <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
+                                </div>
+                              </details>
+                            ) : null}
                           </details>
                         ) : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile?.profile_moderation_status === "hidden" ? (
@@ -1553,15 +1562,6 @@ export default function App() {
                           {publicProfile.custom_specialty ? <span>{publicProfile.custom_specialty}</span> : null}
                         </div> : null}
                         {publicProfile?.account_id && publicProfile.account_id !== session?.account.id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
-                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (
-                          <details className="profile-visibility-control">
-                            <summary>Deactivate public profile</summary>
-                            <div>
-                              <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
-                              <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
-                            </div>
-                          </details>
-                        ) : null}
                       </section>
                       <p className="rating-context">Capital-provider and labor-provider ratings stay separate so each kind of participation is easy to understand.</p>
                       <section className="profile-role-grid">
