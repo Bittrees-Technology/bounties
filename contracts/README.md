@@ -4,10 +4,18 @@
 never an NFT. The contract has no owner, administrator, arbiter, token allowlist,
 cap, pause, dispute, or claims flow.
 
+Each requester/terms commitment is a one-time creation key. Both single and
+milestone creation record `bountyIdByRequesterAndTermsHash`; a replay of the
+same committed terms reverts with `DuplicateBounty` before any ERC20 transfer.
+The reservation remains after cancellation or settlement, so an intentional
+replacement must use a freshly salted scope commitment.
+
 The deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain Testnet
 deployments, Safe authority, transaction receipts, bytecode hashes, and source
 verification records are published in [`deployments/testnet.json`](deployments/testnet.json).
-These testnet deployments do not authorize a mainnet deployment.
+These testnet deployments do not authorize a mainnet deployment. They also
+predate the one-time creation-key invariant and must be replaced before the
+frontend creation gate is re-enabled.
 
 Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
 address. Token symbols, decimals, names, and offchain prices are never read.

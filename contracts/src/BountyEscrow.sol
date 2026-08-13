@@ -41,6 +41,9 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
 
     uint256 public override nextBountyId = 1;
     mapping(address token => uint256 liability) public override totalLiability;
+    mapping(address requester => mapping(bytes32 termsHash => uint256 bountyId))
+        public
+        override bountyIdByRequesterAndTermsHash;
     mapping(uint256 bountyId => Bounty bounty) private _bounties;
     mapping(uint256 bountyId => mapping(uint256 milestoneIndex => Milestone milestone)) private _milestones;
 
@@ -62,7 +65,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
     ) external override nonReentrant returns (uint256 bountyId) {
         _validateCreation(token, deliveryDeadline, scopeHash, provider, proposalHash);
 
-        bountyId = nextBountyId++;
+        bountyId = _reserveSingleCreation(scopeHash, proposalHash, provider);
         Bounty storage bounty = _bounties[bountyId];
         bounty.requester = msg.sender;
         bounty.provider = provider;
@@ -70,7 +73,6 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         bounty.deliveryDeadline = deliveryDeadline;
         bounty.scopeHash = scopeHash;
         bounty.proposalHash = proposalHash;
-        bounty.termsHash = _termsHash(scopeHash, proposalHash, provider);
         bounty.allocatedAmount = requestedAmount;
         bounty.milestoneCount = 1;
         bounty.scheduleHash = _singleMilestoneScheduleHash(scopeHash, requestedAmount, deliveryDeadline);
@@ -123,7 +125,7 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
             revert MilestoneFundingMismatch(allocatedAmount, requestedAmount);
         }
 
-        bountyId = nextBountyId++;
+        bountyId = _reserveMilestoneCreation(scopeHash, proposalHash, provider, milestoneAmounts, milestoneDeadlines);
         Bounty storage bounty = _bounties[bountyId];
         bounty.requester = msg.sender;
         bounty.provider = provider;
@@ -133,32 +135,11 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         bounty.proposalHash = proposalHash;
         bounty.allocatedAmount = allocatedAmount;
         bounty.milestoneCount = uint32(milestoneAmounts.length);
-        bounty.scheduleHash = keccak256(
-            abi.encode(
-                MILESTONE_SCHEDULE_DOMAIN, block.chainid, address(this), scopeHash, milestoneAmounts, milestoneDeadlines
-            )
-        );
-        bounty.termsHash = keccak256(
-            abi.encode(
-                MILESTONE_TERMS_DOMAIN,
-                block.chainid,
-                address(this),
-                scopeHash,
-                proposalHash,
-                provider,
-                bounty.scheduleHash
-            )
-        );
         bounty.state = State.Created;
 
         _emitBountyCreated(bountyId, bounty, requestedAmount);
         emit MilestoneScheduleCreated(bountyId, bounty.scheduleHash, milestoneAmounts.length, allocatedAmount);
-        for (uint256 i; i < milestoneAmounts.length; ++i) {
-            Milestone storage milestone = _milestones[bountyId][i];
-            milestone.amount = milestoneAmounts[i];
-            milestone.deliveryDeadline = milestoneDeadlines[i];
-            emit MilestoneConfigured(bountyId, i, milestoneAmounts[i], milestoneDeadlines[i]);
-        }
+        _configureMilestones(bountyId, milestoneAmounts, milestoneDeadlines);
 
         if (requestedAmount != 0) {
             _pullExact(bounty.token, msg.sender, requestedAmount);
@@ -512,6 +493,49 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         return keccak256(abi.encode(TERMS_DOMAIN, block.chainid, address(this), scopeHash, proposalHash, provider));
     }
 
+    /// @dev A committed bounty may be created only once per requester. The reservation is
+    ///      deliberately permanent: a replacement must use a fresh scope commitment so a
+    ///      delayed or replayed wallet request cannot pull the principal a second time.
+    function _requireUniqueCreation(address requester, bytes32 termsHash) private view {
+        uint256 existingBountyId = bountyIdByRequesterAndTermsHash[requester][termsHash];
+        if (existingBountyId != 0) revert DuplicateBounty(requester, termsHash, existingBountyId);
+    }
+
+    function _reserveMilestoneCreation(
+        bytes32 scopeHash,
+        bytes32 proposalHash,
+        address provider,
+        uint256[] calldata milestoneAmounts,
+        uint64[] calldata milestoneDeadlines
+    ) private returns (uint256 bountyId) {
+        bytes32 scheduleHash = keccak256(
+            abi.encode(
+                MILESTONE_SCHEDULE_DOMAIN, block.chainid, address(this), scopeHash, milestoneAmounts, milestoneDeadlines
+            )
+        );
+        bytes32 termsHash = keccak256(
+            abi.encode(
+                MILESTONE_TERMS_DOMAIN, block.chainid, address(this), scopeHash, proposalHash, provider, scheduleHash
+            )
+        );
+        _requireUniqueCreation(msg.sender, termsHash);
+        bountyId = nextBountyId++;
+        bountyIdByRequesterAndTermsHash[msg.sender][termsHash] = bountyId;
+        _bounties[bountyId].scheduleHash = scheduleHash;
+        _bounties[bountyId].termsHash = termsHash;
+    }
+
+    function _reserveSingleCreation(bytes32 scopeHash, bytes32 proposalHash, address provider)
+        private
+        returns (uint256 bountyId)
+    {
+        bytes32 termsHash = _termsHash(scopeHash, proposalHash, provider);
+        _requireUniqueCreation(msg.sender, termsHash);
+        bountyId = nextBountyId++;
+        bountyIdByRequesterAndTermsHash[msg.sender][termsHash] = bountyId;
+        _bounties[bountyId].termsHash = termsHash;
+    }
+
     function _singleMilestoneScheduleHash(bytes32 scopeHash, uint256 amount, uint64 deliveryDeadline)
         private
         view
@@ -559,6 +583,15 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
                 revert InvalidMilestoneDeadline(i, previousDeadline, deadline);
             }
             previousDeadline = deadline;
+        }
+    }
+
+    function _configureMilestones(uint256 bountyId, uint256[] calldata amounts, uint64[] calldata deadlines) private {
+        for (uint256 i; i < amounts.length; ++i) {
+            Milestone storage milestone = _milestones[bountyId][i];
+            milestone.amount = amounts[i];
+            milestone.deliveryDeadline = deadlines[i];
+            emit MilestoneConfigured(bountyId, i, amounts[i], deadlines[i]);
         }
     }
 

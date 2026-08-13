@@ -19,6 +19,17 @@ describe("live escrow environment gate", () => {
     });
   });
 
+  it("keeps creation fail-closed independently from existing lifecycle actions", async () => {
+    vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+    vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+    vi.resetModules();
+    expect((await import("./config")).ESCROW_CREATION_ENABLED).toBe(false);
+
+    vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+    vi.resetModules();
+    expect((await import("./config")).ESCROW_CREATION_ENABLED).toBe(true);
+  });
+
   it("fails closed when the address is malformed", async () => {
     vi.stubEnv("VITE_ESCROW_ENABLED", "true");
     vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "not-an-address");

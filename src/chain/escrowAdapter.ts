@@ -45,6 +45,8 @@ export interface ViemEscrowAdapterOptions extends EscrowProviderSelection {
   integrationEnabled?: boolean;
   statusPollIntervalMs?: number;
   statusPollAttempts?: number;
+  /** Called immediately after wallet submission, before receipt polling. */
+  onSubmission?: (submission: { txHash?: string; bundleId?: string }) => void;
 }
 
 export type EscrowProviderMode = "eoa" | "smart-wallet";
@@ -295,10 +297,34 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     functionName: EscrowFunctionName,
     args: readonly unknown[],
     funding?: EscrowFundingInput,
-    confirmEoa = false
+    confirmEoa = false,
+    creationTermsHash?: `0x${string}`
   ): Promise<EscrowTxResult> {
     const { mode, provider, account } = await selectEscrowProvider(options, chainId);
     if (mode === "eoa") await assertProviderChain(provider, chainId);
+    if (creationTermsHash) {
+      const data = encodeFunctionData({
+        abi: BOUNTY_ESCROW_ABI,
+        functionName: "bountyIdByRequesterAndTermsHash",
+        args: [account, creationTermsHash]
+      });
+      const raw = await provider.request({ method: "eth_call", params: [{ to: contractAddress, data }, "latest"] });
+      const decodedBountyId = decodeFunctionResult({
+        abi: BOUNTY_ESCROW_ABI,
+        functionName: "bountyIdByRequesterAndTermsHash",
+        data: raw as `0x${string}`
+      });
+      if (typeof decodedBountyId !== "bigint") {
+        throw new EscrowClientError("CONTRACT_REVERTED", "The escrow creation-key lookup returned invalid data.");
+      }
+      const existingBountyId = decodedBountyId;
+      if (existingBountyId !== 0n) {
+        throw new EscrowClientError(
+          "DUPLICATE_ESCROW",
+          `This committed bounty already exists onchain as bounty ${existingBountyId.toString()}.`
+        );
+      }
+    }
     const contractCall: WalletCall = {
       to: contractAddress,
       data: encodeFunctionData({ abi: BOUNTY_ESCROW_ABI, functionName, args: args as never }),
@@ -311,12 +337,27 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     }
 
     if (mode === "smart-wallet") {
-      return sendSmartWalletCalls(provider, account, chainId, [...approvalCalls, contractCall], pollIntervalMs, pollAttempts);
+      return sendSmartWalletCalls(
+        provider,
+        account,
+        chainId,
+        [...approvalCalls, contractCall],
+        pollIntervalMs,
+        pollAttempts,
+        creationTermsHash ? options.onSubmission : undefined
+      );
     }
 
     for (const approvalCall of approvalCalls) {
       const approvalHash = await sendEoaTransaction(provider, account, chainId, approvalCall);
-      await waitForEoaReceipt(provider, approvalHash, pollIntervalMs, pollAttempts);
+      await waitForEoaReceipt(
+        provider,
+        approvalHash,
+        pollIntervalMs,
+        pollAttempts,
+        "INSUFFICIENT_ALLOWANCE",
+        "The ERC20 approval is still pending. Retry funding after it confirms."
+      );
     }
     if (funding && approvalCalls.length > 0) {
       const allowance = await readAllowance(
@@ -330,6 +371,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       }
     }
     const txHash = await sendEoaTransaction(provider, account, chainId, contractCall);
+    if (creationTermsHash) options.onSubmission?.({ txHash });
     if (confirmEoa) {
       await waitForEoaReceipt(provider, txHash, pollIntervalMs, pollAttempts);
       return { state: "confirmed", txHash };
@@ -344,7 +386,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       const amount = requiredFunding(chainId, funding);
       const milestoneSchedule = optionalMilestoneSchedule(order, amount);
       if (milestoneSchedule) {
-        requiredMilestoneTermsHash(order, milestoneSchedule, BigInt(chainId), contractAddress);
+        const termsHash = requiredMilestoneTermsHash(order, milestoneSchedule, BigInt(chainId), contractAddress);
         return send(
           "createMilestoneBounty",
           [
@@ -357,7 +399,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
             requiredBytes32(order.proposalHash, "proposalHash")
           ],
           funding,
-          true
+          true,
+          termsHash
         );
       }
       return send(
@@ -371,7 +414,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
           requiredBytes32(order.proposalHash, "proposalHash")
         ],
         funding,
-        true
+        true,
+        requiredBytes32(order.termsHash, "termsHash")
       );
     },
     fundEscrow: async (order, funding) => {
@@ -651,7 +695,8 @@ async function sendSmartWalletCalls(
   chainId: SupportedChainId,
   calls: readonly WalletCall[],
   pollIntervalMs: number,
-  pollAttempts: number
+  pollAttempts: number,
+  onSubmission?: (submission: { txHash?: string; bundleId?: string }) => void
 ): Promise<EscrowTxResult> {
   let result: unknown;
   try {
@@ -671,6 +716,7 @@ async function sendSmartWalletCalls(
     throw mapProviderError(error, "CONTRACT_REVERTED", "The wallet could not submit the atomic escrow calls.");
   }
   const bundleId = requiredBundleId(result);
+  onSubmission?.({ bundleId });
 
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     let statusResult: unknown;
@@ -705,7 +751,9 @@ async function waitForEoaReceipt(
   provider: Eip1193Provider,
   txHash: string,
   pollIntervalMs: number,
-  pollAttempts: number
+  pollAttempts: number,
+  pendingCode: "UNKNOWN" | "INSUFFICIENT_ALLOWANCE" = "UNKNOWN",
+  pendingMessage = "The escrow transaction is still pending. Its submission remains locked until resolved."
 ): Promise<void> {
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     const result = await provider.request({ method: "eth_getTransactionReceipt", params: [txHash] });
@@ -714,11 +762,33 @@ async function waitForEoaReceipt(
       continue;
     }
     if (!result || typeof result !== "object" || !receiptSucceeded(result as Record<string, unknown>)) {
-      throw new EscrowClientError("CONTRACT_REVERTED", "The ERC20 approval transaction failed.");
+      throw new EscrowClientError("CONTRACT_REVERTED", "The submitted transaction reverted.");
     }
     return;
   }
-  throw new EscrowClientError("INSUFFICIENT_ALLOWANCE", "The ERC20 approval is still pending. Retry funding after it confirms.");
+  throw new EscrowClientError(pendingCode, pendingMessage);
+}
+
+export async function resolveEscrowBundle(provider: Eip1193Provider, bundleId: string): Promise<string | undefined> {
+  let statusResult: unknown;
+  try {
+    statusResult = await provider.request({ method: "wallet_getCallsStatus", params: [bundleId] });
+  } catch (error) {
+    throw mapProviderError(error, "UNKNOWN", "The wallet could not report the escrow call status.");
+  }
+  const status = parseStatus(statusResult);
+  if (status === 100) return undefined;
+  if (status === 200) {
+    const receipts = getReceipts(statusResult);
+    if (receipts.length === 0 || receipts.some((receipt) => !receiptSucceeded(receipt))) {
+      throw new EscrowClientError("CONTRACT_REVERTED", "The atomic escrow calls did not all succeed.");
+    }
+    return requiredTransactionHash(receipts.at(-1)?.transactionHash);
+  }
+  if (status === 400 || status === 500 || status === 600) {
+    throw new EscrowClientError("CONTRACT_REVERTED", `The wallet reported failed escrow call status ${status}.`);
+  }
+  throw new EscrowClientError("UNKNOWN", "The wallet returned an unsupported escrow call status.");
 }
 
 async function optionalProviderRequest(provider: Eip1193Provider, method: string, params: unknown[]): Promise<unknown> {

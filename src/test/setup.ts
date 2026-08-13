@@ -33,6 +33,11 @@ let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
 let profileVisibility: "visible" | "hidden" = "visible";
 let profileLegacySpecialty: string | null = null;
+let escrowRecordOutcome: "success" | "reverted" | "pending" = "success";
+
+export function configureMockEscrowRecordOutcome(outcome: "success" | "reverted" | "pending") {
+  escrowRecordOutcome = outcome;
+}
 
 export function configureMockStaff(
   role: "moderator" | "admin" | null,
@@ -155,6 +160,30 @@ export function configureMockSelectedUnfundedProvider() {
   }];
 }
 
+export function configureMockAcceptedUnfundedBuyer() {
+  const token = tokens.find((candidate) => candidate.symbol === "USDC")!;
+  const proposalId = "00000000-0000-4000-8000-000000000422";
+  bounties = [{
+    id: "00000000-0000-4000-8000-000000000421",
+    creator_id: "00000000-0000-4000-8000-000000000111",
+    title: "Buyer unfunded escrow",
+    description: "Creation safety fixture",
+    scope_source: { project: "Creation safety", buyer: "Test participant", deliveryDeadline: "2099-12-31", criteria: [] },
+    scope_hash: `0x${"11".repeat(32)}`,
+    chain_id: token.chain_id,
+    token_id: token.id,
+    token_decimals: token.decimals,
+    budget_base_units: "250000000",
+    status: "accepted",
+    accepted_proposal_id: proposalId,
+    escrow_schedule_status: "structured",
+    created_at: new Date().toISOString(),
+    token,
+    milestones: [{ id: "00000000-0000-4000-8000-000000000423", ordinal: 0, title: "Delivery", amount_base_units: "250000000", delivery_deadline: "2099-12-31T23:59:59.999Z", status: "pending", evidence: [] }],
+    proposals: [{ id: proposalId, provider_id: "00000000-0000-4000-8000-000000000333", provider_wallet_address: "0x3333333333333333333333333333333333333333", proposal_hash: `0x${"66".repeat(32)}`, note: "Accepted plan", proposed_total_base_units: "250000000", status: "accepted" }]
+  }];
+}
+
 export function configureMockProfileRoleBounties() {
   const token = tokens.find((candidate) => candidate.symbol === "USDC")!;
   const otherAccount = "00000000-0000-4000-8000-000000000444";
@@ -234,7 +263,20 @@ beforeEach(() => {
   snapshotMyReports = [];
   profileVisibility = "visible";
   profileLegacySpecialty = null;
+  escrowRecordOutcome = "success";
   if (typeof window === "undefined") return;
+  const storage = new Map<string, string>();
+  Object.defineProperty(window, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+      removeItem: (key: string) => storage.delete(key),
+      clear: () => storage.clear(),
+      key: (index: number) => [...storage.keys()][index] ?? null,
+      get length() { return storage.size; }
+    }
+  });
   window.history.replaceState({}, "", "/");
   Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
   Object.defineProperty(window, "ethereum", {
@@ -493,6 +535,15 @@ beforeEach(() => {
       };
       bounties = [row];
       return Response.json(row);
+    }
+    if (url.endsWith("/api/bounties/escrow")) {
+      if (escrowRecordOutcome === "reverted") {
+        return Response.json({ code: "ESCROW_TX_NOT_SUCCESSFUL" }, { status: 400 });
+      }
+      if (escrowRecordOutcome === "pending") {
+        return Response.json({ code: "ESCROW_CONFIRMATIONS_PENDING" }, { status: 409 });
+      }
+      return Response.json({ ok: true });
     }
     if (url.endsWith("/api/bounties/reports")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string };

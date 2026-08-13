@@ -19,6 +19,12 @@ function configuredAddress(chainId: SupportedChainId): `0x${string}` | undefined
 const globallyEnabled = import.meta.env.VITE_ESCROW_ENABLED === "true";
 
 /**
+ * Creation is separately fail-closed so existing escrow records can still be accepted,
+ * delivered, released, settled, cancelled, or refunded during a contract upgrade.
+ */
+export const ESCROW_CREATION_ENABLED = globallyEnabled && import.meta.env.VITE_ESCROW_CREATION_ENABLED === "true";
+
+/**
  * Operations must set both the enable flag and a valid public deployment address. Missing or
  * malformed configuration remains fail-closed in every build.
  */

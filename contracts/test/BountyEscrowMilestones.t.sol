@@ -93,6 +93,26 @@ contract BountyEscrowMilestonesTest is Test {
         assertEq(escrow.getBounty(bountyId).amount, TOTAL);
     }
 
+    function testCommittedMilestoneScheduleCanOnlyBeCreatedOncePerRequester() public {
+        (uint256[] memory amounts, uint64[] memory deadlines) = _schedule();
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createMilestoneBounty(
+            address(token), TOTAL, amounts, deadlines, SCOPE_HASH, provider, PROPOSAL_HASH
+        );
+        IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
+
+        assertEq(escrow.bountyIdByRequesterAndTermsHash(requester, bounty.termsHash), bountyId);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.DuplicateBounty.selector, requester, bounty.termsHash, bountyId)
+        );
+        vm.prank(requester);
+        escrow.createMilestoneBounty(address(token), TOTAL, amounts, deadlines, SCOPE_HASH, provider, PROPOSAL_HASH);
+        assertEq(escrow.nextBountyId(), bountyId + 1);
+        assertEq(escrow.totalLiability(address(token)), TOTAL);
+        assertEq(token.balanceOf(address(escrow)), TOTAL);
+    }
+
     function testThreeMilestonesReleaseSequentiallyByApprovalAndReviewExpiry() public {
         (uint256 bountyId, uint256[] memory amounts, uint64[] memory deadlines) = _createFundedAndAccept();
 

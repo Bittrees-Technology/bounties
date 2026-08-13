@@ -23,8 +23,9 @@ import {
   WalletCards
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
-import { chains, defaultPaymentChainId, supportedChainIds } from "./chain/config";
-import { createViemEscrowAdapter } from "./chain/escrowAdapter";
+import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, supportedChainIds } from "./chain/config";
+import { createViemEscrowAdapter, resolveEscrowBundle } from "./chain/escrowAdapter";
+import { EscrowClientError } from "./chain/errors";
 import { formatUnits, keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
 import { standardTokenPresets } from "./chain/tokenPresets";
@@ -160,6 +161,24 @@ function ProfileAvatar({ profile }: { profile: PublicWalletProfile | null }) {
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
+type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
+const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
+
+function readEscrowCreationLocks(): Record<string, EscrowCreationLock> {
+  try {
+    if (typeof window.localStorage?.getItem !== "function") return {};
+    const value = JSON.parse(window.localStorage.getItem(ESCROW_CREATION_LOCKS_KEY) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, EscrowCreationLock] => {
+      const lock = entry[1] as Partial<EscrowCreationLock> | null;
+      const validTxHash = lock?.txHash === undefined || /^0x[a-fA-F0-9]{64}$/.test(lock.txHash);
+      const validBundleId = lock?.bundleId === undefined || Boolean(lock.bundleId.trim());
+      return Boolean(lock && typeof lock.createdAt === "string" && validTxHash && validBundleId && (lock.txHash || lock.bundleId));
+    }));
+  } catch {
+    return {};
+  }
+}
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
   current_milestone?: number | null;
   milestone_count?: number | null;
@@ -400,6 +419,7 @@ export default function App() {
   const [inspected, setInspected] = useState<TokenRecord | null>(null);
   const [tokenPolicyConfirmed, setTokenPolicyConfirmed] = useState(false);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
+  const [escrowCreationLocks, setEscrowCreationLocks] = useState<Record<string, EscrowCreationLock>>(readEscrowCreationLocks);
   const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
@@ -452,6 +472,16 @@ export default function App() {
   useEffect(() => {
     resetProfileEditorDraft();
   }, [resetProfileEditorDraft]);
+
+  useEffect(() => {
+    const synchronizeEscrowCreationLocks = (event: StorageEvent) => {
+      if (event.key === ESCROW_CREATION_LOCKS_KEY || event.key === null) {
+        setEscrowCreationLocks(readEscrowCreationLocks());
+      }
+    };
+    window.addEventListener("storage", synchronizeEscrowCreationLocks);
+    return () => window.removeEventListener("storage", synchronizeEscrowCreationLocks);
+  }, []);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -1042,7 +1072,14 @@ export default function App() {
         provider: order.providerAddress
       }).value;
     return {
-      client: createViemEscrowAdapter({ chain, eoaProvider: window.ethereum }),
+      client: createViemEscrowAdapter({
+        chain,
+        eoaProvider: window.ethereum,
+        onSubmission: (submission) => updateEscrowCreationLock(order.id, {
+          ...submission,
+          createdAt: new Date().toISOString()
+        })
+      }),
       ref: {
         orderId: order.id,
         onchainId,
@@ -1079,6 +1116,45 @@ export default function App() {
     }
   }
 
+  function updateEscrowCreationLock(orderId: string, lock: EscrowCreationLock | null) {
+    const next = { ...readEscrowCreationLocks() };
+    if (lock) next[orderId] = lock;
+    else delete next[orderId];
+    // Lock the current tab even if browser storage is unavailable. The upgraded
+    // contract remains the authoritative cross-tab/cross-device replay guard.
+    setEscrowCreationLocks(next);
+    try {
+      if (typeof window.localStorage?.setItem === "function") {
+        window.localStorage.setItem(ESCROW_CREATION_LOCKS_KEY, JSON.stringify(next));
+      }
+    } catch {
+      // Storage may be disabled or full; do not turn a successfully broadcast
+      // transaction into an apparent submission failure or reopen this tab's action.
+    }
+  }
+
+  async function reconcileEscrowCreation(orderId: string, lock: EscrowCreationLock) {
+    await act(async () => {
+      let txHash = lock.txHash;
+      try {
+        if (!txHash && lock.bundleId) {
+          if (!window.ethereum) throw new Error("Reconnect the submitting wallet to check this escrow bundle.");
+          txHash = await resolveEscrowBundle(window.ethereum, lock.bundleId);
+          if (!txHash) throw new Error("Escrow funding is still pending. The bounty remains locked against another attempt.");
+          updateEscrowCreationLock(orderId, { ...lock, txHash });
+        }
+        if (!txHash) throw new Error("The submitted escrow identifier is unavailable. The bounty remains locked for safety.");
+        await recordConfirmedEscrow(orderId, txHash);
+        updateEscrowCreationLock(orderId, null);
+      } catch (caught) {
+        const definitivelyFailed = caught instanceof PersistenceError && caught.serverCode === "ESCROW_TX_NOT_SUCCESSFUL"
+          || caught instanceof EscrowClientError && caught.code === "CONTRACT_REVERTED" && Boolean(lock.bundleId);
+        if (definitivelyFailed) updateEscrowCreationLock(orderId, null);
+        throw caught;
+      }
+    }, "Escrow funding confirmed.");
+  }
+
   async function executeEscrowTransaction(
     order: MarketplaceOrder,
     action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>,
@@ -1086,15 +1162,19 @@ export default function App() {
   ) {
     const { client, ref } = escrowBoundary(order);
     const result = await action(client, ref);
-    if (!result.txHash) return;
+    if (!result.txHash) return result;
     setEscrowTxHashes((current) => ({ ...current, [order.id]: result.txHash! }));
-    if (observeCreation) await recordConfirmedEscrow(order.id, result.txHash);
+    if (observeCreation) {
+      await recordConfirmedEscrow(order.id, result.txHash);
+      updateEscrowCreationLock(order.id, null);
+    }
+    return result;
   }
 
   async function acceptApplicantAndFund(order: MarketplaceOrder, proposalId: string) {
     await act(async () => {
       const accepted = await acceptProposal(order.id, proposalId);
-      if (accepted.fundOnApplicantAcceptance === false) return;
+      if (accepted.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED) return;
       await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
         amountBaseUnits: accepted.budgetBaseUnits!,
         token: {
@@ -1105,7 +1185,7 @@ export default function App() {
           explorerUrl: accepted.tokenRecord!.explorer_url
         }
       }), true);
-    }, order.fundOnApplicantAcceptance === false ? "Applicant accepted." : "Applicant accepted and escrow funded.");
+    }, order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Applicant accepted." : "Applicant accepted. Escrow funding was submitted for confirmation.");
   }
 
   function escrowControls(order: MarketplaceOrder) {
@@ -1117,6 +1197,7 @@ export default function App() {
     }
 
     const observation = order.escrowObservation as ReconciledMilestoneObservation | undefined;
+    const creationLock = escrowCreationLocks[order.id];
     const state = observation?.onchain_state;
     const currentMilestone = Number.isInteger(observation?.current_milestone) ? observation!.current_milestone! : null;
     const milestoneCount = Number.isInteger(observation?.milestone_count) ? observation!.milestone_count! : order.milestones?.length ?? null;
@@ -1170,8 +1251,19 @@ export default function App() {
     return (
       <section id={`escrow-actions-${order.id}`} className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
         <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
-        {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" ? (
-          <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
+        {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && creationLock ? (
+          <div className="escrow-creation-pending" role="status">
+            <strong>Escrow creation submitted</strong>
+            <span>This bounty is locked against another funding attempt while its receipt is recorded.</span>
+            {creationLock.txHash ? <a href={`${chain.blockExplorer}/tx/${creationLock.txHash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a> : <span>Wallet bundle submitted. Its transaction link will appear after the wallet confirms it.</span>}
+            <button className="secondary-button" disabled={loading} onClick={() => void reconcileEscrowCreation(order.id, creationLock)}>Check funding confirmation</button>
+          </div>
+        ) : null}
+        {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && !creationLock && !ESCROW_CREATION_ENABLED ? (
+          <p className="commitment-warning" role="alert">New escrow funding is temporarily paused while the duplicate-funding contract guard is upgraded. Existing escrow actions remain available.</p>
+        ) : null}
+        {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && !creationLock && ESCROW_CREATION_ENABLED ? (
+          <button disabled={loading} onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
             amountBaseUnits: order.budgetBaseUnits!,
             token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
           }), true)}>Create and fund escrow</button>
@@ -1357,7 +1449,7 @@ export default function App() {
                     <p>{proposal.note}</p>
                     <span>Application for {proposal.proposedBudget} {order.token}</span>
                   </div>
-                  {isBuyer(order) ? <button onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
+                  {isBuyer(order) ? <button onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
                 </div>
               ))
             ) : (

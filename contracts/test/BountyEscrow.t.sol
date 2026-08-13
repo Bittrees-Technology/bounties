@@ -87,12 +87,34 @@ contract BountyEscrowTest is Test {
         assertEq(bounty.settlementProposalExpiry, 0);
     }
 
+    function testCommittedBountyCanOnlyBeCreatedOncePerRequester() public {
+        uint256 amount = 1_000 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(2_001)));
+        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+
+        assertEq(escrow.bountyIdByRequesterAndTermsHash(requester, termsHash), bountyId);
+        assertEq(escrow.nextBountyId(), bountyId + 1);
+        assertEq(escrow.totalLiability(address(token)), amount);
+        assertEq(token.balanceOf(address(escrow)), amount);
+
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.DuplicateBounty.selector, requester, termsHash, bountyId));
+        vm.prank(requester);
+        escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+
+        assertEq(escrow.nextBountyId(), bountyId + 1);
+        assertEq(escrow.totalLiability(address(token)), amount);
+        assertEq(token.balanceOf(address(escrow)), amount);
+    }
+
     function testCreateBountyAllowsUnfundedRecordAndLaterFunding() public {
         uint256 amount = 375 ether;
         uint64 deadline = uint64(block.timestamp + 5 days);
         bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(3)));
         bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
-
         vm.prank(requester);
         uint256 bountyId = escrow.createBounty(address(token), 0, deadline, scopeHash, provider, PROPOSAL_HASH);
 
@@ -463,10 +485,11 @@ contract BountyEscrowTest is Test {
         assertEq(token.balanceOf(provider), providerPayout);
         assertEq(escrow.totalLiability(address(token)), 0);
 
+        bytes32 providerScopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(1002)));
         vm.prank(requester);
         uint256 providerProposedId =
-            escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
-        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
+            escrow.createBounty(address(token), amount, deadline, providerScopeHash, provider, PROPOSAL_HASH);
+        bytes32 termsHash = _termsHash(providerScopeHash, PROPOSAL_HASH, provider);
         vm.prank(provider);
         escrow.acceptBounty(providerProposedId, termsHash);
         vm.prank(provider);
@@ -782,7 +805,6 @@ contract BountyEscrowTest is Test {
         uint256 amount = 750 ether;
         uint64 deadline = uint64(block.timestamp + 2 days);
         bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(14)));
-        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
 
         vm.prank(requester);
         uint256 createdId = escrow.createBounty(address(token), 0, deadline, scopeHash, provider, PROPOSAL_HASH);
@@ -798,8 +820,10 @@ contract BountyEscrowTest is Test {
         assertEq(cancelled.provider, provider);
         assertEq(cancelled.proposalHash, PROPOSAL_HASH);
 
+        bytes32 fundedScopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(15)));
         vm.prank(requester);
-        uint256 fundedId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        uint256 fundedId =
+            escrow.createBounty(address(token), amount, deadline, fundedScopeHash, provider, PROPOSAL_HASH);
         uint256 requesterBefore = token.balanceOf(requester);
 
         vm.expectEmit(true, true, true, true);
@@ -810,10 +834,13 @@ contract BountyEscrowTest is Test {
         assertEq(token.balanceOf(requester), requesterBefore + amount);
         assertEq(escrow.totalLiability(address(token)), 0);
 
+        bytes32 acceptedScopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(151)));
+        bytes32 acceptedTermsHash = _termsHash(acceptedScopeHash, PROPOSAL_HASH, provider);
         vm.prank(requester);
-        uint256 acceptedId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        uint256 acceptedId =
+            escrow.createBounty(address(token), amount, deadline, acceptedScopeHash, provider, PROPOSAL_HASH);
         vm.prank(provider);
-        escrow.acceptBounty(acceptedId, termsHash);
+        escrow.acceptBounty(acceptedId, acceptedTermsHash);
 
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -875,11 +902,13 @@ contract BountyEscrowTest is Test {
         vm.prank(provider);
         escrow.acceptBounty(acceptedId, termsHash);
 
+        bytes32 deliveredScopeHash = _scopeHash(amount, deadline + 1 days, METADATA_HASH, bytes32(uint256(181)));
+        bytes32 deliveredTermsHash = _termsHash(deliveredScopeHash, PROPOSAL_HASH, provider);
         vm.prank(requester);
         uint256 deliveredId =
-            escrow.createBounty(address(token), amount, deadline + 1 days, scopeHash, provider, PROPOSAL_HASH);
+            escrow.createBounty(address(token), amount, deadline + 1 days, deliveredScopeHash, provider, PROPOSAL_HASH);
         vm.prank(provider);
-        escrow.acceptBounty(deliveredId, termsHash);
+        escrow.acceptBounty(deliveredId, deliveredTermsHash);
         vm.warp(deadline + 1 days);
 
         vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.DeadlineExpired.selector, deliveredId, deadline + 1 days));
@@ -1006,54 +1035,64 @@ contract BountyEscrowTest is Test {
         uint256 amount = 250 ether;
         uint64 deadline = uint64(block.timestamp + 1 days);
         bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(32)));
-        bytes32 termsHash = _termsHash(scopeHash, PROPOSAL_HASH, provider);
 
-        FalseReturnERC20 falseToken = new FalseReturnERC20();
-        falseToken.mint(requester, amount);
-        vm.prank(requester);
-        falseToken.approve(address(escrow), amount);
-        vm.expectRevert(abi.encodeWithSignature("SafeERC20FailedOperation(address)", address(falseToken)));
-        vm.prank(requester);
-        escrow.createBounty(address(falseToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        {
+            FalseReturnERC20 falseToken = new FalseReturnERC20();
+            falseToken.mint(requester, amount);
+            vm.prank(requester);
+            falseToken.approve(address(escrow), amount);
+            vm.expectRevert(abi.encodeWithSignature("SafeERC20FailedOperation(address)", address(falseToken)));
+            vm.prank(requester);
+            escrow.createBounty(address(falseToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
 
-        vm.prank(requester);
-        uint256 laterFalseId = escrow.createBounty(address(falseToken), 0, deadline, scopeHash, provider, PROPOSAL_HASH);
-        vm.expectRevert(abi.encodeWithSignature("SafeERC20FailedOperation(address)", address(falseToken)));
-        vm.prank(requester);
-        escrow.fundBounty(laterFalseId, amount);
+            vm.prank(requester);
+            uint256 laterFalseId =
+                escrow.createBounty(address(falseToken), 0, deadline, scopeHash, provider, PROPOSAL_HASH);
+            vm.expectRevert(abi.encodeWithSignature("SafeERC20FailedOperation(address)", address(falseToken)));
+            vm.prank(requester);
+            escrow.fundBounty(laterFalseId, amount);
+        }
 
-        FeeOnTransferERC20 feeToken = new FeeOnTransferERC20();
-        feeToken.mint(requester, amount);
-        vm.prank(requester);
-        feeToken.approve(address(escrow), amount);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBountyEscrow.FundingAmountMismatch.selector, address(feeToken), amount, amount - (amount / 100)
-            )
-        );
-        vm.prank(requester);
-        escrow.createBounty(address(feeToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        {
+            FeeOnTransferERC20 feeToken = new FeeOnTransferERC20();
+            feeToken.mint(requester, amount);
+            vm.prank(requester);
+            feeToken.approve(address(escrow), amount);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IBountyEscrow.FundingAmountMismatch.selector, address(feeToken), amount, amount - (amount / 100)
+                )
+            );
+            bytes32 feeScopeHash = keccak256(abi.encode(scopeHash, address(feeToken)));
+            vm.prank(requester);
+            escrow.createBounty(address(feeToken), amount, deadline, feeScopeHash, provider, PROPOSAL_HASH);
+        }
 
-        SenderTaxERC20 senderTaxToken = new SenderTaxERC20();
-        uint256 senderTax = amount / 100;
-        senderTaxToken.mint(requester, amount + senderTax);
-        vm.prank(requester);
-        senderTaxToken.approve(address(escrow), amount);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                IBountyEscrow.FundingDebitMismatch.selector, address(senderTaxToken), amount, amount + senderTax
-            )
-        );
-        vm.prank(requester);
-        escrow.createBounty(address(senderTaxToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        {
+            SenderTaxERC20 senderTaxToken = new SenderTaxERC20();
+            uint256 senderTax = amount / 100;
+            senderTaxToken.mint(requester, amount + senderTax);
+            vm.prank(requester);
+            senderTaxToken.approve(address(escrow), amount);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    IBountyEscrow.FundingDebitMismatch.selector, address(senderTaxToken), amount, amount + senderTax
+                )
+            );
+            bytes32 senderTaxScopeHash = keccak256(abi.encode(scopeHash, address(senderTaxToken)));
+            vm.prank(requester);
+            escrow.createBounty(address(senderTaxToken), amount, deadline, senderTaxScopeHash, provider, PROPOSAL_HASH);
+        }
 
         RebasingERC20 rebasingToken = new RebasingERC20();
         rebasingToken.mint(requester, amount);
         vm.prank(requester);
         rebasingToken.approve(address(escrow), amount);
+        bytes32 rebasingScopeHash = keccak256(abi.encode(scopeHash, address(rebasingToken)));
+        bytes32 rebasingTermsHash = _termsHash(rebasingScopeHash, PROPOSAL_HASH, provider);
         vm.prank(requester);
         uint256 bountyId =
-            escrow.createBounty(address(rebasingToken), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+            escrow.createBounty(address(rebasingToken), amount, deadline, rebasingScopeHash, provider, PROPOSAL_HASH);
         rebasingToken.slash(address(escrow), 1 ether);
         vm.expectRevert(
             abi.encodeWithSelector(
@@ -1061,7 +1100,7 @@ contract BountyEscrowTest is Test {
             )
         );
         vm.prank(provider);
-        escrow.acceptBounty(bountyId, termsHash);
+        escrow.acceptBounty(bountyId, rebasingTermsHash);
     }
 
     function testRebasingTokenReleaseFailsAfterPostApprovalSlash() public {
@@ -1151,7 +1190,13 @@ contract BountyEscrowTest is Test {
         vm.prank(provider);
         escrow.acceptBounty(senderTaxBountyId, termsHash);
         bytes32 senderTaxEvidenceHash = _evidenceHash(
-            senderTaxBountyId, scopeHash, termsHash, provider, EVIDENCE_CONTENT_HASH, EVIDENCE_URI_HASH, bytes32(uint256(46))
+            senderTaxBountyId,
+            scopeHash,
+            termsHash,
+            provider,
+            EVIDENCE_CONTENT_HASH,
+            EVIDENCE_URI_HASH,
+            bytes32(uint256(46))
         );
         bytes32 senderTaxApprovalHash = _approvalHash(
             senderTaxBountyId, senderTaxEvidenceHash, requester, APPROVAL_DECISION_HASH, bytes32(uint256(47))

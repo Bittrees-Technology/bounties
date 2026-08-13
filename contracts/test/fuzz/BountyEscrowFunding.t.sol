@@ -46,6 +46,28 @@ contract BountyEscrowFundingFuzzTest is Test {
         assertEq(token.balanceOf(address(escrow)), amount);
     }
 
+    function testFuzzCreationReplayCannotPullPrincipalTwice(uint96 rawAmount, uint32 rawDelay) public {
+        uint256 amount = bound(rawAmount, 1, type(uint96).max);
+        uint64 deadline = uint64(block.timestamp + bound(uint256(rawDelay), 1, 30 days));
+        address provider = makeAddr("fuzz-replay-provider");
+        bytes32 scopeHash = _scopeHash(amount, deadline, bytes32(uint256(2)));
+        bytes32 termsHash = _termsHash(scopeHash, provider);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        uint256 requesterBalance = token.balanceOf(requester);
+        uint256 escrowBalance = token.balanceOf(address(escrow));
+
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.DuplicateBounty.selector, requester, termsHash, bountyId));
+        vm.prank(requester);
+        escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+
+        assertEq(escrow.nextBountyId(), bountyId + 1);
+        assertEq(token.balanceOf(requester), requesterBalance);
+        assertEq(token.balanceOf(address(escrow)), escrowBalance);
+        assertEq(escrow.totalLiability(address(token)), amount);
+    }
+
     function testFuzzUnfundedRecordThenExactFunding(uint96 rawAmount, uint32 rawDelay) public {
         uint256 amount = bound(rawAmount, 1, type(uint96).max);
         uint64 deadline = uint64(block.timestamp + bound(uint256(rawDelay), 1, 30 days));

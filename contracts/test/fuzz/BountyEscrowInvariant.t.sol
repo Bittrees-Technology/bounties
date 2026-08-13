@@ -57,6 +57,10 @@ contract BountyEscrowHandler is Test {
         return _tracked[index].proposalHash;
     }
 
+    function trackedTermsHash(uint256 index) external view returns (bytes32) {
+        return _tracked[index].termsHash;
+    }
+
     function createBounty(uint8 tokenChoice, uint96 rawAmount, uint32 rawDelay, bool fundedNow) external {
         if (_tracked.length >= 8) return;
 
@@ -398,6 +402,7 @@ contract BountyEscrowInvariantTest is StdInvariant, Test {
             assertEq(bounty.termsHash != bytes32(0), true);
             assertEq(bounty.provider, provider);
             assertEq(bounty.proposalHash, handler.trackedProposalHash(i));
+            assertEq(escrow.bountyIdByRequesterAndTermsHash(requester, handler.trackedTermsHash(i)), bountyId);
             if (bounty.settlementProposer != address(0)) {
                 assertTrue(bounty.settlementProposer == requester || bounty.settlementProposer == provider);
                 assertLe(bounty.proposedProviderPayout, amount);

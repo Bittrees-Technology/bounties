@@ -1,8 +1,8 @@
 {
   "interfaceVersion": "escrow-adapter.v1",
-  "artifactHash": "sha256:23aec44b1b4c74779f62ff69a604032274613df5138f8966e5bc1ad11d8b1091",
+  "artifactHash": "sha256:ffe78acb40df31468374905d22018e944f7919fe687f0d221b9e6fca7b155bae",
   "artifactHashAlgorithm": "sha256 of contracts/out/BountyEscrow.sol/BountyEscrow.json deployedBytecode.object bytes with the Solidity CBOR metadata trailer removed",
-  "status": "bounded-settlement-revision-milestone-escrow-v1",
+  "status": "one-time-creation-bounded-settlement-revision-milestone-escrow-v1",
   "compilerAbi": [
     "function createBounty(address token, uint256 requestedAmount, uint64 deliveryDeadline, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",
     "function createMilestoneBounty(address token, uint256 requestedAmount, uint256[] milestoneAmounts, uint64[] milestoneDeadlines, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",
@@ -17,6 +17,8 @@
     "function cancelSettlementProposal(uint256 bountyId)",
     "function cancelBounty(uint256 bountyId)",
     "function refundBounty(uint256 bountyId)",
+    "function bountyIdByRequesterAndTermsHash(address requester, bytes32 termsHash) view returns (uint256 bountyId)",
+    "error DuplicateBounty(address requester, bytes32 termsHash, uint256 existingBountyId)",
     "function REVIEW_PERIOD() view returns (uint64)",
     "function REVISION_PERIOD() view returns (uint64)",
     "function SETTLEMENT_PROPOSAL_PERIOD() view returns (uint64)",

@@ -92,6 +92,7 @@ interface IBountyEscrow {
     error SettlementProposalCancellationUnavailable(uint256 bountyId, address actor, address proposer);
     error SettlementWindowClosed(uint256 bountyId, uint64 lifecycleDeadline);
     error TermsHashMismatch(bytes32 expected, bytes32 supplied);
+    error DuplicateBounty(address requester, bytes32 termsHash, uint256 existingBountyId);
     error FundingAmountMismatch(address token, uint256 expected, uint256 received);
     error FundingDebitMismatch(address token, uint256 expected, uint256 debited);
     error InvalidMilestoneCount(uint256 count);
@@ -184,6 +185,7 @@ interface IBountyEscrow {
 
     function nextBountyId() external view returns (uint256);
     function totalLiability(address token) external view returns (uint256);
+    function bountyIdByRequesterAndTermsHash(address requester, bytes32 termsHash) external view returns (uint256);
     function SCOPE_DOMAIN() external view returns (bytes32);
     function TERMS_DOMAIN() external view returns (bytes32);
     function EVIDENCE_DOMAIN() external view returns (bytes32);
