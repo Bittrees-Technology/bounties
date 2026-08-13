@@ -1081,7 +1081,7 @@ export default function App() {
             <code>{short(profile.wallet_address)}</code>
           </div>
         </div>
-        <p className="profile-directory-bio">{profile.profile_bio || "Public marketplace activity and participant reputation."}</p>
+        {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
         {specialties.length ? <div className="profile-directory-specialties" aria-label={`${identity} specialties`}>{specialties.map((specialty, index) => <span key={`${specialty}-${index}`}>{specialty}</span>)}</div> : null}
         <div className="profile-directory-reputation">
           <div><WalletCards size={16} /><span>Capital provider</span><strong>{capitalRating.review_count ? `${capitalRating.average_rating?.toFixed(1)} / 5 · ${capitalRating.review_count} review${capitalRating.review_count === 1 ? "" : "s"}` : "No ratings"}</strong></div>
@@ -1405,8 +1405,6 @@ export default function App() {
                     ) : (
                       <>
                         <div className="section-heading"><UsersRound /><h2>Profile directory</h2></div>
-                        <p>Browse saved public profiles, compare each participant’s marketplace history, or search by name, bio, ENS identity, specialty, or wallet address.</p>
-                        <p className="ens-integration-note"><BadgeCheck size={16} /> ENS names are resolved from Ethereum when available. A custom profile name takes priority when its owner provides one.</p>
                         <form className="profile-search-form" onSubmit={discoverProfiles}>
                           <label className="profile-keyword-field">Keywords<input value={profileSearchQuery} onChange={(event) => setProfileSearchQuery(event.target.value)} minLength={2} maxLength={80} /></label>
                           <label>Work type<select value={profileWorkTypeFilter} onChange={(event) => setProfileWorkTypeFilter(event.target.value)}>
@@ -1436,7 +1434,17 @@ export default function App() {
                       <section className={`panel profile-card ${wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? "editable-profile-card" : ""}`} id={publicProfile?.account_id ? `profile-${publicProfile.account_id}` : undefined}>
                         <div className="profile-hero">
                           <UserRound size={28} />
-                          <div><p className="eyebrow">Public wallet profile</p><h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>{publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}<code>{selectedProfile.address}</code>{publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}{publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}{profileMessage ? <p className="form-hint">{profileMessage}</p> : null}</div>
+                          <div>
+                            <p className="eyebrow">Public wallet profile</p>
+                            <h3>{publicProfile?.display_name || publicProfile?.ens_name || short(selectedProfile.address)}</h3>
+                            {publicProfile?.ens_name ? <p className="ens-name">ENS · {publicProfile.ens_name}</p> : null}
+                            <div className="profile-identity-meta">
+                              <code>{publicProfile?.ens_name || selectedProfile.address}</code>
+                              {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Profile link <ExternalLink size={13} /></a> : null}
+                            </div>
+                            {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
+                            {profileMessage ? <p className="form-hint">{profileMessage}</p> : null}
+                          </div>
                         </div>
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           <details className="profile-editor">
@@ -1466,25 +1474,15 @@ export default function App() {
                             </form>
                           </details>
                         ) : null}
-                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile ? (
-                          publicProfile?.profile_moderation_status === "hidden" ? (
-                            <div className={`profile-visibility-status ${publicProfile.visibility_source === "moderation" ? "moderated" : "owner-hidden"}`}>
-                              <EyeOff size={19} />
-                              <div>
-                                <strong>{publicProfile.visibility_source === "moderation" ? "Your profile is hidden by moderation" : "Your public profile is hidden"}</strong>
-                                <span>{publicProfile.visibility_source === "moderation" ? "It is unavailable in profile discovery and cannot be reactivated from these settings." : "It is not visible in discovery or through a public profile link. Your profile details, ratings, reviews, and activity remain stored."}</span>
-                              </div>
-                              {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
+                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile?.profile_moderation_status === "hidden" ? (
+                          <div className={`profile-visibility-status ${publicProfile.visibility_source === "moderation" ? "moderated" : "owner-hidden"}`}>
+                            <EyeOff size={19} />
+                            <div>
+                              <strong>{publicProfile.visibility_source === "moderation" ? "Your profile is hidden by moderation" : "Your public profile is hidden"}</strong>
+                              <span>{publicProfile.visibility_source === "moderation" ? "It is unavailable in profile discovery and cannot be reactivated from these settings." : "It is not visible in discovery or through a public profile link. Your profile details, ratings, reviews, and activity remain stored."}</span>
                             </div>
-                          ) : (
-                            <details className="profile-visibility-control">
-                              <summary>Deactivate public profile</summary>
-                              <div>
-                                <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
-                                <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
-                              </div>
-                            </details>
-                          )
+                            {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
+                          </div>
                         ) : null}
                         {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties" aria-label="Profile work preferences">
                           {publicProfile.work_types?.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}
@@ -1492,6 +1490,15 @@ export default function App() {
                           {publicProfile.custom_specialty ? <span>{publicProfile.custom_specialty}</span> : null}
                         </div> : null}
                         {publicProfile?.account_id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
+                        {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() && publicProfile && publicProfile.profile_moderation_status !== "hidden" ? (
+                          <details className="profile-visibility-control">
+                            <summary>Deactivate public profile</summary>
+                            <div>
+                              <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
+                              <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
+                            </div>
+                          </details>
+                        ) : null}
                       </section>
                       <p className="rating-context">Capital-provider and labor-provider ratings stay separate so each kind of participation is easy to understand.</p>
                       <section className="profile-role-grid">

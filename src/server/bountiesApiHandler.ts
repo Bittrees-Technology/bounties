@@ -107,6 +107,12 @@ const profileCategories = new Set([
   "Software Engineering", "Smart Contracts & Web3", "Product & UX Design", "Data & Analytics", "Research & Writing",
   "Marketing & Growth", "Legal & Compliance", "Finance & Accounting", "Operations & Support", "Media & Creative"
 ]);
+const ensNameCache = new Map<string, { name: string | null; expiresAt: number }>();
+const ensNameLookups = new Map<string, Promise<string | null>>();
+const ensNameCacheLimit = 512;
+const ensNameCacheTtlMs = 30 * 60 * 1_000;
+const ensNameMissCacheTtlMs = 5 * 60 * 1_000;
+let cachedEthereumMainnetProvider: { url: string; provider: JsonRpcProvider } | null = null;
 const safeServiceErrorCodes = new Set([
   "ENS_RPC_UNAVAILABLE",
   "ENS_RPC_CHAIN_MISMATCH",
@@ -382,19 +388,50 @@ function checkedAddress(value: string, code: string): string {
 
 function ethereumMainnetProvider(): JsonRpcProvider | null {
   const providerUrl = configuredServerRpcUrl(1);
-  return providerUrl ? new JsonRpcProvider(providerUrl) : null;
+  if (!providerUrl) return null;
+  if (cachedEthereumMainnetProvider?.url === providerUrl) return cachedEthereumMainnetProvider.provider;
+  const provider = new JsonRpcProvider(providerUrl);
+  cachedEthereumMainnetProvider = { url: providerUrl, provider };
+  return provider;
 }
 
 async function reverseEnsName(walletAddress: string): Promise<string | null> {
   const provider = ethereumMainnetProvider();
   if (!provider) return null;
+  let normalizedAddress: string;
   try {
-    const network = await withTimeout(provider.getNetwork(), "ENS_RESOLUTION_TIMEOUT", 5_000);
-    if (Number(network.chainId) !== 1) return null;
-    const name = await withTimeout(provider.lookupAddress(getAddress(walletAddress)), "ENS_RESOLUTION_TIMEOUT", 5_000);
-    return name?.toLowerCase().endsWith(".eth") ? name : null;
+    normalizedAddress = getAddress(walletAddress);
   } catch {
     return null;
+  }
+  const cacheKey = normalizedAddress.toLowerCase();
+  const cached = ensNameCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.name;
+  if (cached) ensNameCache.delete(cacheKey);
+  const pending = ensNameLookups.get(cacheKey);
+  if (pending) return pending;
+
+  const lookup = (async () => {
+    try {
+      const network = await withTimeout(provider.getNetwork(), "ENS_RESOLUTION_TIMEOUT", 5_000);
+      if (Number(network.chainId) !== 1) return null;
+      const name = await withTimeout(provider.lookupAddress(normalizedAddress), "ENS_RESOLUTION_TIMEOUT", 5_000);
+      const resolvedName = name?.toLowerCase().endsWith(".eth") ? name : null;
+      if (ensNameCache.size >= ensNameCacheLimit) ensNameCache.delete(ensNameCache.keys().next().value!);
+      ensNameCache.set(cacheKey, {
+        name: resolvedName,
+        expiresAt: Date.now() + (resolvedName ? ensNameCacheTtlMs : ensNameMissCacheTtlMs)
+      });
+      return resolvedName;
+    } catch {
+      return null;
+    }
+  })();
+  ensNameLookups.set(cacheKey, lookup);
+  try {
+    return await lookup;
+  } finally {
+    ensNameLookups.delete(cacheKey);
   }
 }
 
@@ -416,7 +453,13 @@ async function resolveEnsAddress(name: string): Promise<string | null> {
 
 async function enrichPublicProfile(profile: PublicProfileRecord | null): Promise<PublicProfileRecord | null> {
   if (!profile?.wallet_address) return profile;
+  if (typeof profile.ens_name === "string" && profile.ens_name.toLowerCase().endsWith(".eth")) return profile;
   return { ...profile, ens_name: await reverseEnsName(profile.wallet_address) };
+}
+
+async function enrichPublicProfiles(profiles: PublicProfileRecord[]): Promise<PublicProfileRecord[]> {
+  const enriched = await Promise.all(profiles.map((profile) => enrichPublicProfile(profile)));
+  return enriched.filter((profile): profile is PublicProfileRecord => Boolean(profile));
 }
 
 function escrowContractAddress(chainId: number): string {
@@ -1153,7 +1196,7 @@ async function handle(request: Request, action: string): Promise<Response> {
         if (ensProfile && ensProfile.profile_moderation_status !== "hidden" && matchesFilters) profiles.unshift({ ...ensProfile, ens_name: query.toLowerCase() });
       }
     }
-    return Response.json({ results: profiles.slice(0, 12) }, { headers });
+    return Response.json({ results: await enrichPublicProfiles(profiles.slice(0, 12)) }, { headers });
   }
 
   const publicProfileMatch = action.match(/^profiles\/(0x[0-9a-fA-F]{40})$/);
@@ -1185,8 +1228,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_actor_id: session.account_id,
       p_limit: 18
     });
-    const results = await Promise.all((profiles ?? []).map((profile) => profile.display_name ? profile : enrichPublicProfile(profile)));
-    return Response.json({ results: results.filter(Boolean) }, { headers });
+    return Response.json({ results: await enrichPublicProfiles(profiles ?? []) }, { headers });
   }
 
   if (action === "profiles/me" && method === "GET") {

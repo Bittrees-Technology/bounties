@@ -247,7 +247,7 @@ beforeEach(() => {
         account_id: accountId,
         wallet_address: walletAddress,
         display_name: displayName,
-        profile_bio: role === "provider" ? "Builds and audits verifiable products." : "Funds clearly scoped public work.",
+        profile_bio: role === "provider" ? "Builds and audits verifiable products." : null,
         profile_url: "https://example.test/profile",
         profile_moderation_status: "visible" as const,
         profile_updated_at: new Date().toISOString(),
