@@ -1,4 +1,4 @@
-import { type FormEvent, type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BadgeCheck,
   Bell,
@@ -113,6 +113,7 @@ function walletExplorerLink(walletAddress: string) {
 
 type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile";
+type ProfileSearchSelection = { query: string; workType: string; category: string };
 type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObservation"]> & {
   current_milestone?: number | null;
   milestone_count?: number | null;
@@ -138,6 +139,26 @@ function pageFromPath(pathname: string): ProductPage {
   if (pathname === "/profiles" || pathname.startsWith("/profiles/")) return "profile";
   if (pathname === "/moderator") return "moderator";
   return "home";
+}
+
+function profileSearchSelectionFromLocation(): ProfileSearchSelection | null {
+  if (window.location.pathname !== pageRoutes.profile) return null;
+  const params = new URLSearchParams(window.location.search);
+  const selection = {
+    query: params.get("q")?.trim() ?? "",
+    workType: params.get("workType")?.trim() ?? "",
+    category: params.get("category")?.trim() ?? ""
+  };
+  return selection.query || selection.workType || selection.category ? selection : null;
+}
+
+function profileSearchPath(selection: ProfileSearchSelection): string {
+  const params = new URLSearchParams();
+  if (selection.query) params.set("q", selection.query);
+  if (selection.workType) params.set("workType", selection.workType);
+  if (selection.category) params.set("category", selection.category);
+  const query = params.toString();
+  return query ? `${pageRoutes.profile}?${query}` : pageRoutes.profile;
 }
 
 function deadlineTimestamp(value?: string | null): number | null {
@@ -263,6 +284,7 @@ function settlementBaseUnits(value: string, decimals: number): string {
 }
 
 export default function App() {
+  const initialProfileSearch = useRef(profileSearchSelectionFromLocation()).current;
   const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
   const [draft, setDraft] = useState(emptyDraft);
   const [milestoneSchedule, setMilestoneSchedule] = useState(() => [{ title: "Delivery", amount: "250", deliveryDeadline: emptyDraft.deliveryDeadline }]);
@@ -279,18 +301,19 @@ export default function App() {
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
-  const [profileSearchQuery, setProfileSearchQuery] = useState("");
-  const [profileWorkTypeFilter, setProfileWorkTypeFilter] = useState("");
-  const [profileCategoryFilter, setProfileCategoryFilter] = useState("");
+  const [profileSearchQuery, setProfileSearchQuery] = useState(initialProfileSearch?.query ?? "");
+  const [profileWorkTypeFilter, setProfileWorkTypeFilter] = useState(initialProfileSearch?.workType ?? "");
+  const [profileCategoryFilter, setProfileCategoryFilter] = useState(initialProfileSearch?.category ?? "");
   const [profileSearchResults, setProfileSearchResults] = useState<PublicWalletProfile[]>([]);
   const [profileSearchMessage, setProfileSearchMessage] = useState<string | null>(null);
   const [profileSearching, setProfileSearching] = useState(false);
-  const [profileSearchApplied, setProfileSearchApplied] = useState(false);
+  const [profileSearchApplied, setProfileSearchApplied] = useState(Boolean(initialProfileSearch));
   const [profileDirectory, setProfileDirectory] = useState<PublicWalletProfile[]>([]);
   const [profileDirectoryLoaded, setProfileDirectoryLoaded] = useState(false);
   const [profileDirectoryLoading, setProfileDirectoryLoading] = useState(false);
   const [profileDirectoryMessage, setProfileDirectoryMessage] = useState<string | null>(null);
   const actionPending = useRef(false);
+  const initialProfileSearchHydrated = useRef(false);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -384,6 +407,13 @@ export default function App() {
     if (page === "profile") {
       setSelectedProfileAddress(null);
       setPublicProfile(null);
+      setProfileSearchApplied(false);
+      setProfileSearchQuery("");
+      setProfileWorkTypeFilter("");
+      setProfileCategoryFilter("");
+      setProfileSearchResults([]);
+      setProfileSearchMessage(null);
+      if (`${window.location.pathname}${window.location.search}` !== pageRoutes.profile) window.history.pushState({}, "", pageRoutes.profile);
     }
     navigateToPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -404,18 +434,17 @@ export default function App() {
       .catch(() => setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below."));
   }
 
-  async function discoverProfiles(event: FormEvent) {
-    event.preventDefault();
-    const query = profileSearchQuery.trim();
-    if (query && query.length < 2) return setProfileSearchMessage("Enter at least two characters, or use a work type or category filter.");
-    if (!query && !profileWorkTypeFilter && !profileCategoryFilter) return setProfileSearchMessage("Enter keywords or choose at least one profile filter.");
+  const runProfileSearch = useCallback(async (selection: ProfileSearchSelection) => {
+    setProfileSearchQuery(selection.query);
+    setProfileWorkTypeFilter(selection.workType);
+    setProfileCategoryFilter(selection.category);
+    setProfileSearchApplied(true);
+    setProfileSearchMessage(null);
+    setProfileSearching(true);
     try {
-      setProfileSearching(true);
-      setProfileSearchApplied(true);
-      setProfileSearchMessage(null);
-      const { results } = await searchPublicProfiles(query, {
-        workType: profileWorkTypeFilter,
-        category: profileCategoryFilter
+      const { results } = await searchPublicProfiles(selection.query, {
+        workType: selection.workType,
+        category: selection.category
       });
       setProfileSearchResults(results);
       setProfileSearchMessage(results.length ? null : "No public profiles matched that search.");
@@ -425,6 +454,46 @@ export default function App() {
     } finally {
       setProfileSearching(false);
     }
+  }, []);
+
+  async function discoverProfiles(event: FormEvent) {
+    event.preventDefault();
+    const query = profileSearchQuery.trim();
+    if (query && query.length < 2) return setProfileSearchMessage("Enter at least two characters, or use a work type or category filter.");
+    if (!query && !profileWorkTypeFilter && !profileCategoryFilter) return setProfileSearchMessage("Enter keywords or choose at least one profile filter.");
+    const selection = { query, workType: profileWorkTypeFilter, category: profileCategoryFilter };
+    const target = profileSearchPath(selection);
+    if (`${window.location.pathname}${window.location.search}` !== target) window.history.pushState({}, "", target);
+    await runProfileSearch(selection);
+  }
+
+  function openProfilesByPreference(event: MouseEvent<HTMLAnchorElement>, kind: "workType" | "category", value: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    const selection = {
+      query: "",
+      workType: kind === "workType" ? value : "",
+      category: kind === "category" ? value : ""
+    };
+    const target = profileSearchPath(selection);
+    if (`${window.location.pathname}${window.location.search}` !== target) window.history.pushState({}, "", target);
+    setSelectedProfileAddress(null);
+    setPublicProfile(null);
+    setProfileMessage(null);
+    setNotice(null);
+    setActivePage("profile");
+    void runProfileSearch(selection);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function clearProfileSearch() {
+    setProfileSearchApplied(false);
+    setProfileSearchQuery("");
+    setProfileWorkTypeFilter("");
+    setProfileCategoryFilter("");
+    setProfileSearchResults([]);
+    setProfileSearchMessage(null);
+    if (`${window.location.pathname}${window.location.search}` !== pageRoutes.profile) window.history.pushState({}, "", pageRoutes.profile);
   }
 
   async function changeProfileVisibility(visible: boolean) {
@@ -490,7 +559,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (activePage !== "profile" || !wallet || selectedProfileAddress || profileDirectoryLoaded) return;
+    if (activePage !== "profile" || !wallet || selectedProfileAddress || profileSearchApplied || profileDirectoryLoaded) return;
     let cancelled = false;
     setProfileDirectoryLoading(true);
     setProfileDirectoryMessage(null);
@@ -511,18 +580,43 @@ export default function App() {
         if (!cancelled) setProfileDirectoryLoading(false);
       });
     return () => { cancelled = true; };
-  }, [activePage, profileDirectoryLoaded, selectedProfileAddress, wallet]);
+  }, [activePage, profileDirectoryLoaded, profileSearchApplied, selectedProfileAddress, wallet]);
+
+  useEffect(() => {
+    if (!wallet || initialProfileSearchHydrated.current) return;
+    initialProfileSearchHydrated.current = true;
+    const selection = profileSearchSelectionFromLocation();
+    if (activePage === "profile" && selection) void runProfileSearch(selection);
+  }, [activePage, runProfileSearch, wallet]);
 
   useEffect(() => {
     const handlePopState = () => {
       setSelectedProfileAddress(null);
       setPublicProfile(null);
       setNotice(null);
-      setActivePage(pageFromPath(window.location.pathname));
+      const page = pageFromPath(window.location.pathname);
+      const selection = page === "profile" ? profileSearchSelectionFromLocation() : null;
+      if (selection) {
+        if (wallet) void runProfileSearch(selection);
+        else {
+          setProfileSearchQuery(selection.query);
+          setProfileWorkTypeFilter(selection.workType);
+          setProfileCategoryFilter(selection.category);
+          setProfileSearchApplied(true);
+        }
+      } else {
+        setProfileSearchQuery("");
+        setProfileWorkTypeFilter("");
+        setProfileCategoryFilter("");
+        setProfileSearchApplied(false);
+        setProfileSearchResults([]);
+        setProfileSearchMessage(null);
+      }
+      setActivePage(page);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, []);
+  }, [runProfileSearch, wallet]);
 
   async function connect() {
     try {
@@ -1136,8 +1230,8 @@ export default function App() {
         </header>
         {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
         {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
-          {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{workTypes.map((workType) => <span key={workType}>{workType}</span>)}</div></div> : null}
-          {profileCategories.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{profileCategories.map((category) => <span key={category}>{category}</span>)}</div></div> : null}
+          {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{(profile.work_types ?? []).map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}</div></div> : null}
+          {profileCategories.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{profileCategories.map((category) => <a key={category} href={profileSearchPath({ query: "", workType: "", category })} onClick={(event) => openProfilesByPreference(event, "category", category)}>{category}</a>)}</div></div> : null}
           {profile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{profile.custom_specialty}</span></div></div> : null}
         </div> : null}
         <div className="profile-directory-reputation">
@@ -1487,7 +1581,7 @@ export default function App() {
                         <p className="form-hint">Use keywords, filters, or both. ENS names are verified through Ethereum resolution.</p>
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{displayedProfiles.length} public profile{displayedProfiles.length === 1 ? "" : "s"}</span></div>
-                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={() => { setProfileSearchApplied(false); setProfileSearchQuery(""); setProfileWorkTypeFilter(""); setProfileCategoryFilter(""); setProfileSearchResults([]); setProfileSearchMessage(null); }}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
+                          {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : <button className="secondary-button" type="button" disabled={profileDirectoryLoading} onClick={() => { setProfileDirectoryLoaded(false); setProfileDirectoryMessage(null); }}>{profileDirectoryLoading ? "Refreshing…" : "Refresh"}</button>}
                         </div>
                         {profileSearching || profileDirectoryLoading ? <p className="profile-directory-loading" role="status"><Loader2 className="spin" />Loading profiles…</p> : null}
                         {profileSearchApplied && profileSearchMessage ? <p className="form-hint" role="status">{profileSearchMessage}</p> : null}
@@ -1561,8 +1655,8 @@ export default function App() {
                           </div>
                         ) : null}
                         {publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty ? <div className="profile-specialties profile-specialty-groups" aria-label="Profile work preferences">
-                          {publicProfile.work_types?.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{publicProfile.work_types.map((workType) => <span key={`work-${workType}`}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</span>)}</div></div> : null}
-                          {publicProfile.categories?.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{publicProfile.categories.map((category) => <span key={`category-${category}`}>{category}</span>)}</div></div> : null}
+                          {publicProfile.work_types?.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{publicProfile.work_types.map((workType) => <a key={`work-${workType}`} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{scopes.find((scope) => scope.value === workType)?.label ?? workType}</a>)}</div></div> : null}
+                          {publicProfile.categories?.length ? <div className="profile-specialty-group" aria-label="Categories"><strong>Categories</strong><div className="profile-specialty-values">{publicProfile.categories.map((category) => <a key={`category-${category}`} href={profileSearchPath({ query: "", workType: "", category })} onClick={(event) => openProfilesByPreference(event, "category", category)}>{category}</a>)}</div></div> : null}
                           {publicProfile.custom_specialty ? <div className="profile-specialty-group" aria-label="Other specialty"><strong>Other</strong><div className="profile-specialty-values"><span>{publicProfile.custom_specialty}</span></div></div> : null}
                         </div> : null}
                         {publicProfile?.account_id && publicProfile.account_id !== session?.account.id ? <div className="content-actions profile-report-action">{reportForm("profile", publicProfile.account_id)}</div> : null}
