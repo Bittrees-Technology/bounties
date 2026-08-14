@@ -268,7 +268,48 @@ describe("terminal escrow observation diagnostics", () => {
     expect(warning).toHaveBeenCalledTimes(1);
   });
 
-  it("preserves projected milestone base units as strings during canonical verification", async () => {
+  it("fails closed with a named error when a numeric milestone is not an integer", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : { data: null, error: null }));
+    databaseFromMock.mockImplementation(() => {
+      const query = { select: () => query, eq: () => query, single: () => Promise.resolve({
+        data: {
+          id: canonicalContext.bountyId,
+          chain_id: 84532,
+          budget_base_units: 250,
+          scope_hash: `0x${"11".repeat(32)}`,
+          escrow_schedule_status: "structured",
+          creator: { wallet_address: session.wallet_address },
+          token: { contract_address: "0x3333333333333333333333333333333333333333" },
+          proposal: { id: "30000000-0000-4000-8000-000000000022", proposal_hash: `0x${"33".repeat(32)}`, provider: { wallet_address: canonicalContext.providerWallet } },
+          milestones: [{ ordinal: 0, amount_base_units: 249.5, delivery_deadline: new Date(1_800_000_000_000).toISOString() }]
+        },
+        error: null
+      }) };
+      return query;
+    });
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/escrow",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ bountyId: canonicalContext.bountyId, txHash: `0x${"ab".repeat(32)}` })
+      }
+    ), "escrow");
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({ code: "ESCROW_SCHEDULE_INVALID" });
+    expect(providerGetNetworkMock).not.toHaveBeenCalled();
+  });
+
+  it("canonicalizes the affected numeric-runtime 250 BIT milestone before strict verification", async () => {
     const contractAddress = canonicalContext.contractAddress;
     const providerWallet = canonicalContext.providerWallet;
     const tokenAddress = "0x3333333333333333333333333333333333333333";
@@ -303,18 +344,6 @@ describe("terminal escrow observation diagnostics", () => {
     vi.stubEnv("CHAIN_84532_REQUIRED_CONFIRMATIONS", "2");
     rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
       if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
-      if (name === "app_bounty_json") return Promise.resolve({ data: {
-        id: canonicalContext.bountyId,
-        creator_id: session.account_id,
-        chain_id: 84532,
-        budget_base_units: amount,
-        scope_hash: scopeHash,
-        escrow_schedule_status: "structured",
-        accepted_proposal_id: "30000000-0000-4000-8000-000000000022",
-        token: { contract_address: tokenAddress },
-        milestones: [{ ordinal: 0, amount_base_units: amount, delivery_deadline: new Date(Number(deadline) * 1_000).toISOString() }],
-        proposals: [{ id: "30000000-0000-4000-8000-000000000022", proposal_hash: proposalHash, provider_wallet_address: providerWallet }]
-      }, error: null });
       if (name === "app_record_escrow_observation") return Promise.resolve({ data: args, error: null });
       return Promise.resolve({ data: null, error: null });
     });
@@ -364,13 +393,27 @@ describe("terminal escrow observation diagnostics", () => {
       revisionReasonHash: `0x${"00".repeat(32)}`,
       revisionRequested: false
     });
-    databaseFromMock.mockImplementation(() => {
-      const query = {
-        select: () => query,
-        eq: vi.fn()
-      };
-      query.eq.mockReturnValueOnce(query).mockResolvedValueOnce({ data: [], error: null });
-      return query;
+    databaseFromMock.mockImplementation((table: string) => {
+      if (table === "bounties") {
+        const query = { select: () => query, eq: () => query, single: () => Promise.resolve({
+          data: {
+            id: canonicalContext.bountyId,
+            chain_id: 84532,
+            budget_base_units: Number(amount),
+            scope_hash: scopeHash,
+            escrow_schedule_status: "structured",
+            creator: { wallet_address: session.wallet_address },
+            token: { contract_address: tokenAddress },
+            proposal: { id: "30000000-0000-4000-8000-000000000022", proposal_hash: proposalHash, provider: { wallet_address: providerWallet } },
+            milestones: [{ ordinal: 0, amount_base_units: Number(amount), delivery_deadline: new Date(Number(deadline) * 1_000).toISOString() }]
+          },
+          error: null
+        }) };
+        return query;
+      }
+      const replayQuery = { select: () => replayQuery, eq: vi.fn() };
+      replayQuery.eq.mockReturnValueOnce(replayQuery).mockResolvedValueOnce({ data: [], error: null });
+      return replayQuery;
     });
 
     const response = await handleBountiesApi(new Request(
@@ -388,10 +431,7 @@ describe("terminal escrow observation diagnostics", () => {
     ), "escrow");
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith("app_bounty_json", {
-      p_bounty_id: canonicalContext.bountyId,
-      p_actor_id: session.account_id
-    });
+    expect(databaseFromMock).toHaveBeenCalledWith("bounties");
     expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_observation", expect.objectContaining({
       p_requested_base_units: amount,
       p_allocated_amount_base_units: amount,

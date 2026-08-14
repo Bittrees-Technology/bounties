@@ -738,48 +738,59 @@ function proposalHash(expected: ExpectedEscrow): string {
   })));
 }
 
+function expectedBaseUnitText(value: unknown, code: string, status = 409): string {
+  if (typeof value === "string" && /^[1-9][0-9]*$/.test(value)) return value;
+  if (typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0) {
+    // PostgREST may decode numeric(78,0) table columns as JS numbers. Converting
+    // the represented integer through BigInt avoids string/number false
+    // mismatches. If an arbitrary value was rounded by JS, the independently
+    // committed schedule and terms hashes still reject it downstream.
+    return BigInt(value).toString();
+  }
+  throw new ApiError(code, status);
+}
+
 async function expectedEscrow(session: Session, bountyId: string): Promise<ExpectedEscrow> {
-  // Use the same database projection as marketplace reads. It deliberately
-  // serializes numeric(78,0) token amounts as decimal strings, whereas a raw
-  // PostgREST table relationship can surface nested numeric columns as JS
-  // numbers and lose both their type and, for arbitrary ERC20 values, precision.
-  const row = await callRpc<{
+  const { data, error } = await rpcClient()
+    .from("bounties")
+    .select("id,chain_id,budget_base_units,scope_hash,escrow_schedule_status,milestones(ordinal,amount_base_units,delivery_deadline),creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
+    .eq("id", bountyId)
+    .eq("creator_id", session.account_id)
+    .single();
+  if (error || !data) throw new ApiError("BOUNTY_OWNER_REQUIRED", 403);
+  const row = data as unknown as {
     id: string;
-    creator_id: string;
     chain_id: number;
-    budget_base_units: string;
+    budget_base_units: unknown;
     scope_hash: string;
     escrow_schedule_status: "structured" | "requires_recreation";
-    milestones: Array<{ ordinal: number; amount_base_units: string; delivery_deadline: string | null }>;
+    milestones: Array<{ ordinal: number; amount_base_units: unknown; delivery_deadline: string | null }>;
+    creator: { wallet_address: string } | null;
     token: { contract_address: string } | null;
-    accepted_proposal_id: string | null;
-    proposals: Array<{ id: string; proposal_hash: string | null; provider_wallet_address: string }>;
-  } | null>("app_bounty_json", { p_bounty_id: bountyId, p_actor_id: session.account_id });
-  if (!row || row.id !== bountyId || row.creator_id !== session.account_id) throw new ApiError("BOUNTY_OWNER_REQUIRED", 403);
-  const proposal = row.proposals?.find((candidate) => candidate.id === row.accepted_proposal_id);
-  if (!proposal?.provider_wallet_address) throw new ApiError("ACCEPTED_PROPOSAL_REQUIRED", 400);
-  if (!row.token || typeof row.budget_base_units !== "string" || !/^[1-9][0-9]*$/.test(row.budget_base_units)) {
-    throw new ApiError("ESCROW_EXPECTATION_INCOMPLETE", 400);
-  }
+    proposal: { id: string; proposal_hash: string | null; provider: { wallet_address: string } | null } | null;
+  };
+  if (!row.proposal?.provider) throw new ApiError("ACCEPTED_PROPOSAL_REQUIRED", 400);
+  if (!row.token || !row.creator) throw new ApiError("ESCROW_EXPECTATION_INCOMPLETE", 400);
   if (row.escrow_schedule_status !== "structured") throw new ApiError("BOUNTY_RECREATION_REQUIRED", 409);
-  const milestones = [...(row.milestones ?? [])].sort((left, right) => left.ordinal - right.ordinal);
-  if (milestones.length < 1 || milestones.length > 32 || milestones.some((milestone, ordinal) => (
-    milestone.ordinal !== ordinal
-    || typeof milestone.amount_base_units !== "string"
-    || !/^[1-9][0-9]*$/.test(milestone.amount_base_units)
-  ))) {
+  const milestones = [...(row.milestones ?? [])]
+    .sort((left, right) => left.ordinal - right.ordinal)
+    .map((milestone) => ({
+      ...milestone,
+      amount_base_units: expectedBaseUnitText(milestone.amount_base_units, "ESCROW_SCHEDULE_INVALID")
+    }));
+  if (milestones.length < 1 || milestones.length > 32 || milestones.some((milestone, ordinal) => milestone.ordinal !== ordinal)) {
     throw new ApiError("ESCROW_SCHEDULE_INVALID", 409);
   }
   return {
     bounty_id: row.id,
     chain_id: Number(row.chain_id),
-    budget_base_units: row.budget_base_units,
+    budget_base_units: expectedBaseUnitText(row.budget_base_units, "ESCROW_EXPECTATION_INCOMPLETE", 400),
     scope_hash: row.scope_hash,
-    creator_wallet: getAddress(session.wallet_address),
+    creator_wallet: getAddress(row.creator.wallet_address),
     token_address: getAddress(row.token.contract_address),
-    proposal_id: proposal.id,
-    proposal_hash: proposal.proposal_hash,
-    provider_wallet: getAddress(proposal.provider_wallet_address),
+    proposal_id: row.proposal.id,
+    proposal_hash: row.proposal.proposal_hash,
+    provider_wallet: getAddress(row.proposal.provider.wallet_address),
     escrow_schedule_status: row.escrow_schedule_status,
     milestones
   };
