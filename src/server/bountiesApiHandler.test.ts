@@ -929,6 +929,125 @@ describe("profile specialties and review responses", () => {
   });
 });
 
+describe("canonical escrow state endpoint", () => {
+  const bountyId = "30000000-0000-4000-8000-000000000020";
+  const proposalId = "30000000-0000-4000-8000-000000000022";
+  const scheduleHash = `0x${"77".repeat(32)}`;
+  const zeroHash = `0x${"00".repeat(32)}`;
+  const zeroAddress = "0x0000000000000000000000000000000000000000";
+
+  const request = () => new Request("https://bounties.bittrees.org/api/bounties/escrow/state", {
+    method: "POST",
+    headers: {
+      cookie: "bounties_session=opaque-session",
+      "content-type": "application/json",
+      origin: "https://bounties.bittrees.org",
+      "x-csrf-token": "opaque-csrf"
+    },
+    body: JSON.stringify({ bountyId })
+  });
+
+  const bountyProjection = (creatorId = session.account_id, providerId = "10000000-0000-4000-8000-000000000003") => ({
+    id: bountyId,
+    chain_id: 84532,
+    creator_id: creatorId,
+    accepted_proposal_id: proposalId,
+    proposals: [{ id: proposalId, provider_id: providerId }],
+    escrow: {
+      chain_id: 84532,
+      contract_address: canonicalContext.contractAddress,
+      onchain_bounty_id: "10"
+    }
+  });
+
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    vi.stubEnv("CHAIN_84532_RPC_URL", "https://rpc.example.test");
+    vi.stubEnv("CHAIN_84532_BOUNTY_ESCROW_ADDRESS", canonicalContext.contractAddress);
+    rpcMock.mockReset();
+    databaseFromMock.mockReset();
+    providerGetNetworkMock.mockReset().mockResolvedValue({ chainId: 84532n });
+    contractGetBountyMock.mockReset().mockResolvedValue({
+      amount: 100n,
+      reviewDeadline: 0n,
+      state: 2n,
+      settlementProposer: zeroAddress,
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: 100n,
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash
+    });
+    contractGetMilestoneMock.mockReset().mockResolvedValue({
+      amount: 100n,
+      deliveryDeadline: 1_790_000_000n,
+      reviewDeadline: 0n,
+      revisionDeadline: 0n,
+      state: 0n,
+      evidenceHash: zeroHash,
+      previousEvidenceHash: zeroHash,
+      approvalHash: zeroHash,
+      revisionReasonHash: zeroHash,
+      revisionRequested: false
+    });
+  });
+
+  it("uses the authorized bounty projection to reconcile an existing escrow", async () => {
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({
+        data: bountyProjection("10000000-0000-4000-8000-000000000099", session.account_id),
+        error: null
+      });
+      if (name === "app_record_escrow_state") return Promise.resolve({ data: args, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(request(), "escrow/state");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_bounty_json", {
+      p_bounty_id: bountyId,
+      p_actor_id: session.account_id
+    });
+    expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_state", expect.objectContaining({
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_onchain_state: "ProviderAccepted",
+      p_milestone_count: 1,
+      p_current_milestone: 0,
+      p_schedule_hash: scheduleHash,
+      p_current_milestone_detail: expect.objectContaining({ state: "Pending", amount_base_units: "100" })
+    }));
+    expect(databaseFromMock).not.toHaveBeenCalled();
+  });
+
+  it("denies a nonparticipant before reading or persisting chain state", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({
+        data: bountyProjection(
+          "10000000-0000-4000-8000-000000000099",
+          "10000000-0000-4000-8000-000000000098"
+        ),
+        error: null
+      });
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(request(), "escrow/state");
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({ code: "BOUNTY_PARTICIPANT_REQUIRED" });
+    expect(contractGetBountyMock).not.toHaveBeenCalled();
+    expect(rpcMock).not.toHaveBeenCalledWith("app_record_escrow_state", expect.anything());
+  });
+});
+
 describe("bounded revision request persistence", () => {
   const revisionInterface = new Interface([
     "event MilestoneRevisionRequested(uint256 indexed bountyId,uint256 indexed milestoneIndex,address indexed requester,bytes32 reasonHash,uint64 revisionDeadline)"

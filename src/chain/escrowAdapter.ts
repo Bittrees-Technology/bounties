@@ -881,6 +881,11 @@ async function switchProviderChain(provider: Eip1193Provider, chain: ChainConfig
   await assertProviderChain(provider, chain.chainId);
 }
 
+/** Action-scoped network preparation. Read-only detail hydration must not call this. */
+export async function prepareEscrowWrite(provider: Eip1193Provider, chain: ChainConfig): Promise<void> {
+  await switchProviderChain(provider, chain);
+}
+
 function supportsAtomicCalls(capabilities: unknown, chainHex: string): boolean {
   if (!capabilities || typeof capabilities !== "object") return false;
   const map = capabilities as Record<string, unknown>;

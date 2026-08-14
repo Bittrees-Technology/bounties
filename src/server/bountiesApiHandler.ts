@@ -1129,25 +1129,22 @@ async function verifyRevisionReceipt(
 }
 
 async function escrowStateSource(session: Session, bountyId: string): Promise<EscrowStateSource> {
-  const db = rpcClient();
-  const { data: escrow, error: escrowError } = await db
-    .from("escrow_records")
-    .select("bounty_id,chain_id,contract_address,onchain_bounty_id")
-    .eq("bounty_id", bountyId)
-    .single();
-  if (escrowError || !escrow?.contract_address || !escrow.onchain_bounty_id) {
-    throw new ApiError("ESCROW_OBSERVATION_REQUIRED", 400);
-  }
-  const { data: bounty, error: bountyError } = await db
-    .from("bounties")
-    .select("creator_id,accepted_proposal_id,proposal:proposals!bounties_accepted_proposal_fk(provider_id)")
-    .eq("id", bountyId)
-    .single();
-  const providerId = (bounty?.proposal as unknown as { provider_id?: string } | null)?.provider_id;
-  if (bountyError || !bounty || (session.account_id !== bounty.creator_id && session.account_id !== providerId)) {
+  const bounty = await callRpc<{
+    id?: string;
+    chain_id?: unknown;
+    creator_id?: string;
+    accepted_proposal_id?: string | null;
+    proposals?: Array<{ id?: string; provider_id?: string }>;
+    escrow?: { chain_id?: unknown; contract_address?: string; onchain_bounty_id?: unknown } | null;
+  } | null>("app_bounty_json", { p_bounty_id: bountyId, p_actor_id: session.account_id });
+  if (!bounty || bounty.id !== bountyId) throw new ApiError("BOUNTY_NOT_FOUND", 404);
+  const accepted = bounty.proposals?.find((proposal) => proposal.id === bounty.accepted_proposal_id);
+  if (session.account_id !== bounty.creator_id && session.account_id !== accepted?.provider_id) {
     throw new ApiError("BOUNTY_PARTICIPANT_REQUIRED", 403);
   }
-  const chainId = Number(escrow.chain_id);
+  const escrow = bounty.escrow;
+  if (!escrow?.contract_address || !escrow.onchain_bounty_id) throw new ApiError("ESCROW_OBSERVATION_REQUIRED", 400);
+  const chainId = Number(escrow.chain_id ?? bounty.chain_id);
   if (!supportedChainIds.has(chainId)) throw new ApiError("CHAIN_UNSUPPORTED", 400);
   const configuredAddress = resolveEscrowRecordContractAddress(chainId, String(escrow.contract_address));
   if (!/^[0-9]+$/.test(String(escrow.onchain_bounty_id))) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 400);
@@ -1668,7 +1665,7 @@ export async function handleBountiesApi(request: Request, action: string): Promi
     const status = internalStatus >= 500 ? 503 : internalStatus;
     const message = expected ? error.message : "SERVICE_UNAVAILABLE";
     const code = internalStatus >= 500 && !safeServiceErrorCodes.has(message) ? "SERVICE_UNAVAILABLE" : message;
-    if (action === "escrow"
+    if ((action === "escrow" || action === "escrow/state")
       && error instanceof ApiError
       && !retryableEscrowObservationCodes.has(error.message)) {
       // Keep this diagnostic deliberately bounded: the error code and status are

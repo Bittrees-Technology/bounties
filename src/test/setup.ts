@@ -1,8 +1,10 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
+import { decodeFunctionData, encodeFunctionResult } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { beforeEach, expect, vi } from "vitest";
 
 import { SIWE_AUTHENTICATION_METHOD, SIWE_STATEMENT, siweResources } from "../auth/siwe";
+import { BOUNTY_ESCROW_ABI } from "../chain/abi";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment } from "../chain/hashCodec";
 import type { TokenRecord } from "../persistence/supabase";
 
@@ -38,6 +40,11 @@ type EscrowRecordOutcome = "success" | "reverted" | "pending" | "mismatch";
 let escrowRecordOutcome: EscrowRecordOutcome = "success";
 let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
 let escrowRefreshOnchainState: "ProviderAccepted" | null = null;
+let escrowStateRefreshRejected = false;
+type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled";
+let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
+let activeWalletEscrowState: MockWalletEscrowState | null = null;
+let walletChainId = "0x14a34";
 
 export function configureMockEscrowRecordOutcome(outcome: EscrowRecordOutcome) {
   escrowRecordOutcome = outcome;
@@ -49,6 +56,18 @@ export function configureMockEscrowRecordOutcomes(outcomes: EscrowRecordOutcome[
 
 export function configureMockEscrowRefreshOnchainState(state: "ProviderAccepted" | null) {
   escrowRefreshOnchainState = state;
+}
+
+export function configureMockEscrowStateRefreshRejected(rejected = true) {
+  escrowStateRefreshRejected = rejected;
+}
+
+export function configureMockWalletEscrowStateReads(states: Array<MockWalletEscrowState | null>) {
+  walletEscrowStateReads = [...states];
+}
+
+export function configureMockWalletChain(chainId: `0x${string}`) {
+  walletChainId = chainId;
 }
 
 export function configureMockRoles(roles: Array<"buyer" | "provider">) {
@@ -370,6 +389,10 @@ beforeEach(() => {
   escrowRecordOutcome = "success";
   escrowRecordOutcomeSequence = [];
   escrowRefreshOnchainState = null;
+  escrowStateRefreshRejected = false;
+  walletEscrowStateReads = null;
+  activeWalletEscrowState = null;
+  walletChainId = "0x14a34";
   if (typeof window === "undefined") return;
   const storage = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -388,10 +411,69 @@ beforeEach(() => {
   Object.defineProperty(window, "ethereum", {
     configurable: true,
     value: {
-      request: vi.fn(async ({ method }: { method: string; params?: unknown[] }) => {
+      request: vi.fn(async ({ method, params }: { method: string; params?: unknown[] }) => {
         if (method === "eth_requestAccounts") return [testWallet];
-        if (method === "eth_chainId") return "0x14a34";
+        if (method === "eth_chainId") return walletChainId;
+        if (method === "wallet_switchEthereumChain") {
+          walletChainId = String((params as Array<{ chainId?: string }> | undefined)?.[0]?.chainId ?? walletChainId);
+          return null;
+        }
         if (method === "personal_sign") return `0x${"ab".repeat(65)}`;
+        if (method === "eth_call" && walletEscrowStateReads) {
+          const data = (params as Array<{ data?: `0x${string}` }> | undefined)?.[0]?.data;
+          if (!data) return null;
+          const decoded = decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data });
+          if (decoded.functionName === "getBounty") {
+            activeWalletEscrowState = walletEscrowStateReads.shift() ?? activeWalletEscrowState;
+            if (!activeWalletEscrowState) return null;
+            const states: MockWalletEscrowState[] = ["Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"];
+            return encodeFunctionResult({
+              abi: BOUNTY_ESCROW_ABI,
+              functionName: "getBounty",
+              result: {
+                requester: "0x5555555555555555555555555555555555555555",
+                provider: testWallet,
+                token: "0x7777777777777777777777777777777777777777",
+                amount: 250000000n,
+                deliveryDeadline: 4102444799n,
+                reviewDeadline: 0n,
+                state: states.indexOf(activeWalletEscrowState) + 1,
+                scopeHash: `0x${"11".repeat(32)}`,
+                proposalHash: `0x${"66".repeat(32)}`,
+                termsHash: `0x${"12".repeat(32)}`,
+                acceptedTermsHash: activeWalletEscrowState === "Funded" ? `0x${"00".repeat(32)}` : `0x${"12".repeat(32)}`,
+                evidenceHash: `0x${"00".repeat(32)}`,
+                approvalHash: `0x${"00".repeat(32)}`,
+                settlementProposer: "0x0000000000000000000000000000000000000000",
+                proposedProviderPayout: 0n,
+                settlementProposalExpiry: 0n,
+                allocatedAmount: 250000000n,
+                releasedAmount: 0n,
+                milestoneCount: 2,
+                currentMilestone: 1,
+                scheduleHash: `0x${"13".repeat(32)}`
+              } as never
+            });
+          }
+          if (decoded.functionName === "getMilestone" && activeWalletEscrowState) {
+            return encodeFunctionResult({
+              abi: BOUNTY_ESCROW_ABI,
+              functionName: "getMilestone",
+              result: {
+                amount: 150000000n,
+                deliveryDeadline: 4102444799n,
+                reviewDeadline: 0n,
+                revisionDeadline: 0n,
+                state: 0,
+                evidenceHash: `0x${"00".repeat(32)}`,
+                previousEvidenceHash: `0x${"00".repeat(32)}`,
+                approvalHash: `0x${"00".repeat(32)}`,
+                revisionReasonHash: `0x${"00".repeat(32)}`,
+                revisionRequested: false
+              } as never
+            });
+          }
+        }
         if (method === "eth_sendTransaction") return `0x${"99".repeat(32)}`;
         if (method === "eth_getTransactionReceipt") return { status: "0x1", transactionHash: `0x${"99".repeat(32)}` };
         return null;
@@ -687,6 +769,7 @@ beforeEach(() => {
       return Response.json({ ok: true });
     }
     if (url.endsWith("/api/bounties/escrow/state")) {
+      if (escrowStateRefreshRejected) return Response.json({ code: "ESCROW_MILESTONE_MISMATCH" }, { status: 400 });
       const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId?: string };
       const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
       const escrow = bounty?.escrow as Record<string, unknown> | undefined;

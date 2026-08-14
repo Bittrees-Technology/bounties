@@ -24,12 +24,12 @@ import {
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
 import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, resolveEscrowAddress, supportedChainIds } from "./chain/config";
-import { createViemEscrowAdapter, resolveEscrowBundle } from "./chain/escrowAdapter";
+import { createViemEscrowAdapter, prepareEscrowWrite, resolveEscrowBundle } from "./chain/escrowAdapter";
 import { EscrowClientError } from "./chain/errors";
 import { formatUnits, keccak256, toHex } from "viem";
 import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, hashMilestoneSchedule, hashMilestoneTerms, hashTerms } from "./chain/hashCodec";
 import { standardTokenPresets } from "./chain/tokenPresets";
-import type { EscrowClient, EscrowOrderRef, SupportedChainId } from "./chain/types";
+import type { EscrowClient, EscrowMilestoneRecord, EscrowOnchainRecord, EscrowOnchainState, EscrowOrderRef, SupportedChainId } from "./chain/types";
 import {
   acceptEvidence,
   acceptProposal,
@@ -163,8 +163,15 @@ type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
+type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowMilestoneRecord | null };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
 const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
+const ESCROW_STATE_ORDER: EscrowOnchainState[] = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"];
+const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled"]);
+
+function canonicalTimestamp(seconds: bigint): string | null {
+  return seconds === 0n ? null : new Date(Number(seconds) * 1_000).toISOString();
+}
 
 function readEscrowCreationLocks(): Record<string, EscrowCreationLock> {
   try {
@@ -458,6 +465,7 @@ export default function App() {
   const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
   const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
   const actionPending = useRef(false);
+  const canonicalEscrowFallbacks = useRef(new Map<string, CanonicalEscrowFallback>());
   const escrowReconciliationTimers = useRef(new Map<string, number>());
   const escrowReconciliationInFlight = useRef(new Set<string>());
   const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
@@ -766,7 +774,7 @@ export default function App() {
     try {
       setLoading(true);
       setError(null);
-      const next = await loadMarketplace();
+      const next = applyCanonicalEscrowFallbacks(await loadMarketplace());
       setSession(next);
       setExpired(false);
       setDraft((current) => {
@@ -1051,6 +1059,70 @@ export default function App() {
   const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
   const mayReview = (order: MarketplaceOrder) => isParticipant(order) && ["Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "");
 
+  async function readCanonicalEscrow(client: EscrowClient, ref: EscrowOrderRef): Promise<CanonicalEscrowFallback> {
+    const escrow = await client.readEscrow(ref);
+    const milestone = escrow.milestoneCount > 0
+      ? await client.readMilestone(ref, escrow.currentMilestone)
+      : null;
+    return { escrow, milestone };
+  }
+
+  function rememberCanonicalEscrow(orderId: string, canonical: CanonicalEscrowFallback) {
+    canonicalEscrowFallbacks.current.set(orderId, canonical);
+  }
+
+  function applyCanonicalEscrowFallbacks(snapshot: MarketplaceSnapshot): MarketplaceSnapshot {
+    let changed = false;
+    const orders = snapshot.orders.map((order) => {
+      const canonical = canonicalEscrowFallbacks.current.get(order.id);
+      const observation = order.escrowObservation;
+      if (!canonical || !observation) return order;
+      const observedRank = ESCROW_STATE_ORDER.indexOf(observation.onchain_state as EscrowOnchainState);
+      const canonicalRank = ESCROW_STATE_ORDER.indexOf(canonical.escrow.state);
+      const canonicalMilestoneState = canonical.milestone?.state;
+      const observationHasCanonicalState = observation.onchain_state === canonical.escrow.state
+        && observation.current_milestone === canonical.escrow.currentMilestone
+        && (!canonicalMilestoneState || observation.current_milestone_detail?.state === canonicalMilestoneState);
+      if (observationHasCanonicalState || observedRank > canonicalRank) {
+        canonicalEscrowFallbacks.current.delete(order.id);
+        return order;
+      }
+      changed = true;
+      const milestone = canonical.milestone;
+      return {
+        ...order,
+        escrowObservation: {
+          ...observation,
+          onchain_state: canonical.escrow.state,
+          remaining_base_units: canonical.escrow.amountBaseUnits,
+          review_deadline: canonicalTimestamp(canonical.escrow.reviewDeadline),
+          settlement_proposer: canonical.escrow.settlementProposer,
+          proposed_provider_payout_base_units: canonical.escrow.proposedProviderPayoutBaseUnits,
+          settlement_proposal_expiry: canonicalTimestamp(canonical.escrow.settlementProposalExpiry),
+          allocated_amount_base_units: canonical.escrow.allocatedAmountBaseUnits,
+          released_amount_base_units: canonical.escrow.releasedAmountBaseUnits,
+          milestone_count: canonical.escrow.milestoneCount,
+          current_milestone: canonical.escrow.currentMilestone,
+          schedule_hash: canonical.escrow.scheduleHash,
+          current_milestone_detail: milestone ? {
+            milestone_index: milestone.milestoneIndex,
+            amount_base_units: milestone.amountBaseUnits,
+            delivery_deadline: canonicalTimestamp(milestone.deliveryDeadline),
+            review_deadline: canonicalTimestamp(milestone.reviewDeadline),
+            revision_deadline: canonicalTimestamp(milestone.revisionDeadline),
+            state: milestone.state,
+            evidence_hash: milestone.evidenceHash,
+            previous_evidence_hash: milestone.previousEvidenceHash,
+            approval_hash: milestone.approvalHash,
+            revision_reason_hash: milestone.revisionReasonHash,
+            revision_requested: milestone.revisionRequested
+          } : observation.current_milestone_detail
+        }
+      };
+    });
+    return changed ? { ...snapshot, orders } : snapshot;
+  }
+
   function escrowBoundary(order: MarketplaceOrder): { client: EscrowClient; ref: EscrowOrderRef } {
     if (!window.ethereum || !order.tokenRecord || !order.providerAddress || !order.scopeHash || !order.proposalHash) {
       throw new Error("This bounty is missing the wallet, token, scope, or accepted-provider commitment required for escrow.");
@@ -1132,6 +1204,39 @@ export default function App() {
   ) {
     await act(async () => {
       await executeEscrowTransaction(order, action, observeCreation);
+    });
+  }
+
+  async function acceptProviderTerms(order: MarketplaceOrder) {
+    await submitEscrowTransaction(order, async (client, ref) => {
+      if (!window.ethereum) throw new EscrowClientError("WALLET_NOT_CONNECTED", "Connect a wallet to accept provider terms.");
+      await prepareEscrowWrite(window.ethereum, chains[client.chainId]);
+      const before = await readCanonicalEscrow(client, ref);
+      if (ACCEPTED_ESCROW_STATES.has(before.escrow.state)) {
+        rememberCanonicalEscrow(order.id, before);
+        try { await refreshEscrowState(order.id); } catch { /* The direct wallet read remains authoritative for this view. */ }
+        setNotice("The bounty terms were already accepted onchain. The page was updated without sending another transaction.");
+        return {};
+      }
+      if (before.escrow.state !== "Funded") {
+        throw new EscrowClientError("CONTRACT_REVERTED", `This bounty is ${before.escrow.state} onchain and cannot accept provider terms.`);
+      }
+
+      const result = await client.acceptBounty(ref);
+      let after: CanonicalEscrowFallback = {
+        ...before,
+        escrow: { ...before.escrow, state: "ProviderAccepted" }
+      };
+      try {
+        const observed = await readCanonicalEscrow(client, ref);
+        if (ACCEPTED_ESCROW_STATES.has(observed.escrow.state)) after = observed;
+      } catch {
+        // A successful receipt proves inclusion. Preserve the expected accepted
+        // state until the server or wallet RPC catches up with that block.
+      }
+      rememberCanonicalEscrow(order.id, after);
+      try { await refreshEscrowState(order.id); } catch { /* Keep the canonical wallet fallback until server reconciliation succeeds. */ }
+      return result;
     });
   }
 
@@ -1663,11 +1768,7 @@ export default function App() {
     const currentMilestone = order.escrowObservation.current_milestone ?? 0;
     const milestone = order.milestones?.[currentMilestone];
     if (state === "Funded") {
-      return <button className="submit-work-shortcut" disabled={loading} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
-        const result = await client.acceptBounty(ref);
-        await refreshEscrowState(order.id);
-        return result;
-      })}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
+      return <button className="submit-work-shortcut" disabled={loading} onClick={() => void acceptProviderTerms(order)}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
     }
     if (state === "ProviderAccepted" && milestone?.deliveryEvidence) {
       return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Commit submitted work onchain</a>;
@@ -1871,18 +1972,35 @@ export default function App() {
   const selectedCanonicalRefreshKey = selectedCanonicalBountyId
     ? `${selectedCanonicalBountyId}:${selectedBounty!.escrowObservation!.transaction_hash}`
     : null;
+  const selectedCanonicalOrderRef = useRef<MarketplaceOrder | null>(null);
+  const selectedCanonicalBoundaryRef = useRef(escrowBoundary);
+  selectedCanonicalOrderRef.current = selectedBounty;
+  selectedCanonicalBoundaryRef.current = escrowBoundary;
   useEffect(() => {
     if (!selectedCanonicalBountyId || !selectedCanonicalRefreshKey) return;
     let cancelled = false;
-    void refreshEscrowState(selectedCanonicalBountyId)
-      .then(() => loadMarketplace())
-      .then((next) => {
+    void (async () => {
+      const selectedOrder = selectedCanonicalOrderRef.current;
+      if (selectedOrder?.id === selectedCanonicalBountyId) {
+        try {
+          const { client, ref } = selectedCanonicalBoundaryRef.current(selectedOrder);
+          const canonical = await readCanonicalEscrow(client, ref);
+          if (!cancelled) rememberCanonicalEscrow(selectedCanonicalBountyId, canonical);
+        } catch {
+          // A wallet on another network must not prevent the server-side read.
+        }
+      }
+      try { await refreshEscrowState(selectedCanonicalBountyId); } catch {
+        // A direct read can still repair the visible state while server
+        // reconciliation is unavailable; the manual control remains available.
+      }
+      try {
+        const next = applyCanonicalEscrowFallbacks(await loadMarketplace());
         if (!cancelled) setSession(next);
-      })
-      .catch(() => {
-        // The explicit refresh control remains available if canonical hydration
-        // is temporarily unavailable; opening a bounty must remain usable.
-      });
+      } catch {
+        // Keep the current detail usable when a background refresh fails.
+      }
+    })();
     return () => { cancelled = true; };
   }, [selectedCanonicalBountyId, selectedCanonicalRefreshKey]);
   const marketplaceOrders = useMemo(() => filterAndOrderBounties(session?.orders ?? [], {

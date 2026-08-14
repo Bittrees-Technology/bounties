@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockEscrowStateRefreshRejected, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal, configureMockWalletChain, configureMockWalletEscrowStateReads } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -247,6 +247,7 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
 
 it("offers one provider acceptance action and reveals proof only after its receipt is canonical", async () => {
   configureMockMilestoneEscrow("Funded", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  configureMockWalletEscrowStateReads([null, "Funded", "ProviderAccepted"]);
   const order = await renderConfiguredEscrow();
 
   expect(order.getAllByRole("button", { name: /accept bounty terms to begin work/i })).toHaveLength(1);
@@ -264,12 +265,30 @@ it("offers one provider acceptance action and reveals proof only after its recei
 
 it("repairs a stale funded provider view from canonical state when the bounty opens", async () => {
   configureMockMilestoneEscrow("Funded", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
-  configureMockEscrowRefreshOnchainState("ProviderAccepted");
+  configureMockWalletEscrowStateReads(["ProviderAccepted"]);
+  configureMockEscrowStateRefreshRejected();
   const order = await renderConfiguredEscrow();
 
   expect(await order.findByLabelText(/work evidence link/i)).toBeInTheDocument();
   expect(order.queryByRole("button", { name: /accept bounty terms/i })).not.toBeInTheDocument();
   expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow/state"))).toHaveLength(1);
+  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(false);
+});
+
+it("preflights a stale acceptance control and never resends an already accepted transaction", async () => {
+  configureMockMilestoneEscrow("Funded", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  configureMockWalletEscrowStateReads([null, "ProviderAccepted"]);
+  configureMockEscrowStateRefreshRejected();
+  const order = await renderConfiguredEscrow();
+  configureMockWalletChain("0x1");
+
+  await userEvent.setup().click(order.getByRole("button", { name: /accept bounty terms to begin work/i }));
+
+  expect(await order.findByLabelText(/work evidence link/i)).toBeInTheDocument();
+  expect(screen.getByRole("status")).toHaveTextContent(/terms were already accepted onchain.*without sending another transaction/i);
+  const walletMethods = vi.mocked(window.ethereum!.request).mock.calls.map(([request]) => request.method);
+  expect(walletMethods.indexOf("wallet_switchEthereumChain")).toBeLessThan(walletMethods.lastIndexOf("eth_call"));
+  expect(walletMethods).not.toContain("eth_sendTransaction");
 });
 
 it("shows selected providers why proof submission is locked before funding", async () => {
