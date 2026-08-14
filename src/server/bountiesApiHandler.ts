@@ -739,41 +739,47 @@ function proposalHash(expected: ExpectedEscrow): string {
 }
 
 async function expectedEscrow(session: Session, bountyId: string): Promise<ExpectedEscrow> {
-  const { data, error } = await rpcClient()
-    .from("bounties")
-    .select("id,chain_id,budget_base_units,scope_hash,escrow_schedule_status,milestones(ordinal,amount_base_units,delivery_deadline),creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
-    .eq("id", bountyId)
-    .eq("creator_id", session.account_id)
-    .single();
-  if (error || !data) throw new ApiError("BOUNTY_OWNER_REQUIRED", 403);
-  const row = data as unknown as {
+  // Use the same database projection as marketplace reads. It deliberately
+  // serializes numeric(78,0) token amounts as decimal strings, whereas a raw
+  // PostgREST table relationship can surface nested numeric columns as JS
+  // numbers and lose both their type and, for arbitrary ERC20 values, precision.
+  const row = await callRpc<{
     id: string;
+    creator_id: string;
     chain_id: number;
     budget_base_units: string;
     scope_hash: string;
     escrow_schedule_status: "structured" | "requires_recreation";
     milestones: Array<{ ordinal: number; amount_base_units: string; delivery_deadline: string | null }>;
-    creator: { wallet_address: string } | null;
     token: { contract_address: string } | null;
-    proposal: { id: string; proposal_hash: string | null; provider: { wallet_address: string } | null } | null;
-  };
-  if (!row.proposal?.provider) throw new ApiError("ACCEPTED_PROPOSAL_REQUIRED", 400);
-  if (!row.token || !row.creator) throw new ApiError("ESCROW_EXPECTATION_INCOMPLETE", 400);
+    accepted_proposal_id: string | null;
+    proposals: Array<{ id: string; proposal_hash: string | null; provider_wallet_address: string }>;
+  } | null>("app_bounty_json", { p_bounty_id: bountyId, p_actor_id: session.account_id });
+  if (!row || row.id !== bountyId || row.creator_id !== session.account_id) throw new ApiError("BOUNTY_OWNER_REQUIRED", 403);
+  const proposal = row.proposals?.find((candidate) => candidate.id === row.accepted_proposal_id);
+  if (!proposal?.provider_wallet_address) throw new ApiError("ACCEPTED_PROPOSAL_REQUIRED", 400);
+  if (!row.token || typeof row.budget_base_units !== "string" || !/^[1-9][0-9]*$/.test(row.budget_base_units)) {
+    throw new ApiError("ESCROW_EXPECTATION_INCOMPLETE", 400);
+  }
   if (row.escrow_schedule_status !== "structured") throw new ApiError("BOUNTY_RECREATION_REQUIRED", 409);
   const milestones = [...(row.milestones ?? [])].sort((left, right) => left.ordinal - right.ordinal);
-  if (milestones.length < 1 || milestones.length > 32 || milestones.some((milestone, ordinal) => milestone.ordinal !== ordinal)) {
+  if (milestones.length < 1 || milestones.length > 32 || milestones.some((milestone, ordinal) => (
+    milestone.ordinal !== ordinal
+    || typeof milestone.amount_base_units !== "string"
+    || !/^[1-9][0-9]*$/.test(milestone.amount_base_units)
+  ))) {
     throw new ApiError("ESCROW_SCHEDULE_INVALID", 409);
   }
   return {
     bounty_id: row.id,
     chain_id: Number(row.chain_id),
-    budget_base_units: String(row.budget_base_units),
+    budget_base_units: row.budget_base_units,
     scope_hash: row.scope_hash,
-    creator_wallet: getAddress(row.creator.wallet_address),
+    creator_wallet: getAddress(session.wallet_address),
     token_address: getAddress(row.token.contract_address),
-    proposal_id: row.proposal.id,
-    proposal_hash: row.proposal.proposal_hash,
-    provider_wallet: getAddress(row.proposal.provider.wallet_address),
+    proposal_id: proposal.id,
+    proposal_hash: proposal.proposal_hash,
+    provider_wallet: getAddress(proposal.provider_wallet_address),
     escrow_schedule_status: row.escrow_schedule_status,
     milestones
   };

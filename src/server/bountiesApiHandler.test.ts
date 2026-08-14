@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Interface, keccak256, toUtf8Bytes } from "ethers";
+import { AbiCoder, Interface, keccak256, toUtf8Bytes } from "ethers";
 
 const {
   contractGetBountyMock,
   contractGetMilestoneMock,
+  databaseFromMock,
   providerGetAvatarMock,
+  providerGetBlockNumberMock,
   providerGetNetworkMock,
   providerLookupAddressMock,
   providerGetReceiptMock,
@@ -13,7 +15,9 @@ const {
 } = vi.hoisted(() => ({
   contractGetBountyMock: vi.fn(),
   contractGetMilestoneMock: vi.fn(),
+  databaseFromMock: vi.fn(),
   providerGetAvatarMock: vi.fn(),
+  providerGetBlockNumberMock: vi.fn(),
   providerGetNetworkMock: vi.fn(),
   providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
@@ -27,6 +31,7 @@ vi.mock("ethers", async (importOriginal) => {
     ...actual,
     JsonRpcProvider: class {
       getAvatar = providerGetAvatarMock;
+      getBlockNumber = providerGetBlockNumberMock;
       getNetwork = providerGetNetworkMock;
       lookupAddress = providerLookupAddressMock;
       getTransactionReceipt = providerGetReceiptMock;
@@ -39,7 +44,7 @@ vi.mock("ethers", async (importOriginal) => {
 });
 
 vi.mock("@supabase/supabase-js", () => ({
-  createClient: () => ({ rpc: rpcMock })
+  createClient: () => ({ rpc: rpcMock, from: databaseFromMock })
 }));
 
 vi.mock("./sharedRoleResolver", () => ({
@@ -229,6 +234,7 @@ describe("terminal escrow observation diagnostics", () => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
     rpcMock.mockReset();
+    databaseFromMock.mockReset();
     rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
       ? { data: [session], error: null }
       : { data: null, error: null }));
@@ -260,6 +266,137 @@ describe("terminal escrow observation diagnostics", () => {
       status: 400
     });
     expect(warning).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves projected milestone base units as strings during canonical verification", async () => {
+    const contractAddress = canonicalContext.contractAddress;
+    const providerWallet = canonicalContext.providerWallet;
+    const tokenAddress = "0x3333333333333333333333333333333333333333";
+    const amount = "250000000000000000000";
+    const deadline = 1_800_000_000n;
+    const scopeHash = `0x${"11".repeat(32)}`;
+    const proposalHash = `0x${"33".repeat(32)}`;
+    const scheduleDomain = keccak256(toUtf8Bytes("BOUNTY_MILESTONE_SCHEDULE_V1"));
+    const termsDomain = keccak256(toUtf8Bytes("BOUNTY_MILESTONE_TERMS_V1"));
+    const coder = AbiCoder.defaultAbiCoder();
+    const scheduleHash = keccak256(coder.encode(
+      ["bytes32", "uint256", "address", "bytes32", "uint256[]", "uint64[]"],
+      [scheduleDomain, 84532n, contractAddress, scopeHash, [BigInt(amount)], [deadline]]
+    ));
+    const termsHash = keccak256(coder.encode(
+      ["bytes32", "uint256", "address", "bytes32", "bytes32", "address", "bytes32"],
+      [termsDomain, 84532n, contractAddress, scopeHash, proposalHash, providerWallet, scheduleHash]
+    ));
+    const escrowInterface = new Interface([
+      "event BountyCreated(uint256 indexed bountyId,address indexed requester,address indexed token,address provider,uint256 requestedAmount,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,uint64 deliveryDeadline)",
+      "event BountyFunded(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 amount)"
+    ]);
+    const created = escrowInterface.encodeEventLog(escrowInterface.getEvent("BountyCreated")!, [
+      1n, session.wallet_address, tokenAddress, providerWallet, BigInt(amount), scopeHash, proposalHash, termsHash, deadline
+    ]);
+    const funded = escrowInterface.encodeEventLog(escrowInterface.getEvent("BountyFunded")!, [
+      1n, session.wallet_address, tokenAddress, BigInt(amount)
+    ]);
+
+    vi.stubEnv("CHAIN_84532_RPC_URL", "https://rpc.example.test");
+    vi.stubEnv("CHAIN_84532_BOUNTY_ESCROW_ADDRESS", contractAddress);
+    vi.stubEnv("CHAIN_84532_REQUIRED_CONFIRMATIONS", "2");
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({ data: {
+        id: canonicalContext.bountyId,
+        creator_id: session.account_id,
+        chain_id: 84532,
+        budget_base_units: amount,
+        scope_hash: scopeHash,
+        escrow_schedule_status: "structured",
+        accepted_proposal_id: "30000000-0000-4000-8000-000000000022",
+        token: { contract_address: tokenAddress },
+        milestones: [{ ordinal: 0, amount_base_units: amount, delivery_deadline: new Date(Number(deadline) * 1_000).toISOString() }],
+        proposals: [{ id: "30000000-0000-4000-8000-000000000022", proposal_hash: proposalHash, provider_wallet_address: providerWallet }]
+      }, error: null });
+      if (name === "app_record_escrow_observation") return Promise.resolve({ data: args, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+    providerGetNetworkMock.mockResolvedValue({ chainId: 84532n });
+    providerGetBlockNumberMock.mockResolvedValue(101);
+    providerGetReceiptMock.mockResolvedValue({
+      status: 1,
+      blockNumber: 100,
+      blockHash: `0x${"99".repeat(32)}`,
+      logs: [
+        { address: contractAddress, topics: created.topics, data: created.data, index: 1 },
+        { address: contractAddress, topics: funded.topics, data: funded.data, index: 2 }
+      ]
+    });
+    contractGetBountyMock.mockResolvedValue({
+      requester: session.wallet_address,
+      provider: providerWallet,
+      token: tokenAddress,
+      amount: BigInt(amount),
+      deliveryDeadline: deadline,
+      reviewDeadline: 0n,
+      state: 1n,
+      scopeHash,
+      proposalHash,
+      termsHash,
+      acceptedTermsHash: `0x${"00".repeat(32)}`,
+      evidenceHash: `0x${"00".repeat(32)}`,
+      approvalHash: `0x${"00".repeat(32)}`,
+      settlementProposer: "0x0000000000000000000000000000000000000000",
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: BigInt(amount),
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash
+    });
+    contractGetMilestoneMock.mockResolvedValue({
+      amount: BigInt(amount),
+      deliveryDeadline: deadline,
+      reviewDeadline: 0n,
+      revisionDeadline: 0n,
+      state: 0n,
+      evidenceHash: `0x${"00".repeat(32)}`,
+      previousEvidenceHash: `0x${"00".repeat(32)}`,
+      approvalHash: `0x${"00".repeat(32)}`,
+      revisionReasonHash: `0x${"00".repeat(32)}`,
+      revisionRequested: false
+    });
+    databaseFromMock.mockImplementation(() => {
+      const query = {
+        select: () => query,
+        eq: vi.fn()
+      };
+      query.eq.mockReturnValueOnce(query).mockResolvedValueOnce({ data: [], error: null });
+      return query;
+    });
+
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/escrow",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ bountyId: canonicalContext.bountyId, txHash: `0x${"ab".repeat(32)}` })
+      }
+    ), "escrow");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_bounty_json", {
+      p_bounty_id: canonicalContext.bountyId,
+      p_actor_id: session.account_id
+    });
+    expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_observation", expect.objectContaining({
+      p_requested_base_units: amount,
+      p_allocated_amount_base_units: amount,
+      p_current_milestone_detail: expect.objectContaining({ amount_base_units: amount })
+    }));
   });
 });
 
