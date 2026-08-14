@@ -426,7 +426,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       return send("fundBounty", [requiredOnchainId(order), amount], funding);
     },
     acceptBounty: async (order) =>
-      send("acceptBounty", [requiredOnchainId(order), requiredAcceptedTermsHash(order, BigInt(chainId), contractAddress)]),
+      send("acceptBounty", [requiredOnchainId(order), requiredAcceptedTermsHash(order, BigInt(chainId), contractAddress)], undefined, true),
     submitDelivery: async (order, delivery) => send("submitDelivery", [requiredOnchainId(order), requiredDeliveryHash(delivery)]),
     requestRevision: async (order, revision) =>
       send("requestRevision", [requiredOnchainId(order), requiredRevisionReasonHash(revision)], undefined, true),

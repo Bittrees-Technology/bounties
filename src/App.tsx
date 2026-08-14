@@ -1376,7 +1376,6 @@ export default function App() {
             token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
           }), true)}>Create and fund escrow</button>
         ) : null}
-        {state === "Funded" && isProvider(order) ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptBounty(ref))}>Accept committed bounty terms</button> : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
@@ -1664,7 +1663,11 @@ export default function App() {
     const currentMilestone = order.escrowObservation.current_milestone ?? 0;
     const milestone = order.milestones?.[currentMilestone];
     if (state === "Funded") {
-      return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Accept bounty terms to begin work</a>;
+      return <button className="submit-work-shortcut" disabled={loading} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+        const result = await client.acceptBounty(ref);
+        await refreshEscrowState(order.id);
+        return result;
+      })}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
     }
     if (state === "ProviderAccepted" && milestone?.deliveryEvidence) {
       return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Commit submitted work onchain</a>;
@@ -1864,6 +1867,24 @@ export default function App() {
     [displayedProfiles, profileActivityWindow, profileDirectoryOrder]
   );
   const selectedBounty = selectedBountyId ? session?.orders.find((order) => order.id === selectedBountyId) ?? null : null;
+  const selectedCanonicalBountyId = selectedBounty?.escrowObservation && isParticipant(selectedBounty) ? selectedBounty.id : null;
+  const selectedCanonicalRefreshKey = selectedCanonicalBountyId
+    ? `${selectedCanonicalBountyId}:${selectedBounty!.escrowObservation!.transaction_hash}`
+    : null;
+  useEffect(() => {
+    if (!selectedCanonicalBountyId || !selectedCanonicalRefreshKey) return;
+    let cancelled = false;
+    void refreshEscrowState(selectedCanonicalBountyId)
+      .then(() => loadMarketplace())
+      .then((next) => {
+        if (!cancelled) setSession(next);
+      })
+      .catch(() => {
+        // The explicit refresh control remains available if canonical hydration
+        // is temporarily unavailable; opening a bounty must remain usable.
+      });
+    return () => { cancelled = true; };
+  }, [selectedCanonicalBountyId, selectedCanonicalRefreshKey]);
   const marketplaceOrders = useMemo(() => filterAndOrderBounties(session?.orders ?? [], {
     query: marketplaceQuery,
     workType: marketplaceWorkType,

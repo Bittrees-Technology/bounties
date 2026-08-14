@@ -37,6 +37,7 @@ let profileLegacySpecialty: string | null = null;
 type EscrowRecordOutcome = "success" | "reverted" | "pending" | "mismatch";
 let escrowRecordOutcome: EscrowRecordOutcome = "success";
 let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
+let escrowRefreshOnchainState: "ProviderAccepted" | null = null;
 
 export function configureMockEscrowRecordOutcome(outcome: EscrowRecordOutcome) {
   escrowRecordOutcome = outcome;
@@ -44,6 +45,10 @@ export function configureMockEscrowRecordOutcome(outcome: EscrowRecordOutcome) {
 
 export function configureMockEscrowRecordOutcomes(outcomes: EscrowRecordOutcome[]) {
   escrowRecordOutcomeSequence = [...outcomes];
+}
+
+export function configureMockEscrowRefreshOnchainState(state: "ProviderAccepted" | null) {
+  escrowRefreshOnchainState = state;
 }
 
 export function configureMockRoles(roles: Array<"buyer" | "provider">) {
@@ -171,7 +176,7 @@ export function configureMockHiddenStandardToken() {
 }
 
 export function configureMockMilestoneEscrow(
-  onchainState: "ProviderAccepted" | "Delivered" | "BuyerApproved",
+  onchainState: "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved",
   activeState: "Pending" | "Submitted" | "Approved",
   activeDeadline = "2099-12-31T23:59:59.999Z",
   integrity: "match" | "evidence_mismatch" | "approval_mismatch" = "match",
@@ -364,6 +369,7 @@ beforeEach(() => {
   profileLegacySpecialty = null;
   escrowRecordOutcome = "success";
   escrowRecordOutcomeSequence = [];
+  escrowRefreshOnchainState = null;
   if (typeof window === "undefined") return;
   const storage = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -386,6 +392,8 @@ beforeEach(() => {
         if (method === "eth_requestAccounts") return [testWallet];
         if (method === "eth_chainId") return "0x14a34";
         if (method === "personal_sign") return `0x${"ab".repeat(65)}`;
+        if (method === "eth_sendTransaction") return `0x${"99".repeat(32)}`;
+        if (method === "eth_getTransactionReceipt") return { status: "0x1", transactionHash: `0x${"99".repeat(32)}` };
         return null;
       })
     }
@@ -677,6 +685,14 @@ beforeEach(() => {
         };
       }
       return Response.json({ ok: true });
+    }
+    if (url.endsWith("/api/bounties/escrow/state")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId?: string };
+      const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
+      const escrow = bounty?.escrow as Record<string, unknown> | undefined;
+      if (!escrow) return Response.json({ code: "ESCROW_NOT_FOUND" }, { status: 404 });
+      if (escrowRefreshOnchainState) escrow.onchain_state = escrowRefreshOnchainState;
+      return Response.json(escrow);
     }
     if (url.endsWith("/api/bounties/proposals/accept")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId: string; proposalId: string };

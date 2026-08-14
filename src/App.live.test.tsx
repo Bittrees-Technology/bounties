@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -243,6 +243,33 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(order.getByLabelText(/funded escrow/i)).getByRole("link", { name: /^view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
   const finalDue = order.getAllByText(/^Due /i).at(-1)?.textContent?.replace(/^Due /i, "");
   expect(order.getByText(/Delivery by/i)).toHaveTextContent(finalDue!);
+});
+
+it("offers one provider acceptance action and reveals proof only after its receipt is canonical", async () => {
+  configureMockMilestoneEscrow("Funded", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  const order = await renderConfiguredEscrow();
+
+  expect(order.getAllByRole("button", { name: /accept bounty terms to begin work/i })).toHaveLength(1);
+  expect(order.queryByRole("button", { name: /accept committed bounty terms/i })).not.toBeInTheDocument();
+  expect(order.queryByLabelText(/work evidence link/i)).not.toBeInTheDocument();
+
+  configureMockEscrowRefreshOnchainState("ProviderAccepted");
+  await userEvent.setup().click(order.getByRole("button", { name: /accept bounty terms to begin work/i }));
+
+  expect(await order.findByLabelText(/work evidence link/i)).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /accept bounty terms/i })).not.toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow/state"))).toHaveLength(2);
+  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_getTransactionReceipt")).toBe(true);
+});
+
+it("repairs a stale funded provider view from canonical state when the bounty opens", async () => {
+  configureMockMilestoneEscrow("Funded", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  configureMockEscrowRefreshOnchainState("ProviderAccepted");
+  const order = await renderConfiguredEscrow();
+
+  expect(await order.findByLabelText(/work evidence link/i)).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /accept bounty terms/i })).not.toBeInTheDocument();
+  expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow/state"))).toHaveLength(1);
 });
 
 it("shows selected providers why proof submission is locked before funding", async () => {

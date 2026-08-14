@@ -269,13 +269,24 @@ describe("escrow adapter provider support", () => {
     const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
     const order = createMilestoneOrder();
 
-    await adapter.acceptBounty(order);
+    await expect(adapter.acceptBounty(order)).resolves.toEqual({ state: "confirmed", txHash });
 
     const send = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
     const transaction = (send?.params as Array<{ data: `0x${string}` }>)[0];
     expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
       functionName: "acceptBounty",
       args: [7n, order.termsHash]
+    });
+    expect(eoaProvider.calls.some((call) => call.method === "eth_getTransactionReceipt")).toBe(true);
+  });
+
+  it("does not report provider acceptance when its EOA transaction reverts", async () => {
+    const eoaProvider = new RecordingProvider({ receipts: [{ status: "0x0", transactionHash: txHash }] });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.acceptBounty(createMilestoneOrder())).rejects.toMatchObject({
+      code: "CONTRACT_REVERTED",
+      message: "The submitted transaction reverted."
     });
   });
 
