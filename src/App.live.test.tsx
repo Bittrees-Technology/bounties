@@ -205,7 +205,7 @@ it("surfaces terminal canonical mismatches, retains the lock, and stops automati
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
 
-  expect(await screen.findByText(/does not match this bounty.s escrow terms/i)).toBeInTheDocument();
+  expect(await screen.findByText(/onchain terms commitment does not match this bounty.s current accepted terms/i)).toBeInTheDocument();
   expect(screen.getByText(/locked against another funding attempt/i)).toBeInTheDocument();
   expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).not.toBe("{}");
   await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow"))).toHaveLength(1));

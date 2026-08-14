@@ -56,6 +56,27 @@ describe("Supabase marketplace mapping", () => {
     )).rejects.toThrow("record the escrow automatically");
   });
 
+  it.each([
+    ["ESCROW_CONTRACT_MISMATCH", "different escrow contract"],
+    ["ESCROW_BUYER_MISMATCH", "requester wallet"],
+    ["ESCROW_PROVIDER_MISMATCH", "service-provider wallet"],
+    ["ESCROW_TOKEN_MISMATCH", "payment token"],
+    ["ESCROW_SCOPE_MISMATCH", "scope commitment"],
+    ["ESCROW_PROPOSAL_MISMATCH", "accepted-proposal commitment"],
+    ["ESCROW_AMOUNT_MISMATCH", "created or funded amount"],
+    ["ESCROW_MILESTONE_AMOUNT_MISMATCH", "milestone amount"],
+    ["ESCROW_MILESTONE_DEADLINE_MISMATCH", "milestone deadline"],
+    ["ESCROW_SCHEDULE_HASH_MISMATCH", "milestone-schedule commitment"],
+    ["ESCROW_TERMS_HASH_MISMATCH", "terms commitment"]
+  ])("surfaces the precise %s escrow mismatch", async (serverCode, expectedMessage) => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: serverCode }, { status: 400 }));
+
+    await expect(recordEscrowObservation(
+      "00000000-0000-4000-8000-000000000020",
+      `0x${"33".repeat(32)}`
+    )).rejects.toThrow(expectedMessage);
+  });
+
   it("keeps database account identity separate from the provider wallet address", () => {
     const row: BountyRow = {
       id: "00000000-0000-4000-8000-000000000020",

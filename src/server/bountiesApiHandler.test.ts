@@ -224,6 +224,45 @@ describe("delivery content digest boundary", () => {
   });
 });
 
+describe("terminal escrow observation diagnostics", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : { data: null, error: null }));
+  });
+
+  it("logs only the code and status for a terminal escrow rejection", async () => {
+    const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/escrow",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          bountyId: "30000000-0000-4000-8000-000000000020",
+          txHash: "not-a-transaction-hash"
+        })
+      }
+    ), "escrow");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_TXHASH" });
+    expect(warning).toHaveBeenCalledWith("Terminal escrow observation rejected", {
+      code: "INVALID_TXHASH",
+      status: 400
+    });
+    expect(warning).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("profile report ownership boundary", () => {
   beforeEach(() => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");

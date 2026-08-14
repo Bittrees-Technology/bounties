@@ -118,6 +118,12 @@ const safeServiceErrorCodes = new Set([
   "TOKEN_INSPECTION_CHAIN_MISMATCH",
   "TOKEN_INSPECTION_TIMEOUT"
 ]);
+const retryableEscrowObservationCodes = new Set([
+  "ESCROW_CONFIRMATIONS_PENDING",
+  "ESCROW_RECEIPT_NOT_FOUND",
+  "ESCROW_RPC_UNAVAILABLE",
+  "ESCROW_RPC_TIMEOUT"
+]);
 const explorerOrigins: Record<number, string> = {
   1: "https://etherscan.io",
   11155111: "https://sepolia.etherscan.io",
@@ -1645,6 +1651,17 @@ export async function handleBountiesApi(request: Request, action: string): Promi
     const status = internalStatus >= 500 ? 503 : internalStatus;
     const message = expected ? error.message : "SERVICE_UNAVAILABLE";
     const code = internalStatus >= 500 && !safeServiceErrorCodes.has(message) ? "SERVICE_UNAVAILABLE" : message;
+    if (action === "escrow"
+      && error instanceof ApiError
+      && !retryableEscrowObservationCodes.has(error.message)) {
+      // Keep this diagnostic deliberately bounded: the error code and status are
+      // enough to identify the failed canonical comparison without logging any
+      // wallet, bounty, transaction, session, or provider details.
+      console.warn("Terminal escrow observation rejected", {
+        code: error.message,
+        status: error.status
+      });
+    }
     const origin = safeApplicationOrigin(request);
     return Response.json({ code }, {
       status,

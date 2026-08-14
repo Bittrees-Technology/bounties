@@ -51,10 +51,25 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ESCROW_TX_REPLAYED") {
     return "That transaction has already been recorded for another bounty.";
   }
-  if (serverCode?.startsWith("ESCROW_") && (
-    serverCode.endsWith("_MISMATCH")
-    || serverCode === "ESCROW_CANONICAL_LOGS_MISSING"
-  )) {
+  const escrowMismatchMessages: Record<string, string> = {
+    ESCROW_CONTRACT_MISMATCH: "That transaction used a different escrow contract than Bounties expects for this network. It was not recorded; operations should verify the configured escrow address.",
+    ESCROW_CANONICAL_LOGS_MISSING: "That transaction did not contain exactly one canonical bounty-created event and one canonical funding event from the expected escrow contract, so it was not recorded.",
+    ESCROW_LOG_BOUNTY_MISMATCH: "The bounty identifiers in that transaction's creation and funding events do not match, so it was not recorded.",
+    ESCROW_BUYER_MISMATCH: "The requester wallet in that transaction does not match this bounty's creator wallet, so it was not recorded.",
+    ESCROW_PROVIDER_MISMATCH: "The service-provider wallet in that transaction does not match the accepted applicant for this bounty, so it was not recorded.",
+    ESCROW_TOKEN_MISMATCH: "The payment token in that transaction does not match this bounty's selected token, so it was not recorded.",
+    ESCROW_SCOPE_MISMATCH: "The scope commitment in that transaction does not match this bounty's current scope, so it was not recorded.",
+    ESCROW_PROPOSAL_MISMATCH: "The accepted-proposal commitment in that transaction does not match this bounty's accepted application, so it was not recorded.",
+    ESCROW_AMOUNT_MISMATCH: "The created or funded amount in that transaction does not match this bounty's budget, so it was not recorded.",
+    ESCROW_ALLOCATION_MISMATCH: "The escrow's onchain milestone allocation does not match this bounty's budget, so it was not recorded.",
+    ESCROW_MILESTONE_COUNT_MISMATCH: "The number of milestones recorded onchain does not match this bounty's milestone schedule, so it was not recorded.",
+    ESCROW_MILESTONE_AMOUNT_MISMATCH: "At least one onchain milestone amount does not match this bounty's milestone schedule, so it was not recorded.",
+    ESCROW_MILESTONE_DEADLINE_MISMATCH: "At least one onchain milestone deadline does not match this bounty's milestone schedule, so it was not recorded.",
+    ESCROW_SCHEDULE_HASH_MISMATCH: "The onchain milestone-schedule commitment does not match this bounty's current schedule, so it was not recorded.",
+    ESCROW_TERMS_HASH_MISMATCH: "The onchain terms commitment does not match this bounty's current accepted terms, so it was not recorded."
+  };
+  if (serverCode && escrowMismatchMessages[serverCode]) return escrowMismatchMessages[serverCode];
+  if (serverCode?.startsWith("ESCROW_") && serverCode.endsWith("_MISMATCH")) {
     return "That transaction does not match this bounty's escrow terms, so it was not recorded.";
   }
   if (serverCode === "TOKEN_INSPECTION_RPC_UNAVAILABLE") {
