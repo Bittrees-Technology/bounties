@@ -1019,10 +1019,14 @@ li {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1.35fr) repeat(5, minmax(145px, 1fr));
+  grid-template-columns: minmax(180px, 1.35fr) repeat(5, minmax(0, 1fr));
 }
 
 .bounty-directory-filters label { min-width: 0; }
+.bounty-directory-filters :is(input, select) {
+  min-width: 0;
+  width: 100%;
+}
 
 .bounty-directory-heading,
 .bounty-detail-toolbar {
@@ -1188,7 +1192,12 @@ li {
 }
 .profile-search-form label { min-width: 0; }
 .profile-search-form input,
-.profile-search-form select { min-height: 44px; padding: 10px 12px; }
+.profile-search-form select {
+  min-height: 44px;
+  min-width: 0;
+  padding: 10px 12px;
+  width: 100%;
+}
 .profile-search-form button { min-height: 44px; min-width: 132px; padding: 10px 14px; white-space: nowrap; }
 
 @media (max-width: 980px) {

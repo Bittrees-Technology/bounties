@@ -549,6 +549,68 @@ export function resolveEscrowRecordContractAddress(chainId: number, value: strin
   return candidate;
 }
 
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function isCurrentEscrowBounty(value: unknown): boolean {
+  const bounty = objectRecord(value);
+  if (!bounty) return false;
+  const escrow = objectRecord(bounty.escrow);
+  if (!escrow) return true;
+
+  const chainId = Number(escrow.chain_id ?? bounty.chain_id);
+  const configured = serverEnv(`CHAIN_${chainId}_BOUNTY_ESCROW_ADDRESS`);
+  const observed = typeof escrow.contract_address === "string" ? escrow.contract_address : "";
+  if (!Number.isSafeInteger(chainId) || chainId < 1 || !configured || !observed) return false;
+
+  try {
+    return getAddress(configured) === getAddress(observed);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Keep predecessor escrow records available to the private database audit trail
+ * without projecting them into the current product experience.
+ */
+export function projectCurrentEscrowSnapshot(snapshot: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(snapshot.bounties)) return snapshot;
+
+  const retiredBountyIds = new Set<string>();
+  const bounties = snapshot.bounties.filter((value) => {
+    const current = isCurrentEscrowBounty(value);
+    if (!current) {
+      const id = objectRecord(value)?.id;
+      if (typeof id === "string") retiredBountyIds.add(id);
+    }
+    return current;
+  });
+  const withoutRetiredBountyReferences = (value: unknown): boolean => {
+    const record = objectRecord(value);
+    return record?.entity_type !== "bounty"
+      || typeof record.entity_id !== "string"
+      || !retiredBountyIds.has(record.entity_id);
+  };
+
+  return {
+    ...snapshot,
+    bounties,
+    notifications: Array.isArray(snapshot.notifications)
+      ? snapshot.notifications.filter(withoutRetiredBountyReferences)
+      : snapshot.notifications,
+    myReports: Array.isArray(snapshot.myReports)
+      ? snapshot.myReports.filter(withoutRetiredBountyReferences)
+      : snapshot.myReports,
+    moderationReports: Array.isArray(snapshot.moderationReports)
+      ? snapshot.moderationReports.filter(withoutRetiredBountyReferences)
+      : snapshot.moderationReports
+  };
+}
+
 function requiredConfirmations(chainId: number): number {
   const configured = Number(serverEnv(`CHAIN_${chainId}_REQUIRED_CONFIRMATIONS`) ?? "12");
   if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10_000) {
@@ -1289,10 +1351,11 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (action === "snapshot" && method === "GET") {
     const sharedStaffRole = await refreshSharedModeratorGrant(session, false);
     const snapshot = await callRpc<Record<string, unknown>>("app_marketplace_snapshot", { p_actor_id: session.account_id });
+    const projectedSnapshot = projectCurrentEscrowSnapshot(snapshot);
     return Response.json({
-      ...snapshot,
+      ...projectedSnapshot,
       staffRole: sharedStaffRole,
-      moderationReports: sharedStaffRole ? snapshot.moderationReports : []
+      moderationReports: sharedStaffRole ? projectedSnapshot.moderationReports : []
     }, { headers });
   }
 

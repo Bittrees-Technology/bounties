@@ -46,7 +46,12 @@ vi.mock("./sharedRoleResolver", () => ({
   resolveSharedModerator: resolveSharedModeratorMock
 }));
 
-import { deriveCanonicalEvidenceCommitments, handleBountiesApi, resolveEscrowRecordContractAddress } from "./bountiesApiHandler";
+import {
+  deriveCanonicalEvidenceCommitments,
+  handleBountiesApi,
+  projectCurrentEscrowSnapshot,
+  resolveEscrowRecordContractAddress
+} from "./bountiesApiHandler";
 
 const session = {
   session_id: "10000000-0000-4000-8000-000000000001",
@@ -80,6 +85,36 @@ describe("escrow deployment replacement routing", () => {
       .toBe("0x4444444444444444444444444444444444444444");
     expect(() => resolveEscrowRecordContractAddress(84532, "0x5555555555555555555555555555555555555555"))
       .toThrow("ESCROW_CONTRACT_MISMATCH");
+  });
+
+  it("keeps predecessor escrow records out of every user-facing snapshot collection", () => {
+    vi.stubEnv("CHAIN_11155111_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+    const current = {
+      id: "current-bounty",
+      chain_id: 11155111,
+      escrow: { chain_id: 11155111, contract_address: "0x2222222222222222222222222222222222222222" }
+    };
+    const predecessor = {
+      id: "predecessor-bounty",
+      chain_id: 11155111,
+      escrow: { chain_id: 11155111, contract_address: "0x4444444444444444444444444444444444444444" }
+    };
+    const draft = { id: "new-draft", chain_id: 11155111, escrow: null };
+
+    expect(projectCurrentEscrowSnapshot({
+      bounties: [predecessor, current, draft],
+      notifications: [
+        { id: "old-note", entity_type: "bounty", entity_id: predecessor.id },
+        { id: "current-note", entity_type: "bounty", entity_id: current.id }
+      ],
+      myReports: [{ id: "old-report", entity_type: "bounty", entity_id: predecessor.id }],
+      moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
+    })).toEqual({
+      bounties: [current, draft],
+      notifications: [{ id: "current-note", entity_type: "bounty", entity_id: current.id }],
+      myReports: [],
+      moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
+    });
   });
 });
 
