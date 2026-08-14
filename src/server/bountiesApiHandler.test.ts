@@ -46,7 +46,7 @@ vi.mock("./sharedRoleResolver", () => ({
   resolveSharedModerator: resolveSharedModeratorMock
 }));
 
-import { deriveCanonicalEvidenceCommitments, handleBountiesApi } from "./bountiesApiHandler";
+import { deriveCanonicalEvidenceCommitments, handleBountiesApi, resolveEscrowRecordContractAddress } from "./bountiesApiHandler";
 
 const session = {
   session_id: "10000000-0000-4000-8000-000000000001",
@@ -68,6 +68,20 @@ const canonicalContext = {
   requesterWallet: "0x1111111111111111111111111111111111111111" as const
 };
 const deliveredContentHash = `0x${"ab".repeat(32)}` as const;
+
+describe("escrow deployment replacement routing", () => {
+  it("accepts the current and explicitly allowlisted predecessor contracts only", () => {
+    vi.stubEnv("CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+    vi.stubEnv("CHAIN_84532_BOUNTY_ESCROW_LEGACY_ADDRESSES", "0x4444444444444444444444444444444444444444");
+
+    expect(resolveEscrowRecordContractAddress(84532, "0x2222222222222222222222222222222222222222"))
+      .toBe("0x2222222222222222222222222222222222222222");
+    expect(resolveEscrowRecordContractAddress(84532, "0x4444444444444444444444444444444444444444"))
+      .toBe("0x4444444444444444444444444444444444444444");
+    expect(() => resolveEscrowRecordContractAddress(84532, "0x5555555555555555555555555555555555555555"))
+      .toThrow("ESCROW_CONTRACT_MISMATCH");
+  });
+});
 
 describe("canonical evidence integrity", () => {
   it("normalizes only surrounding URI whitespace and derives both commitments", () => {

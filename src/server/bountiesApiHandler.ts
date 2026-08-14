@@ -523,6 +523,32 @@ function escrowContractAddress(chainId: number): string {
   }
 }
 
+/**
+ * Creation is pinned to the current address, while previously verified records
+ * may continue on explicitly allowlisted predecessor deployments.
+ */
+export function resolveEscrowRecordContractAddress(chainId: number, value: string): string {
+  let candidate: string;
+  try {
+    candidate = getAddress(value);
+  } catch {
+    throw new ApiError("ESCROW_CONTRACT_MISMATCH", 400);
+  }
+  const allowed = new Set([escrowContractAddress(chainId)]);
+  const configuredLegacy = serverEnv(`CHAIN_${chainId}_BOUNTY_ESCROW_LEGACY_ADDRESSES`);
+  for (const entry of configuredLegacy?.split(",") ?? []) {
+    const trimmed = entry.trim();
+    if (!trimmed) continue;
+    try {
+      allowed.add(getAddress(trimmed));
+    } catch {
+      throw new ApiError("ESCROW_CONTRACT_CONFIG_INVALID", 500);
+    }
+  }
+  if (!allowed.has(candidate)) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 400);
+  return candidate;
+}
+
 function requiredConfirmations(chainId: number): number {
   const configured = Number(serverEnv(`CHAIN_${chainId}_REQUIRED_CONFIRMATIONS`) ?? "12");
   if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10_000) {
@@ -697,8 +723,7 @@ function revisionContext(value: RevisionRequestContext, milestoneId: string): Re
     || !/^[1-9][0-9]*$/.test(String(value?.onchain_bounty_id))) {
     throw new ApiError("REVISION_CONTEXT_INVALID", 409);
   }
-  const contractAddress = checkedAddress(String(value.contract_address ?? ""), "REVISION_ESCROW_INVALID");
-  if (contractAddress !== escrowContractAddress(chainId)) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 409);
+  const contractAddress = resolveEscrowRecordContractAddress(chainId, String(value.contract_address ?? ""));
   return {
     ...value,
     milestone_id: milestoneId.toLowerCase(),
@@ -1037,8 +1062,7 @@ async function escrowStateSource(session: Session, bountyId: string): Promise<Es
   }
   const chainId = Number(escrow.chain_id);
   if (!supportedChainIds.has(chainId)) throw new ApiError("CHAIN_UNSUPPORTED", 400);
-  const configuredAddress = escrowContractAddress(chainId);
-  if (getAddress(escrow.contract_address) !== configuredAddress) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 400);
+  const configuredAddress = resolveEscrowRecordContractAddress(chainId, String(escrow.contract_address));
   if (!/^[0-9]+$/.test(String(escrow.onchain_bounty_id))) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 400);
   return { bountyId, chainId, contractAddress: configuredAddress, onchainBountyId: String(escrow.onchain_bounty_id) };
 }
@@ -1180,8 +1204,7 @@ async function reconcileMilestone(session: Session, milestoneId: string): Promis
 
   const chainId = Number(bounty.chain_id);
   if (!supportedChainIds.has(chainId) || Number(escrow.chain_id) !== chainId) throw new ApiError("EVIDENCE_CHAIN_MISMATCH", 409);
-  const contractAddress = checkedAddress(String(escrow.contract_address ?? ""), "EVIDENCE_ESCROW_INVALID") as `0x${string}`;
-  if (contractAddress !== escrowContractAddress(chainId)) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 409);
+  const contractAddress = resolveEscrowRecordContractAddress(chainId, String(escrow.contract_address ?? "")) as `0x${string}`;
   const onchainBountyId = String(escrow.onchain_bounty_id ?? "");
   if (!/^[1-9][0-9]*$/.test(onchainBountyId)) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 409);
   const scopeHash = String(bounty.scope_hash ?? "").toLowerCase();

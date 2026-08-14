@@ -37,7 +37,7 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported
   test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). The verified
   testnet deployments are recorded in
-  [the deployment manifest](contracts/deployments/testnet.json); mainnet remains
+  [the replacement deployment manifest](contracts/deployments/testnet-v2.json); mainnet remains
   unset and fail-closed.
 - Ship with mainnet settlement fail-closed; the contract boundary defines mandatory
   delivery deadlines, one seven-day revision window per milestone, seven-day

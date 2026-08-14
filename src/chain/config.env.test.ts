@@ -51,4 +51,14 @@ describe("live escrow environment gate", () => {
     expect(config.chains[84532].enabled).toBe(false);
     expect(config.chains[4663].enabled).toBe(false);
   });
+
+  it("routes an existing escrow through its persisted predecessor address", async () => {
+    vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+    vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+    const { resolveEscrowAddress } = await import("./config");
+
+    expect(resolveEscrowAddress(84532, "0x4444444444444444444444444444444444444444"))
+      .toBe("0x4444444444444444444444444444444444444444");
+    expect(resolveEscrowAddress(84532, "not-an-address")).toBeUndefined();
+  });
 });

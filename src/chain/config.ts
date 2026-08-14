@@ -1,3 +1,4 @@
+import { getAddress } from "viem";
 import type { AssetConfig, ChainConfig, CuratedTokenSymbol, SupportedAsset, SupportedChainId } from "./types";
 
 export const supportedChainIds = [1, 11155111, 8453, 84532, 4663, 46630] as const satisfies readonly SupportedChainId[];
@@ -14,6 +15,22 @@ const configuredEscrowAddresses: Record<SupportedChainId, string | undefined> = 
 function configuredAddress(chainId: SupportedChainId): `0x${string}` | undefined {
   const address = configuredEscrowAddresses[chainId];
   return address && /^0x[a-fA-F0-9]{40}$/.test(address) ? address as `0x${string}` : undefined;
+}
+
+/**
+ * New escrows use the configured deployment. Existing records remain bound to
+ * the immutable contract address that the server verified and persisted for
+ * them, including during a contract replacement.
+ */
+export function resolveEscrowAddress(chainId: SupportedChainId, observedAddress?: string | null): `0x${string}` | undefined {
+  if (observedAddress !== undefined && observedAddress !== null) {
+    try {
+      return getAddress(observedAddress) as `0x${string}`;
+    } catch {
+      return undefined;
+    }
+  }
+  return configuredAddress(chainId);
 }
 
 const globallyEnabled = import.meta.env.VITE_ESCROW_ENABLED === "true";

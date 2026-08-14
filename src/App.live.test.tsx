@@ -69,6 +69,24 @@ it("keeps new creation paused without hiding existing escrow lifecycle actions",
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
 });
 
+it("keeps predecessor escrow actions bound to the record's verified contract", async () => {
+  configureMockMilestoneEscrow("BuyerApproved", "Approved");
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x5555555555555555555555555555555555555555");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const card = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  const order = within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
+
+  expect(order.getByRole("button", { name: /accept completed work/i })).toBeInTheDocument();
+});
+
 it("hydrates a persisted creation lock and safely clears a reverted receipt", async () => {
   configureMockAcceptedUnfundedBuyer();
   configureMockEscrowRecordOutcome("reverted");

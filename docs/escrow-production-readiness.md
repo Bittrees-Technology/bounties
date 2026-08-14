@@ -35,11 +35,10 @@ The repository includes an original Foundry escrow implementation, deterministic
 3. **Independent audit** — commission an external auditor after the specification freeze; publish the report and fixes; rerun the full suite against the audited commit.
 4. **Deployment authority** — use the operations-controlled deployment process, verify source and bytecode, document the deployer, and confirm the deployer receives no runtime authority over user records or escrow outcomes.
 5. **Legal/compliance approval** — publish escrow terms covering custody characterization, buyer/provider IP, refunds, sanctions/AML posture, tax/reporting, contributor classification, jurisdiction, and privacy.
-6. **Three-testnet replacement and soak** — the prior identical `BountyEscrow`
-   artifact was deployed and source-verified on Ethereum Sepolia, Base Sepolia,
-   and Robinhood Chain Testnet, but it lacks the one-time creation-key invariant.
-   Deploy and verify the replacement artifact on all three networks before
-   setting `VITE_ESCROW_CREATION_ENABLED=true`. Then exercise
+6. **Three-testnet replacement and soak** — the replacement `BountyEscrow`
+   artifact with the one-time creation-key invariant is deployed and
+   source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
+   Testnet. Before setting `VITE_ESCROW_CREATION_ENABLED=true`, exercise
    every lifecycle branch, reconcile events against token balances, and run
    monitoring for at least one complete original-delivery and revised-delivery
    cycle on each network. Include both revision resubmission and missed-revision refund.
@@ -48,9 +47,11 @@ The repository includes an original Foundry escrow implementation, deterministic
 
 The immutable receipts, verification jobs, Safe address, deterministic salt, and
 bytecode hashes for the testnet deployment are in
-[`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json).
-All three prior testnets use the same verified escrow address. Those addresses
-are retained as incident evidence, not approved creation targets. No mainnet address is set.
+[`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json).
+All three replacement testnets use the same verified escrow address. The prior
+deployment remains in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
+for existing escrow lifecycle support and incident evidence, not new creation.
+No mainnet address is set.
 
 ## Operator decisions still required
 

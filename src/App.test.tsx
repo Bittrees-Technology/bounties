@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockStaff } from "./test/setup";
+import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -803,6 +803,7 @@ describe("App", () => {
 
   it("fails closed on acceptance without an independently derivable approval commitment", async () => {
     configureMockMilestoneEscrow("BuyerApproved", "Approved");
+    configureMockEscrowAddress("not-an-address");
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);

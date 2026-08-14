@@ -23,7 +23,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
-import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, supportedChainIds } from "./chain/config";
+import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, resolveEscrowAddress, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter, resolveEscrowBundle } from "./chain/escrowAdapter";
 import { EscrowClientError } from "./chain/errors";
 import { formatUnits, keccak256, toHex } from "viem";
@@ -268,11 +268,12 @@ function deriveMilestoneApprovalHash(order: MarketplaceOrder, milestone: NonNull
   const observation = order.escrowObservation;
   if (!token || !requester || !/^0x[0-9a-fA-F]{40}$/.test(requester) || !observation?.onchain_bounty_id || !milestone.deliveryEvidenceHash) return null;
   const chain = chains[token.chain_id as SupportedChainId];
-  if (!chain?.escrowContractAddress) return null;
+  const escrowAddress = chain ? resolveEscrowAddress(chain.chainId, observation.contract_address) : undefined;
+  if (!chain || !escrowAddress) return null;
   try {
     return buildCanonicalApprovalCommitment({
       chainId: BigInt(chain.chainId),
-      escrowAddress: chain.escrowContractAddress,
+      escrowAddress,
       bountyId: BigInt(observation.onchain_bounty_id),
       evidenceHash: milestone.deliveryEvidenceHash,
       requester: requester as `0x${string}`,
@@ -289,11 +290,12 @@ function deriveMilestoneEvidenceHash(order: MarketplaceOrder, milestone: NonNull
   const observation = order.escrowObservation;
   if (!token || !order.scopeHash || !order.providerAddress || !observation?.onchain_bounty_id || !observation.terms_hash || !milestone.deliveryEvidence || !milestone.deliveryContentHash) return null;
   const chain = chains[token.chain_id as SupportedChainId];
-  if (!chain?.escrowContractAddress) return null;
+  const escrowAddress = chain ? resolveEscrowAddress(chain.chainId, observation.contract_address) : undefined;
+  if (!chain || !escrowAddress) return null;
   try {
     return buildCanonicalEvidenceCommitment({
       chainId: BigInt(chain.chainId),
-      escrowAddress: chain.escrowContractAddress,
+      escrowAddress,
       bountyId: BigInt(observation.onchain_bounty_id),
       scopeHash: order.scopeHash,
       termsHash: observation.terms_hash,
@@ -1028,10 +1030,14 @@ export default function App() {
     if (!window.ethereum || !order.tokenRecord || !order.providerAddress || !order.scopeHash || !order.proposalHash) {
       throw new Error("This bounty is missing the wallet, token, scope, or accepted-provider commitment required for escrow.");
     }
-    const chain = chains[order.tokenRecord.chain_id as SupportedChainId];
-    if (!chain?.enabled || !chain.escrowContractAddress) {
-      throw new Error(`Escrow transactions are not enabled for ${chain?.name ?? "the selected network"}.`);
+    const configuredChain = chains[order.tokenRecord.chain_id as SupportedChainId];
+    const escrowAddress = configuredChain
+      ? resolveEscrowAddress(configuredChain.chainId, order.escrowObservation?.contract_address)
+      : undefined;
+    if (!configuredChain?.enabled || !escrowAddress) {
+      throw new Error(`Escrow transactions are not enabled for ${configuredChain?.name ?? "the selected network"}.`);
     }
+    const chain = { ...configuredChain, escrowContractAddress: escrowAddress };
     const onchainId = order.escrowObservation?.onchain_bounty_id;
     const parsedDeliveryDeadline = deadlineTimestamp(order.dueDate);
     if (parsedDeliveryDeadline === null) throw new Error("This bounty has an invalid delivery deadline.");
@@ -1049,7 +1055,7 @@ export default function App() {
     const scheduleHash = milestoneSchedule?.length
       ? hashMilestoneSchedule({
         chainId: BigInt(chain.chainId),
-        escrowAddress: chain.escrowContractAddress,
+        escrowAddress,
         scopeHash: order.scopeHash,
         milestoneAmounts: milestoneSchedule.map((milestone) => BigInt(milestone.amountBaseUnits)),
         milestoneDeadlines: milestoneSchedule.map((milestone) => milestone.deliveryDeadline)
@@ -1058,7 +1064,7 @@ export default function App() {
     const termsHash = scheduleHash
       ? hashMilestoneTerms({
         chainId: BigInt(chain.chainId),
-        escrowAddress: chain.escrowContractAddress,
+        escrowAddress,
         scopeHash: order.scopeHash,
         proposalHash: order.proposalHash,
         provider: order.providerAddress,
@@ -1066,7 +1072,7 @@ export default function App() {
       }).value
       : hashTerms({
         chainId: BigInt(chain.chainId),
-        escrowAddress: chain.escrowContractAddress,
+        escrowAddress,
         scopeHash: order.scopeHash,
         proposalHash: order.proposalHash,
         provider: order.providerAddress

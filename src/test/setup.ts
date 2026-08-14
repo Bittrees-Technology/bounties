@@ -39,6 +39,12 @@ export function configureMockEscrowRecordOutcome(outcome: "success" | "reverted"
   escrowRecordOutcome = outcome;
 }
 
+export function configureMockEscrowAddress(value: string) {
+  const escrow = bounties[0]?.escrow as Record<string, unknown> | undefined;
+  if (!escrow) throw new Error("mock escrow missing");
+  escrow.contract_address = value;
+}
+
 export function configureMockStaff(
   role: "moderator" | "admin" | null,
   reports: Array<Record<string, unknown>> = []
