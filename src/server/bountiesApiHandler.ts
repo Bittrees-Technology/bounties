@@ -102,6 +102,7 @@ const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const jsonBodyLimitBytes = 256 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
 const profileSearchFields = new Set(["all", "identity", "bio", "specialty"]);
+const marketplaceResetReason = "Archived for the August 2026 marketplace reset";
 type EnsProfileIdentity = { name: string | null; avatarUrl: string | null };
 const ensProfileCache = new Map<string, { identity: EnsProfileIdentity; expiresAt: number }>();
 const ensProfileLookups = new Map<string, Promise<EnsProfileIdentity>>();
@@ -558,6 +559,7 @@ function objectRecord(value: unknown): Record<string, unknown> | null {
 function isCurrentEscrowBounty(value: unknown): boolean {
   const bounty = objectRecord(value);
   if (!bounty) return false;
+  if (bounty.moderation_status === "hidden" && bounty.moderation_reason === marketplaceResetReason) return false;
   const escrow = objectRecord(bounty.escrow);
   if (!escrow) return true;
 

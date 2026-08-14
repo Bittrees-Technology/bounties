@@ -99,15 +99,26 @@ describe("escrow deployment replacement routing", () => {
       chain_id: 11155111,
       escrow: { chain_id: 11155111, contract_address: "0x4444444444444444444444444444444444444444" }
     };
+    const archivedCurrent = {
+      id: "archived-current-bounty",
+      chain_id: 11155111,
+      moderation_status: "hidden",
+      moderation_reason: "Archived for the August 2026 marketplace reset",
+      escrow: { chain_id: 11155111, contract_address: "0x2222222222222222222222222222222222222222" }
+    };
     const draft = { id: "new-draft", chain_id: 11155111, escrow: null };
 
     expect(projectCurrentEscrowSnapshot({
-      bounties: [predecessor, current, draft],
+      bounties: [predecessor, archivedCurrent, current, draft],
       notifications: [
         { id: "old-note", entity_type: "bounty", entity_id: predecessor.id },
+        { id: "archived-note", entity_type: "bounty", entity_id: archivedCurrent.id },
         { id: "current-note", entity_type: "bounty", entity_id: current.id }
       ],
-      myReports: [{ id: "old-report", entity_type: "bounty", entity_id: predecessor.id }],
+      myReports: [
+        { id: "old-report", entity_type: "bounty", entity_id: predecessor.id },
+        { id: "archived-report", entity_type: "bounty", entity_id: archivedCurrent.id }
+      ],
       moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
     })).toEqual({
       bounties: [current, draft],
