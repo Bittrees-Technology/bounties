@@ -73,6 +73,7 @@ import {
   type BountyDirectoryOrder,
   type BountyStatusFilter
 } from "./marketplaceDirectory";
+import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -242,10 +243,10 @@ function deadlineTimestamp(value?: string | null): number | null {
 }
 
 const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-const supportedTimeZones = (() => {
+const supportedTimeZoneOptions = (() => {
   const supportedValuesOf = (Intl as typeof Intl & { supportedValuesOf?: (key: "timeZone") => string[] }).supportedValuesOf;
   const zones = supportedValuesOf?.("timeZone") ?? [];
-  return Array.from(new Set([browserTimeZone, "UTC", ...zones])).sort((left, right) => left.localeCompare(right));
+  return buildTimeZoneOptions([browserTimeZone, "UTC", ...zones]);
 })();
 
 function formatDeadline(value?: string | null): string {
@@ -2154,7 +2155,7 @@ export default function App() {
                               {publicProfile?.profile_url ? <a href={publicProfile.profile_url} target="_blank" rel="noreferrer noopener">Website <ExternalLink size={13} aria-hidden="true" /></a> : null}
                             </div>
                             {publicProfile?.profile_bio ? <p>{publicProfile.profile_bio}</p> : null}
-                            {publicProfile?.timezone_public && publicProfile.timezone ? <p className="profile-timezone">Timezone: {publicProfile.timezone}</p> : null}
+                            {publicProfile?.timezone_public && publicProfile.timezone ? <p className="profile-timezone">Timezone: {formatTimeZoneLabel(publicProfile.timezone)}</p> : null}
                             {profileMessage ? <p className="form-hint">{profileMessage}</p> : null}
                           </div>
                         </div>
@@ -2196,7 +2197,7 @@ export default function App() {
                               <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
                               <div className="profile-timezone-editor">
                                 <label>Timezone<select name="timezone" defaultValue={publicProfile?.timezone ?? browserTimeZone}>
-                                  {supportedTimeZones.map((timezone) => <option key={timezone} value={timezone}>{timezone}</option>)}
+                                  {supportedTimeZoneOptions.map((timezone) => <option key={timezone.value} value={timezone.value}>{timezone.label}</option>)}
                                 </select></label>
                                 <label className="timezone-visibility"><input name="timezonePublic" type="checkbox" defaultChecked={publicProfile?.timezone_public === true} /><span><strong>Show timezone publicly</strong><small>Leave this off to save the timezone privately for your account.</small></span></label>
                               </div>
