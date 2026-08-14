@@ -1073,7 +1073,27 @@ li {
 .bounty-directory-budget { color: #173c35; font-size: .88rem; white-space: nowrap; }
 .bounty-directory-meta { border-top: 1px solid #e1e9e4; display: flex; flex-wrap: wrap; gap: 7px 14px; padding-top: 9px; }
 .bounty-directory-meta span { color: #5a6862; font-size: .72rem; }
-.bounty-directory-view-action { justify-self: start; min-height: 36px; padding: 8px 12px; }
+.bounty-directory-view-action {
+  align-items: center;
+  background: linear-gradient(135deg, #0f6b57, #0b4f41);
+  border: 1px solid #0b5b4b;
+  border-radius: 12px;
+  box-shadow: 0 10px 22px rgba(15, 107, 87, .2);
+  color: #fff;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 5px;
+  justify-self: end;
+  min-height: 40px;
+  padding: 9px 14px;
+  transition: box-shadow 160ms ease, transform 160ms ease, filter 160ms ease;
+}
+.bounty-directory-view-action:hover {
+  box-shadow: 0 13px 26px rgba(15, 107, 87, .28);
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+}
+.bounty-directory-view-action:active { transform: translateY(0); }
 
 @media (min-width: 980px) {
   .bounty-directory-card--list {

@@ -1664,7 +1664,7 @@ export default function App() {
           <span>{order.milestones?.length ?? 1} milestone{(order.milestones?.length ?? 1) === 1 ? "" : "s"}</span>
           <span>{order.proposals?.length ?? 0} application{(order.proposals?.length ?? 0) === 1 ? "" : "s"}</span>
         </div>
-        <a className="bounty-directory-view-action" href={bountyPath(order.id)} onClick={(event) => openBounty(event, order.id)}>View bounty</a>
+        <a className="bounty-directory-view-action" href={bountyPath(order.id)} onClick={(event) => openBounty(event, order.id)}>View bounty <ChevronRight size={16} aria-hidden="true" /></a>
       </article>
     );
   }
