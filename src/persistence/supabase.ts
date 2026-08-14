@@ -81,6 +81,10 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
   if (serverCode === "TOKEN_MODERATOR_HIDDEN") return "This token has been hidden from Bounties after moderation review. Choose another payment token.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
+  if (serverCode === "BOUNTY_ALREADY_MATCHED") return "This bounty already has a selected applicant. Refresh to see its current status.";
+  if (serverCode === "BOUNTY_NOT_OPEN") return "This bounty is no longer accepting applicant changes. Refresh to see its current status.";
+  if (serverCode === "PROPOSAL_NOT_ACTIVE") return "That application is no longer active. Refresh to see the selected applicant.";
+  if (serverCode === "PROPOSAL_BUDGET_MISMATCH") return "That application no longer matches the bounty budget and cannot be accepted.";
   if (status >= 500) {
     return "Bounties is temporarily unavailable. Please try again shortly.";
   }

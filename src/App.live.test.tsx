@@ -1,7 +1,7 @@
 import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockMilestoneEscrow, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -50,6 +50,28 @@ it("enables participant escrow creation only when a deployment is configured", a
   const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));
   expect(order.getByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
   expect(order.queryByRole("button", { name: /verify escrow observation/i })).not.toBeInTheDocument();
+});
+
+it("keeps applicant acceptance visible when immediate wallet funding does not finish", async () => {
+  configureMockOpenBountyWithApplicantForBuyer();
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  await user.click(await screen.findByRole("button", { name: /accept applicant and fund/i }));
+
+  expect(await screen.findByText(/applicant accepted\. escrow funding did not finish/i)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /accept applicant/i })).not.toBeInTheDocument();
+  expect(screen.getByText(/provider matched/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
 });
 
 it("keeps new creation paused without hiding existing escrow lifecycle actions", async () => {

@@ -80,6 +80,51 @@ export function configureMockOpenBountyForAnotherWallet() {
   }];
 }
 
+export function configureMockOpenBountyWithApplicantForBuyer() {
+  const token = tokens.find((candidate) => candidate.symbol === "BIT")!;
+  bounties = [{
+    id: "00000000-0000-4000-8000-000000000711",
+    creator_id: "00000000-0000-4000-8000-000000000111",
+    title: "Mobile applicant acceptance",
+    description: "Keep the selected applicant visible if wallet funding stops",
+    scope_source: {
+      scope: "task",
+      category: "Smart Contracts & Web3",
+      project: "Confirm applicant acceptance",
+      buyer: "Test requester",
+      deliveryDeadline: "2099-12-31T23:59:59.999Z",
+      criteria: ["Preserve the accepted state"],
+      fundOnApplicantAcceptance: true
+    },
+    scope_hash: `0x${"21".repeat(32)}`,
+    chain_id: token.chain_id,
+    token_id: token.id,
+    token_decimals: token.decimals,
+    budget_base_units: "250000000000000000000",
+    status: "open",
+    escrow_schedule_status: "structured",
+    created_at: new Date().toISOString(),
+    token,
+    milestones: [{
+      id: "00000000-0000-4000-8000-000000000713",
+      ordinal: 0,
+      title: "Delivery",
+      amount_base_units: "250000000000000000000",
+      delivery_deadline: "2099-12-31T23:59:59.999Z",
+      status: "pending"
+    }],
+    proposals: [{
+      id: "00000000-0000-4000-8000-000000000712",
+      provider_id: "00000000-0000-4000-8000-000000000714",
+      provider_wallet_address: "0x2222222222222222222222222222222222222222",
+      proposal_hash: `0x${"22".repeat(32)}`,
+      note: "I can complete this work",
+      proposed_total_base_units: "250000000000000000000",
+      status: "active"
+    }]
+  }];
+}
+
 export function configureMockEscrowAddress(value: string) {
   const escrow = bounties[0]?.escrow as Record<string, unknown> | undefined;
   if (!escrow) throw new Error("mock escrow missing");
@@ -592,6 +637,28 @@ beforeEach(() => {
         return Response.json({ code: "ESCROW_CONFIRMATIONS_PENDING" }, { status: 409 });
       }
       return Response.json({ ok: true });
+    }
+    if (url.endsWith("/api/bounties/proposals/accept")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId: string; proposalId: string };
+      const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
+      const proposals = bounty?.proposals as Array<Record<string, unknown>> | undefined;
+      const proposal = proposals?.find((candidate) => candidate.id === body.proposalId);
+      if (!bounty || !proposal) return Response.json({ code: "PROPOSAL_NOT_ACTIVE" }, { status: 400 });
+      if (bounty.status !== "open") {
+        if (bounty.accepted_proposal_id === body.proposalId && proposal.status === "accepted") return Response.json(bounty);
+        return Response.json({ code: "BOUNTY_ALREADY_MATCHED" }, { status: 400 });
+      }
+      bounty.status = "accepted";
+      bounty.accepted_proposal_id = body.proposalId;
+      proposal.status = "accepted";
+      for (const candidate of proposals ?? []) {
+        if (candidate.id !== body.proposalId && candidate.status === "active") candidate.status = "rejected";
+      }
+      for (const milestone of bounty.milestones as Array<Record<string, unknown>>) {
+        milestone.assigned_provider_id = proposal.provider_id;
+        milestone.status = "assigned";
+      }
+      return Response.json(bounty);
     }
     if (url.endsWith("/api/bounties/reports")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string };

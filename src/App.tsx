@@ -1181,17 +1181,29 @@ export default function App() {
   async function acceptApplicantAndFund(order: MarketplaceOrder, proposalId: string) {
     await act(async () => {
       const accepted = await acceptProposal(order.id, proposalId);
-      if (accepted.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED) return;
-      await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
-        amountBaseUnits: accepted.budgetBaseUnits!,
-        token: {
-          chainId: accepted.tokenRecord!.chain_id as SupportedChainId,
-          contractAddress: accepted.tokenRecord!.checksum_address as `0x${string}`,
-          symbol: accepted.tokenRecord!.symbol ?? undefined,
-          decimals: accepted.tokenRecord!.decimals,
-          explorerUrl: accepted.tokenRecord!.explorer_url
-        }
-      }), true);
+      // Acceptance is durable even when the following wallet request is cancelled
+      // or cannot complete. Reflect it immediately so a stale open-bounty view does
+      // not invite a second acceptance request.
+      setSession((current) => current ? {
+        ...current,
+        orders: current.orders.map((candidate) => candidate.id === accepted.id ? accepted : candidate)
+      } : current);
+      if (accepted.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED || accepted.escrowObservation) return;
+      try {
+        await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
+          amountBaseUnits: accepted.budgetBaseUnits!,
+          token: {
+            chainId: accepted.tokenRecord!.chain_id as SupportedChainId,
+            contractAddress: accepted.tokenRecord!.checksum_address as `0x${string}`,
+            symbol: accepted.tokenRecord!.symbol ?? undefined,
+            decimals: accepted.tokenRecord!.decimals,
+            explorerUrl: accepted.tokenRecord!.explorer_url
+          }
+        }), true);
+      } catch (caught) {
+        const detail = caught instanceof Error ? caught.message : "The wallet request did not finish.";
+        throw new Error(`Applicant accepted. Escrow funding did not finish: ${detail} You can retry from Wallet escrow.`);
+      }
     }, order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Applicant accepted." : "Applicant accepted. Escrow funding was submitted for confirmation.");
   }
 
