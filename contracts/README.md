@@ -15,9 +15,9 @@ deployments, Safe authority, transaction receipts, bytecode hashes, and source
 verification records are published in [`deployments/testnet-v2.json`](deployments/testnet-v2.json).
 These replacement testnet deployments include the one-time creation-key
 invariant and do not authorize a mainnet deployment. The predecessor deployment
-remains recorded in [`deployments/testnet.json`](deployments/testnet.json) for
-existing escrow lifecycle support and incident evidence; it must not accept new
-escrow creation.
+is retired with zero BIT balance and liability. It remains recorded in
+[`deployments/testnet.json`](deployments/testnet.json) as incident evidence and
+is not a configured application target.
 
 Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
 address. Token symbols, decimals, names, and offchain prices are never read.

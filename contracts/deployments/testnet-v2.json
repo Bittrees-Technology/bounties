@@ -80,11 +80,23 @@
   "predecessorIncident": {
     "manifest": "testnet.json",
     "contractAddress": "0x49f1B16d144df1D72D2056fB33342f563B1eFC74",
-    "status": "creation-disabled; retained for existing escrow lifecycle and incident evidence",
-    "duplicateBountyId": "2",
-    "recoveryTransactionHash": "0xfe3bb0e78a0bc9fcd4787ed1e85a6a98dd76b459d5c1b22b9260f4d8fc8a52c",
+    "status": "retired; all known bounties cancelled; zero BIT balance and zero BIT liability",
+    "recoveryTransactions": [
+      {
+        "bountyId": "1",
+        "transactionHash": "0xcad02d32e0528ec8f76adfc6501954da8ca3b9ed06ce50d20b77dd15909ed2af",
+        "recoveredAmount": "1000"
+      },
+      {
+        "bountyId": "2",
+        "transactionHash": "0xfe3bb0e78a0bc9fcd4787ed1e85a6a98dd76b459d5c1b22b9260f4d8fc8a52c4",
+        "recoveredAmount": "1000"
+      }
+    ],
     "recoveredToken": "BIT",
-    "recoveredAmount": "1000"
+    "totalRecoveredAmount": "2000",
+    "finalTokenBalance": "0",
+    "finalTokenLiability": "0"
   },
   "mainnetAuthorized": false
 }

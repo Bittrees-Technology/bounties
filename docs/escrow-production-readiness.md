@@ -50,8 +50,8 @@ bytecode hashes for the testnet deployment are in
 [`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json).
 All three replacement testnets use the same verified escrow address. The prior
 deployment remains in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
-for existing escrow lifecycle support and incident evidence, not new creation.
-No mainnet address is set.
+as retired incident evidence with zero BIT balance and liability; it is not a
+configured application target. No mainnet address is set.
 
 ## Operator decisions still required
 
