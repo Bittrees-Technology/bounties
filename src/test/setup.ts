@@ -28,6 +28,7 @@ const defaultTokens: TokenRecord[] = ["WETH", "BTREE", "BIT", "WBTC", "USDC", "U
 let tokens = [...defaultTokens];
 let bounties: Array<Record<string, unknown>> = [];
 let authenticated = false;
+let snapshotRoles: Array<"buyer" | "provider"> = ["buyer", "provider"];
 let snapshotStaffRole: "moderator" | "admin" | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
@@ -37,6 +38,46 @@ let escrowRecordOutcome: "success" | "reverted" | "pending" = "success";
 
 export function configureMockEscrowRecordOutcome(outcome: "success" | "reverted" | "pending") {
   escrowRecordOutcome = outcome;
+}
+
+export function configureMockRoles(roles: Array<"buyer" | "provider">) {
+  snapshotRoles = roles;
+}
+
+export function configureMockOpenBountyForAnotherWallet() {
+  const token = tokens.find((candidate) => candidate.symbol === "BIT")!;
+  bounties = [{
+    id: "00000000-0000-4000-8000-000000000701",
+    creator_id: "00000000-0000-4000-8000-000000000702",
+    title: "Open role-free application",
+    description: "Any connected non-creator can apply",
+    scope_source: {
+      scope: "task",
+      category: "Smart Contracts & Web3",
+      project: "Confirm the gasless application flow",
+      buyer: "Marketplace requester",
+      deliveryDeadline: "2099-12-31T23:59:59.999Z",
+      criteria: ["Submit a clear delivery plan"]
+    },
+    scope_hash: `0x${"11".repeat(32)}`,
+    chain_id: token.chain_id,
+    token_id: token.id,
+    token_decimals: token.decimals,
+    budget_base_units: "250000000000000000000",
+    status: "open",
+    escrow_schedule_status: "structured",
+    created_at: new Date().toISOString(),
+    token,
+    milestones: [{
+      id: "00000000-0000-4000-8000-000000000703",
+      ordinal: 0,
+      title: "Delivery",
+      amount_base_units: "250000000000000000000",
+      delivery_deadline: "2099-12-31T23:59:59.999Z",
+      status: "pending"
+    }],
+    proposals: []
+  }];
 }
 
 export function configureMockEscrowAddress(value: string) {
@@ -264,6 +305,7 @@ beforeEach(() => {
   bounties = [];
   tokens = [...defaultTokens];
   authenticated = false;
+  snapshotRoles = ["buyer", "provider"];
   snapshotStaffRole = null;
   snapshotModerationReports = [];
   snapshotMyReports = [];
@@ -340,7 +382,7 @@ beforeEach(() => {
     if (!authenticated && url.includes("/api/bounties") && !publicProfileRead) return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
     if (url.endsWith("/snapshot")) return Response.json({
       account: { id: "00000000-0000-4000-8000-000000000111", wallet_address: testWallet },
-      roles: ["buyer", "provider"],
+      roles: snapshotRoles,
       staffRole: snapshotStaffRole,
       tokens,
       bounties,

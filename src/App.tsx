@@ -1436,6 +1436,7 @@ export default function App() {
           Your application
           <textarea name="note" required placeholder="Explain your approach, relevant experience, timing, and planned evidence." />
         </label>
+        <p className="form-hint">Submitting an application is gasless. Wallet approval is only required for later escrow actions if you are selected.</p>
         <button type="submit">Apply for this bounty</button>
       </form>
     );
@@ -1445,7 +1446,7 @@ export default function App() {
     if (order.status === "open") {
       return (
         <section className="lifecycle-panel">
-          {!isBuyer(order) && session?.roles.includes("provider") ? proposalForm(order) : null}
+          {!isBuyer(order) ? proposalForm(order) : null}
           <div className="proposal-list">
             <h5>Applicants</h5>
             {order.proposals?.length ? (

@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockStaff } from "./test/setup";
+import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockOpenBountyForAnotherWallet, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -723,6 +723,19 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /back to marketplace/i }));
     expect(window.location.pathname).toBe("/marketplace");
     expect(screen.getByRole("heading", { name: /marketplace directory/i })).toBeInTheDocument();
+  });
+
+  it("lets any connected non-creator apply without a pre-existing provider role", async () => {
+    configureMockRoles(["buyer"]);
+    configureMockOpenBountyForAnotherWallet();
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    await user.click(screen.getByRole("link", { name: /view bounty/i }));
+    expect(screen.getByLabelText(/your application/i)).toBeInTheDocument();
+    expect(screen.getByText(/submitting an application is gasless/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /apply for this bounty/i })).toBeInTheDocument();
   });
 
   it("preserves a legacy specialty as a custom category on the next profile save", async () => {
