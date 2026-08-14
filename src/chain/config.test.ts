@@ -41,6 +41,8 @@ describe("chain config", () => {
   it("documents only the server-side RPC variable used by each supported chain", () => {
     for (const chainId of supportedChainIds) {
       expect(chains[chainId].rpcUrlEnvVar).toBe(`CHAIN_${chainId}_RPC_URL`);
+      expect(chains[chainId].walletRpcUrls.length).toBeGreaterThan(0);
+      for (const rpcUrl of chains[chainId].walletRpcUrls) expect(rpcUrl).toMatch(/^https:\/\//);
     }
   });
 });

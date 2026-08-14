@@ -28,6 +28,7 @@ const chain: ChainConfig = {
   nativeCurrency: "ETH",
   blockExplorer: "https://sepolia.basescan.org",
   explorerContractPath: "/address/",
+  walletRpcUrls: ["https://sepolia.base.org"],
   rpcUrlEnvVar: "BASE_SEPOLIA_RPC_URL",
   escrowContractAddress: contract,
   requiredConfirmations: 12,
@@ -55,6 +56,7 @@ interface RecordingOptions {
   transactionHashes?: string[];
   rejectMethod?: string;
   chainId?: string;
+  unknownChainOnFirstSwitch?: boolean;
   ethCallResult?: unknown;
   existingBountyId?: bigint;
   receipts?: unknown[];
@@ -66,8 +68,12 @@ class RecordingProvider implements Eip1193Provider {
   private transactionIndex = 0;
   private allowanceIndex = 0;
   private receiptIndex = 0;
+  private switchIndex = 0;
+  private activeChainId: string;
 
-  constructor(private readonly options: RecordingOptions = {}) {}
+  constructor(private readonly options: RecordingOptions = {}) {
+    this.activeChainId = options.chainId ?? "0x14a34";
+  }
 
   async request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> {
     this.calls.push(args);
@@ -77,7 +83,16 @@ class RecordingProvider implements Eip1193Provider {
       return { "0x14a34": { atomic: { status: "supported" } } };
     }
     if (args.method === "eth_requestAccounts") return [account];
-    if (args.method === "eth_chainId") return this.options.chainId ?? "0x14a34";
+    if (args.method === "eth_chainId") return this.activeChainId;
+    if (args.method === "wallet_switchEthereumChain") {
+      if (this.options.unknownChainOnFirstSwitch && this.switchIndex++ === 0) {
+        throw Object.assign(new Error("unknown chain"), { code: 4902 });
+      }
+      const [request] = args.params as Array<{ chainId: string }>;
+      this.activeChainId = request.chainId;
+      return null;
+    }
+    if (args.method === "wallet_addEthereumChain") return null;
     if (args.method === "eth_call") {
       if (this.options.ethCallResult !== undefined) return this.options.ethCallResult;
       const call = (args.params as Array<{ data?: `0x${string}` }> | undefined)?.[0];
@@ -468,12 +483,47 @@ describe("escrow adapter provider support", () => {
     await expect(invalidAdapter.releasePayment(createOrder())).rejects.toMatchObject({ code: "UNKNOWN" });
   });
 
-  it("refuses EOA submission on the wrong active network", async () => {
+  it("switches an EOA to the escrow network before submission", async () => {
     const wrongNetwork = new RecordingProvider({ chainId: "0x1" });
     const adapter = createViemEscrowAdapter({ chain, eoaProvider: wrongNetwork, preferSmartWallet: false, integrationEnabled: true });
 
-    await expect(adapter.releasePayment(createOrder())).rejects.toMatchObject({ code: "NETWORK_UNSUPPORTED" });
-    expect(wrongNetwork.calls.map((call) => call.method)).toEqual(["eth_requestAccounts", "eth_chainId"]);
+    await expect(adapter.releasePayment(createOrder())).resolves.toMatchObject({ state: "submitted", txHash });
+    expect(wrongNetwork.calls.map((call) => call.method)).toEqual([
+      "eth_requestAccounts",
+      "eth_chainId",
+      "wallet_switchEthereumChain",
+      "eth_chainId",
+      "eth_sendTransaction"
+    ]);
+  });
+
+  it("adds an unknown escrow network before switching and submitting", async () => {
+    const unknownNetwork = new RecordingProvider({ chainId: "0x1", unknownChainOnFirstSwitch: true });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider: unknownNetwork, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.releasePayment(createOrder())).resolves.toMatchObject({ state: "submitted", txHash });
+    expect(unknownNetwork.calls.map((call) => call.method)).toEqual([
+      "eth_requestAccounts",
+      "eth_chainId",
+      "wallet_switchEthereumChain",
+      "wallet_addEthereumChain",
+      "wallet_switchEthereumChain",
+      "eth_chainId",
+      "eth_sendTransaction"
+    ]);
+    expect(unknownNetwork.calls.find((call) => call.method === "wallet_addEthereumChain")?.params).toEqual([expect.objectContaining({
+      chainId: "0x14a34",
+      chainName: "Base Sepolia",
+      rpcUrls: ["https://sepolia.base.org"]
+    })]);
+  });
+
+  it("stops safely when the user declines the network switch", async () => {
+    const rejectingSwitch = new RecordingProvider({ chainId: "0x1", rejectMethod: "wallet_switchEthereumChain" });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider: rejectingSwitch, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.releasePayment(createOrder())).rejects.toMatchObject({ code: "USER_REJECTED" });
+    expect(rejectingSwitch.calls.map((call) => call.method)).toEqual(["eth_requestAccounts", "eth_chainId", "wallet_switchEthereumChain"]);
   });
 
   it("reads and decodes the canonical onchain record without requesting an account", async () => {

@@ -301,7 +301,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     creationTermsHash?: `0x${string}`
   ): Promise<EscrowTxResult> {
     const { mode, provider, account } = await selectEscrowProvider(options, chainId);
-    if (mode === "eoa") await assertProviderChain(provider, chainId);
+    if (mode === "eoa") await switchProviderChain(provider, options.chain);
     if (creationTermsHash) {
       const data = encodeFunctionData({
         abi: BOUNTY_ESCROW_ABI,
@@ -820,6 +820,60 @@ async function assertProviderChain(provider: Eip1193Provider, chainId: Supported
   if (typeof result !== "string" || !/^0x[0-9a-f]+$/i.test(result) || Number.parseInt(result.slice(2), 16) !== chainId) {
     throw new EscrowClientError("NETWORK_UNSUPPORTED", `Switch the wallet to chain ${chainId} before submitting escrow calls.`);
   }
+}
+
+function providerErrorCode(error: unknown): unknown {
+  if (!error || typeof error !== "object") return undefined;
+  const record = error as Record<string, unknown>;
+  if (record.code !== undefined) return record.code;
+  const data = record.data;
+  if (!data || typeof data !== "object") return undefined;
+  const original = (data as Record<string, unknown>).originalError;
+  return original && typeof original === "object" ? (original as Record<string, unknown>).code : undefined;
+}
+
+function isUnknownChainError(error: unknown): boolean {
+  const code = providerErrorCode(error);
+  if (code === 4902 || code === "4902") return true;
+  const message = error instanceof Error ? error.message : "";
+  return /unknown chain|unrecognized chain|chain.*not (?:added|configured)/i.test(message);
+}
+
+async function switchProviderChain(provider: Eip1193Provider, chain: ChainConfig): Promise<void> {
+  const expectedChainHex = toHexQuantity(chain.chainId);
+  let currentChain: unknown;
+  try {
+    currentChain = await provider.request({ method: "eth_chainId", params: [] });
+  } catch (error) {
+    throw mapProviderError(error, "NETWORK_UNSUPPORTED", "The wallet network could not be verified.");
+  }
+  if (typeof currentChain === "string" && currentChain.toLowerCase() === expectedChainHex.toLowerCase()) return;
+
+  try {
+    await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: expectedChainHex }] });
+  } catch (error) {
+    if (!isUnknownChainError(error)) {
+      throw mapProviderError(error, "NETWORK_UNSUPPORTED", `The wallet could not switch to ${chain.name}.`);
+    }
+    try {
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId: expectedChainHex,
+          chainName: chain.name,
+          nativeCurrency: { name: chain.nativeCurrency === "ETH" ? "Ether" : chain.nativeCurrency, symbol: chain.nativeCurrency, decimals: 18 },
+          rpcUrls: [...chain.walletRpcUrls],
+          blockExplorerUrls: [chain.blockExplorer]
+        }]
+      });
+      // EIP-3085 does not guarantee that adding a network selects it.
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: expectedChainHex }] });
+    } catch (addError) {
+      throw mapProviderError(addError, "NETWORK_UNSUPPORTED", `The wallet could not add or switch to ${chain.name}.`);
+    }
+  }
+
+  await assertProviderChain(provider, chain.chainId);
 }
 
 function supportsAtomicCalls(capabilities: unknown, chainHex: string): boolean {

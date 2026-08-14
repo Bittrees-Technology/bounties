@@ -17,6 +17,8 @@ export interface ChainConfig {
   nativeCurrency: string;
   blockExplorer: string;
   explorerContractPath: string;
+  /** Public fallback used only when a wallet does not already know this network. */
+  walletRpcUrls: readonly string[];
   /** Server-only env-var name used by same-origin APIs. The browser never reads the endpoint value. */
   rpcUrlEnvVar: string;
   escrowContractAddress?: ChecksumAddress;
