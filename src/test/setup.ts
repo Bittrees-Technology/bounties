@@ -34,10 +34,16 @@ let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
 let profileVisibility: "visible" | "hidden" = "visible";
 let profileLegacySpecialty: string | null = null;
-let escrowRecordOutcome: "success" | "reverted" | "pending" = "success";
+type EscrowRecordOutcome = "success" | "reverted" | "pending" | "mismatch";
+let escrowRecordOutcome: EscrowRecordOutcome = "success";
+let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
 
-export function configureMockEscrowRecordOutcome(outcome: "success" | "reverted" | "pending") {
+export function configureMockEscrowRecordOutcome(outcome: EscrowRecordOutcome) {
   escrowRecordOutcome = outcome;
+}
+
+export function configureMockEscrowRecordOutcomes(outcomes: EscrowRecordOutcome[]) {
+  escrowRecordOutcomeSequence = [...outcomes];
 }
 
 export function configureMockRoles(roles: Array<"buyer" | "provider">) {
@@ -357,6 +363,7 @@ beforeEach(() => {
   profileVisibility = "visible";
   profileLegacySpecialty = null;
   escrowRecordOutcome = "success";
+  escrowRecordOutcomeSequence = [];
   if (typeof window === "undefined") return;
   const storage = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -630,11 +637,44 @@ beforeEach(() => {
       return Response.json(row);
     }
     if (url.endsWith("/api/bounties/escrow")) {
-      if (escrowRecordOutcome === "reverted") {
+      const outcome = escrowRecordOutcomeSequence.shift() ?? escrowRecordOutcome;
+      if (outcome === "reverted") {
         return Response.json({ code: "ESCROW_TX_NOT_SUCCESSFUL" }, { status: 400 });
       }
-      if (escrowRecordOutcome === "pending") {
+      if (outcome === "pending") {
         return Response.json({ code: "ESCROW_CONFIRMATIONS_PENDING" }, { status: 409 });
+      }
+      if (outcome === "mismatch") {
+        return Response.json({ code: "ESCROW_TERMS_HASH_MISMATCH" }, { status: 400 });
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId?: string; txHash?: string };
+      const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
+      if (bounty && !bounty.escrow) {
+        const milestones = bounty.milestones as Array<Record<string, unknown>>;
+        bounty.escrow = {
+          status: "confirmed",
+          transaction_hash: body.txHash,
+          block_hash: `0x${"88".repeat(32)}`,
+          contract_address: "0x2222222222222222222222222222222222222222",
+          interface_version: "escrow-adapter.v1",
+          onchain_bounty_id: "12",
+          received_base_units: bounty.budget_base_units,
+          requested_base_units: bounty.budget_base_units,
+          remaining_base_units: bounty.budget_base_units,
+          onchain_state: "Funded",
+          terms_hash: `0x${"12".repeat(32)}`,
+          milestone_count: milestones.length,
+          current_milestone: 0,
+          current_milestone_detail: milestones[0] ? {
+            milestone_index: 0,
+            amount_base_units: milestones[0].amount_base_units,
+            delivery_deadline: milestones[0].delivery_deadline,
+            review_deadline: null,
+            state: "Pending",
+            evidence_hash: `0x${"00".repeat(32)}`,
+            approval_hash: `0x${"00".repeat(32)}`
+          } : null
+        };
       }
       return Response.json({ ok: true });
     }

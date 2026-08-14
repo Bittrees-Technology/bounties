@@ -1,10 +1,11 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal } from "./test/setup";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.resetModules();
 });
@@ -130,6 +131,84 @@ it("hydrates a persisted creation lock and safely clears a reverted receipt", as
   await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
   expect(await screen.findByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
   expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
+});
+
+it("checks pending escrow confirmation without holding the global updating state", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockEscrowRecordOutcome("pending");
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
+    "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
+  }));
+  window.history.replaceState({}, "", "/marketplace");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
+
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow"))).toHaveLength(1));
+  expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
+  expect(screen.getByText(/locked against another funding attempt/i)).toBeInTheDocument();
+  expect(await screen.findByText(/will check again in the background/i)).toBeInTheDocument();
+});
+
+it("automatically resumes a hydrated lock and reveals lifecycle actions after confirmation", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockEscrowRecordOutcomes(["pending", "success"]);
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
+    "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
+  }));
+  const retryDelays = new Set([4_000, 8_000, 16_000, 30_000, 60_000, 90_000]);
+  const nativeSetTimeout = window.setTimeout.bind(window);
+  vi.spyOn(window, "setTimeout").mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => (
+    nativeSetTimeout(handler, retryDelays.has(Number(timeout)) ? 0 : timeout, ...args)
+  )) as typeof window.setTimeout);
+  window.history.replaceState({}, "", "/marketplace");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+
+  expect(await screen.findByRole("button", { name: /cancel and refund before provider acceptance/i })).toBeInTheDocument();
+  expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
+  expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
+});
+
+it("surfaces terminal canonical mismatches, retains the lock, and stops automatic retries", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockEscrowRecordOutcome("mismatch");
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
+    "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
+  }));
+  window.history.replaceState({}, "", "/marketplace");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
+
+  expect(await screen.findByText(/does not match this bounty.s escrow terms/i)).toBeInTheDocument();
+  expect(screen.getByText(/locked against another funding attempt/i)).toBeInTheDocument();
+  expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).not.toBe("{}");
+  await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow"))).toHaveLength(1));
 });
 
 it("uses the exact active tranche for approval and release controls", async () => {

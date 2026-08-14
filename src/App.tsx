@@ -164,6 +164,7 @@ type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
+const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
 
 function readEscrowCreationLocks(): Record<string, EscrowCreationLock> {
   try {
@@ -457,6 +458,9 @@ export default function App() {
   const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
   const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
   const actionPending = useRef(false);
+  const escrowReconciliationTimers = useRef(new Map<string, number>());
+  const escrowReconciliationInFlight = useRef(new Set<string>());
+  const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
   const initialProfileSearchHydrated = useRef(false);
 
   const resetProfileEditorDraft = useCallback(() => {
@@ -485,6 +489,26 @@ export default function App() {
     window.addEventListener("storage", synchronizeEscrowCreationLocks);
     return () => window.removeEventListener("storage", synchronizeEscrowCreationLocks);
   }, []);
+
+  useEffect(() => () => {
+    for (const timer of escrowReconciliationTimers.current.values()) window.clearTimeout(timer);
+    escrowReconciliationTimers.current.clear();
+  }, []);
+
+  useEffect(() => {
+    if (!session) return;
+    for (const [orderId, lock] of Object.entries(escrowCreationLocks)) {
+      const observed = session.orders.some((order) => order.id === orderId && order.escrowObservation);
+      if (observed) {
+        updateEscrowCreationLock(orderId, null);
+      } else if (!escrowReconciliationTimers.current.has(orderId) && !escrowReconciliationInFlight.current.has(orderId)) {
+        scheduleEscrowReconciliation(orderId, lock);
+      }
+    }
+    // The scheduling helpers intentionally use refs; re-run only when hydrated
+    // lock or canonical session state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escrowCreationLocks, session]);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -1082,6 +1106,7 @@ export default function App() {
       client: createViemEscrowAdapter({
         chain,
         eoaProvider: window.ethereum,
+        awaitCreationConfirmation: false,
         onSubmission: (submission) => updateEscrowCreationLock(order.id, {
           ...submission,
           createdAt: new Date().toISOString()
@@ -1110,23 +1135,39 @@ export default function App() {
     });
   }
 
-  async function recordConfirmedEscrow(orderId: string, txHash: string) {
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      try {
-        return await recordEscrowObservation(orderId, txHash);
-      } catch (caught) {
-        const pending = caught instanceof PersistenceError
-          && ["ESCROW_CONFIRMATIONS_PENDING", "ESCROW_RECEIPT_NOT_FOUND"].includes(caught.serverCode ?? "");
-        if (!pending || attempt === 59) throw caught;
-        await new Promise((resolve) => window.setTimeout(resolve, 4_000));
-      }
-    }
+  function escrowConfirmationIsPending(caught: unknown) {
+    return caught instanceof PersistenceError
+      && ["ESCROW_CONFIRMATIONS_PENDING", "ESCROW_RECEIPT_NOT_FOUND"].includes(caught.serverCode ?? "");
+  }
+
+  function escrowConfirmationIsRetryable(caught: unknown) {
+    return escrowConfirmationIsPending(caught)
+      || caught instanceof PersistenceError && (caught.code === "network" || ["ESCROW_RPC_UNAVAILABLE", "ESCROW_RPC_TIMEOUT"].includes(caught.serverCode ?? ""))
+      || caught instanceof EscrowClientError && caught.code === "UNKNOWN";
+  }
+
+  function cancelEscrowReconciliation(orderId: string) {
+    const timer = escrowReconciliationTimers.current.get(orderId);
+    if (timer !== undefined) window.clearTimeout(timer);
+    escrowReconciliationTimers.current.delete(orderId);
+  }
+
+  function scheduleEscrowReconciliation(orderId: string, lock: EscrowCreationLock, retryIndex = 0) {
+    if (retryIndex >= ESCROW_CONFIRMATION_RETRY_DELAYS_MS.length || escrowReconciliationTimers.current.has(orderId)) return;
+    const timer = window.setTimeout(() => {
+      escrowReconciliationTimers.current.delete(orderId);
+      void reconcileEscrowCreationInBackground(orderId, lock, retryIndex + 1);
+    }, ESCROW_CONFIRMATION_RETRY_DELAYS_MS[retryIndex]);
+    escrowReconciliationTimers.current.set(orderId, timer);
   }
 
   function updateEscrowCreationLock(orderId: string, lock: EscrowCreationLock | null) {
     const next = { ...readEscrowCreationLocks() };
     if (lock) next[orderId] = lock;
-    else delete next[orderId];
+    else {
+      delete next[orderId];
+      cancelEscrowReconciliation(orderId);
+    }
     // Lock the current tab even if browser storage is unavailable. The upgraded
     // contract remains the authoritative cross-tab/cross-device replay guard.
     setEscrowCreationLocks(next);
@@ -1140,26 +1181,64 @@ export default function App() {
     }
   }
 
-  async function reconcileEscrowCreation(orderId: string, lock: EscrowCreationLock) {
-    await act(async () => {
-      let txHash = lock.txHash;
-      try {
-        if (!txHash && lock.bundleId) {
-          if (!window.ethereum) throw new Error("Reconnect the submitting wallet to check this escrow bundle.");
-          txHash = await resolveEscrowBundle(window.ethereum, lock.bundleId);
-          if (!txHash) throw new Error("Escrow funding is still pending. The bounty remains locked against another attempt.");
-          updateEscrowCreationLock(orderId, { ...lock, txHash });
+  async function reconcileEscrowCreationInBackground(orderId: string, lock: EscrowCreationLock, retryIndex = 0, userRequested = false) {
+    if (escrowReconciliationInFlight.current.has(orderId)) return;
+    escrowReconciliationInFlight.current.add(orderId);
+    setEscrowReconciliationChecking((current) => ({ ...current, [orderId]: true }));
+    let currentLock = lock;
+    try {
+      let txHash = currentLock.txHash;
+      if (!txHash && currentLock.bundleId) {
+        if (!window.ethereum) throw new Error("Reconnect the submitting wallet to check this escrow bundle.");
+        txHash = await resolveEscrowBundle(window.ethereum, currentLock.bundleId);
+        if (!txHash) {
+          scheduleEscrowReconciliation(orderId, currentLock, retryIndex);
+          if (userRequested) setNotice("Escrow funding is still pending. Bounties will check again in the background.");
+          return;
         }
-        if (!txHash) throw new Error("The submitted escrow identifier is unavailable. The bounty remains locked for safety.");
-        await recordConfirmedEscrow(orderId, txHash);
-        updateEscrowCreationLock(orderId, null);
-      } catch (caught) {
-        const definitivelyFailed = caught instanceof PersistenceError && caught.serverCode === "ESCROW_TX_NOT_SUCCESSFUL"
-          || caught instanceof EscrowClientError && caught.code === "CONTRACT_REVERTED" && Boolean(lock.bundleId);
-        if (definitivelyFailed) updateEscrowCreationLock(orderId, null);
-        throw caught;
+        currentLock = { ...currentLock, txHash };
+        updateEscrowCreationLock(orderId, currentLock);
       }
-    }, "Escrow funding confirmed.");
+      if (!txHash) throw new Error("The submitted escrow identifier is unavailable. The bounty remains locked for safety.");
+      await recordEscrowObservation(orderId, txHash);
+      const next = await loadMarketplace();
+      if (!next.orders.some((order) => order.id === orderId && order.escrowObservation)) {
+        scheduleEscrowReconciliation(orderId, currentLock, retryIndex);
+        return;
+      }
+      setSession(next);
+      updateEscrowCreationLock(orderId, null);
+      setError(null);
+      setNotice("Escrow funding confirmed.");
+    } catch (caught) {
+      const definitivelyFailed = caught instanceof PersistenceError && caught.serverCode === "ESCROW_TX_NOT_SUCCESSFUL"
+        || caught instanceof EscrowClientError && caught.code === "CONTRACT_REVERTED" && Boolean(currentLock.bundleId);
+      const retryable = escrowConfirmationIsRetryable(caught);
+      const message = caught instanceof Error ? caught.message : "Escrow confirmation could not be checked.";
+      if (definitivelyFailed) {
+        updateEscrowCreationLock(orderId, null);
+        setError(message);
+      } else if (retryable) {
+        scheduleEscrowReconciliation(orderId, currentLock, retryIndex);
+        if (userRequested) setNotice("Escrow funding is still pending. Bounties will check again in the background.");
+      } else {
+        // Canonical mismatches and other terminal validation errors retain the
+        // durable lock, stop automatic retries, and surface the actual cause.
+        setError(message);
+      }
+    } finally {
+      escrowReconciliationInFlight.current.delete(orderId);
+      setEscrowReconciliationChecking((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+    }
+  }
+
+  function reconcileEscrowCreation(orderId: string, lock: EscrowCreationLock) {
+    cancelEscrowReconciliation(orderId);
+    return reconcileEscrowCreationInBackground(orderId, lock, 0, true);
   }
 
   async function executeEscrowTransaction(
@@ -1169,11 +1248,21 @@ export default function App() {
   ) {
     const { client, ref } = escrowBoundary(order);
     const result = await action(client, ref);
-    if (!result.txHash) return result;
+    const creationLock = observeCreation ? readEscrowCreationLocks()[order.id] : undefined;
+    if (!result.txHash) {
+      if (creationLock) scheduleEscrowReconciliation(order.id, creationLock);
+      return result;
+    }
     setEscrowTxHashes((current) => ({ ...current, [order.id]: result.txHash! }));
     if (observeCreation) {
-      await recordConfirmedEscrow(order.id, result.txHash);
-      updateEscrowCreationLock(order.id, null);
+      const lock = creationLock ?? { txHash: result.txHash, createdAt: new Date().toISOString() };
+      try {
+        await recordEscrowObservation(order.id, result.txHash);
+        updateEscrowCreationLock(order.id, null);
+      } catch (caught) {
+        if (!escrowConfirmationIsRetryable(caught)) throw caught;
+        scheduleEscrowReconciliation(order.id, lock);
+      }
     }
     return result;
   }
@@ -1275,7 +1364,7 @@ export default function App() {
             <strong>Escrow creation submitted</strong>
             <span>This bounty is locked against another funding attempt while its receipt is recorded.</span>
             {creationLock.txHash ? <a href={`${chain.blockExplorer}/tx/${creationLock.txHash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a> : <span>Wallet bundle submitted. Its transaction link will appear after the wallet confirms it.</span>}
-            <button className="secondary-button" disabled={loading} onClick={() => void reconcileEscrowCreation(order.id, creationLock)}>Check funding confirmation</button>
+            <button className="secondary-button" disabled={loading || escrowReconciliationChecking[order.id]} onClick={() => void reconcileEscrowCreation(order.id, creationLock)}>{escrowReconciliationChecking[order.id] ? "Checking funding confirmation…" : "Check funding confirmation"}</button>
           </div>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && !creationLock && !ESCROW_CREATION_ENABLED ? (

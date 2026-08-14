@@ -418,6 +418,23 @@ describe("escrow adapter provider support", () => {
     expect(submissions).toEqual([{ txHash }]);
   });
 
+  it("returns a creation submission immediately when the caller reconciles in the background", async () => {
+    const submissions: Array<{ txHash?: string; bundleId?: string }> = [];
+    const eoaProvider = new RecordingProvider({ allowance: 2500000n, transactionHashes: [txHash], receipts: [null] });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      eoaProvider,
+      preferSmartWallet: false,
+      integrationEnabled: true,
+      awaitCreationConfirmation: false,
+      onSubmission: (submission) => submissions.push(submission)
+    });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).resolves.toEqual({ state: "submitted", txHash });
+    expect(submissions).toEqual([{ txHash }]);
+    expect(eoaProvider.calls.map((call) => call.method)).not.toContain("eth_getTransactionReceipt");
+  });
+
   it("uses the immutable approval hash instead of reusing the terms hash", async () => {
     const eoaProvider = new RecordingProvider({ allowance: 2500000n });
     const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });

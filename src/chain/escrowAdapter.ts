@@ -47,6 +47,8 @@ export interface ViemEscrowAdapterOptions extends EscrowProviderSelection {
   statusPollAttempts?: number;
   /** Called immediately after wallet submission, before receipt polling. */
   onSubmission?: (submission: { txHash?: string; bundleId?: string }) => void;
+  /** Return creation submissions immediately so the caller can reconcile without blocking its UI. */
+  awaitCreationConfirmation?: boolean;
 }
 
 export type EscrowProviderMode = "eoa" | "smart-wallet";
@@ -344,7 +346,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
         [...approvalCalls, contractCall],
         pollIntervalMs,
         pollAttempts,
-        creationTermsHash ? options.onSubmission : undefined
+        creationTermsHash ? options.onSubmission : undefined,
+        Boolean(creationTermsHash) && options.awaitCreationConfirmation === false
       );
     }
 
@@ -372,7 +375,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     }
     const txHash = await sendEoaTransaction(provider, account, chainId, contractCall);
     if (creationTermsHash) options.onSubmission?.({ txHash });
-    if (confirmEoa) {
+    if (confirmEoa && !(creationTermsHash && options.awaitCreationConfirmation === false)) {
       await waitForEoaReceipt(provider, txHash, pollIntervalMs, pollAttempts);
       return { state: "confirmed", txHash };
     }
@@ -696,7 +699,8 @@ async function sendSmartWalletCalls(
   calls: readonly WalletCall[],
   pollIntervalMs: number,
   pollAttempts: number,
-  onSubmission?: (submission: { txHash?: string; bundleId?: string }) => void
+  onSubmission?: (submission: { txHash?: string; bundleId?: string }) => void,
+  returnAfterSubmission = false
 ): Promise<EscrowTxResult> {
   let result: unknown;
   try {
@@ -717,6 +721,7 @@ async function sendSmartWalletCalls(
   }
   const bundleId = requiredBundleId(result);
   onSubmission?.({ bundleId });
+  if (returnAfterSubmission) return { state: "submitted", bundleId };
 
   for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
     let statusResult: unknown;
