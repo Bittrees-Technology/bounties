@@ -1,5 +1,5 @@
 begin;
-select plan(44);
+select plan(46);
 
 insert into public.wallet_accounts(id,wallet_address) values
   ('30000000-0000-4000-8000-000000000001','0x1111111111111111111111111111111111111111'),
@@ -234,6 +234,20 @@ select ok(not has_function_privilege('service_role','public.app_submit_canonical
   'service role cannot use the canonical boundary without the description argument');
 select ok(has_function_privilege('service_role','public.app_submit_canonical_delivery_evidence(uuid,uuid,text,text,text,text,text,text,text,text,text,text,integer,bigint,text,text,text,text,text,text)','execute'),
   'service role can use only the canonical evidence boundary with immutable delivery context');
+
+update public.escrow_records set
+  settlement_transaction_hash='0x'||repeat('9',64),
+  settlement_provider_payout_base_units=900719925474099312345678901234567890,
+  settlement_requester_refund_base_units=123456789012345678901234567890
+where bounty_id=(select id from public.bounties where title='Canonical schedule');
+select is(jsonb_typeof(public.app_bounty_json(
+  (select id from public.bounties where title='Canonical schedule'),
+  '30000000-0000-4000-8000-000000000001') #> '{escrow,settlement_provider_payout_base_units}'),
+  'string','large settlement amounts cross the marketplace projection as JSON strings');
+select is(public.app_bounty_json(
+  (select id from public.bounties where title='Canonical schedule'),
+  '30000000-0000-4000-8000-000000000001') #>> '{escrow,settlement_provider_payout_base_units}',
+  '900719925474099312345678901234567890','large settlement amounts preserve every decimal digit');
 
 select * from finish();
 rollback;

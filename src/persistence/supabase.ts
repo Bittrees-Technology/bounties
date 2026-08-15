@@ -183,6 +183,9 @@ export type EscrowObservation = {
   onchain_state?: string | null; review_deadline?: string | null; state_checked_at?: string | null;
   settlement_proposer?: string | null; proposed_provider_payout_base_units?: string | null;
   settlement_proposal_expiry?: string | null;
+  settlement_transaction_hash?: string | null;
+  settlement_provider_payout_base_units?: string | null;
+  settlement_requester_refund_base_units?: string | null;
   allocated_amount_base_units?: string | null; released_amount_base_units?: string | null;
   milestone_count?: number | null; current_milestone?: number | null;
   schedule_hash?: `0x${string}` | null; terms_hash?: `0x${string}` | null;
@@ -405,7 +408,7 @@ export async function submitEvidence(milestoneId: string, uri: string, contentHa
 }
 export const acceptEvidence = (milestoneId: string) => request("/evidence/accept", { method: "POST", body: JSON.stringify({ milestoneId }) });
 export const recordEscrowObservation = (bountyId: string, txHash: string) => request("/escrow", { method: "POST", body: JSON.stringify({ bountyId, txHash }) });
-export const refreshEscrowState = (bountyId: string) => request<EscrowObservation>("/escrow/state", { method: "POST", body: JSON.stringify({ bountyId }) });
+export const refreshEscrowState = (bountyId: string, txHash?: string) => request<EscrowObservation>("/escrow/state", { method: "POST", body: JSON.stringify({ bountyId, ...(txHash ? { txHash } : {}) }) });
 export const recordRevisionRequest = (milestoneId: string, reason: string, reasonHash: `0x${string}`, txHash: string) => request("/revisions", { method: "POST", body: JSON.stringify({ milestoneId, reason, reasonHash, txHash }) });
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });
 export const createReviewResponse = (reviewId: string, body: string) => request<ParticipantReview>(`/reviews/${reviewId}/response`, { method: "POST", body: JSON.stringify({ body }) });

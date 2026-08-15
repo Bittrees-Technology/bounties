@@ -72,3 +72,23 @@ export function settlementSplitFromBaseUnits(laborBaseUnits: string | null | und
   }
   return validSplit(BigInt(laborBaseUnits), total, decimals);
 }
+
+export function completedSettlementSplit(laborBaseUnits: string | null | undefined, capitalBaseUnits: string | null | undefined, decimals: number): SettlementSplit {
+  if (!Number.isSafeInteger(decimals) || decimals < 0 || decimals > 255
+    || !laborBaseUnits || !/^(0|[1-9][0-9]*)$/.test(laborBaseUnits)
+    || !capitalBaseUnits || !/^(0|[1-9][0-9]*)$/.test(capitalBaseUnits)) {
+    return { status: "unavailable", message: "The verified terminal settlement allocation is not available in this snapshot." };
+  }
+  const labor = BigInt(laborBaseUnits);
+  const capital = BigInt(capitalBaseUnits);
+  const total = labor + capital;
+  return {
+    status: "valid",
+    totalBaseUnits: total.toString(),
+    laborBaseUnits: labor.toString(),
+    capitalBaseUnits: capital.toString(),
+    totalDisplay: formatUnits(total, decimals),
+    laborDisplay: formatUnits(labor, decimals),
+    capitalDisplay: formatUnits(capital, decimals)
+  };
+}

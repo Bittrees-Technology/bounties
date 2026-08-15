@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateSettlementSplit, settlementSplitFromBaseUnits } from "./settlementSplit";
+import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits } from "./settlementSplit";
 
 describe("exact bilateral settlement split", () => {
   it("assigns a zero labor payout entirely to the capital provider", () => {
@@ -62,5 +62,18 @@ describe("exact bilateral settlement split", () => {
       totalDisplay: "1000000000000.000000000000000001",
       capitalDisplay: "0.000000000000000002"
     });
+  });
+
+  it("builds a terminal total only from both receipt-verified party amounts", () => {
+    expect(completedSettlementSplit("75123456", "74876544", 6)).toEqual({
+      status: "valid",
+      totalBaseUnits: "150000000",
+      laborBaseUnits: "75123456",
+      capitalBaseUnits: "74876544",
+      totalDisplay: "150",
+      laborDisplay: "75.123456",
+      capitalDisplay: "74.876544"
+    });
+    expect(completedSettlementSplit("75123456", null, 6)).toMatchObject({ status: "unavailable" });
   });
 });

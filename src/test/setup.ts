@@ -39,7 +39,7 @@ let profileLegacySpecialty: string | null = null;
 type EscrowRecordOutcome = "success" | "reverted" | "pending" | "mismatch";
 let escrowRecordOutcome: EscrowRecordOutcome = "success";
 let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
-let escrowRefreshOnchainState: "ProviderAccepted" | null = null;
+let escrowRefreshOnchainState: "ProviderAccepted" | "Settled" | null = null;
 let escrowStateRefreshRejected = false;
 type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled";
 let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
@@ -54,7 +54,7 @@ export function configureMockEscrowRecordOutcomes(outcomes: EscrowRecordOutcome[
   escrowRecordOutcomeSequence = [...outcomes];
 }
 
-export function configureMockEscrowRefreshOnchainState(state: "ProviderAccepted" | null) {
+export function configureMockEscrowRefreshOnchainState(state: "ProviderAccepted" | "Settled" | null) {
   escrowRefreshOnchainState = state;
 }
 
@@ -374,6 +374,22 @@ export function configureMockSettlementProposal(
     : "0x3333333333333333333333333333333333333333";
   escrow.proposed_provider_payout_base_units = "75000000";
   escrow.settlement_proposal_expiry = expiry;
+}
+
+export function configureMockSettledEscrow(withVerifiedReceipt = true) {
+  configureMockMilestoneEscrow("BuyerApproved", "Approved");
+  const escrow = bounties[0]?.escrow as Record<string, unknown> | undefined;
+  if (!escrow) throw new Error("mock escrow missing");
+  escrow.onchain_state = "Settled";
+  escrow.remaining_base_units = "0";
+  escrow.settlement_proposer = "0x0000000000000000000000000000000000000000";
+  escrow.proposed_provider_payout_base_units = "0";
+  escrow.settlement_proposal_expiry = null;
+  if (withVerifiedReceipt) {
+    escrow.settlement_transaction_hash = `0x${"99".repeat(32)}`;
+    escrow.settlement_provider_payout_base_units = "75123456";
+    escrow.settlement_requester_refund_base_units = "74876544";
+  }
 }
 
 beforeEach(() => {
@@ -770,11 +786,24 @@ beforeEach(() => {
     }
     if (url.endsWith("/api/bounties/escrow/state")) {
       if (escrowStateRefreshRejected) return Response.json({ code: "ESCROW_MILESTONE_MISMATCH" }, { status: 400 });
-      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId?: string };
+      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId?: string; txHash?: string };
       const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
       const escrow = bounty?.escrow as Record<string, unknown> | undefined;
       if (!escrow) return Response.json({ code: "ESCROW_NOT_FOUND" }, { status: 404 });
-      if (escrowRefreshOnchainState) escrow.onchain_state = escrowRefreshOnchainState;
+      if (escrowRefreshOnchainState && (escrowRefreshOnchainState !== "Settled" || body.txHash)) {
+        escrow.onchain_state = escrowRefreshOnchainState;
+        if (escrowRefreshOnchainState === "Settled") {
+          escrow.remaining_base_units = "0";
+          escrow.settlement_proposer = "0x0000000000000000000000000000000000000000";
+          escrow.proposed_provider_payout_base_units = "0";
+          escrow.settlement_proposal_expiry = null;
+          if (body.txHash) {
+            escrow.settlement_transaction_hash = body.txHash;
+            escrow.settlement_provider_payout_base_units = "75000000";
+            escrow.settlement_requester_refund_base_units = "75000000";
+          }
+        }
+      }
       return Response.json(escrow);
     }
     if (url.endsWith("/api/bounties/proposals/accept")) {

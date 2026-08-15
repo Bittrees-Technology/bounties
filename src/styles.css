@@ -3249,6 +3249,90 @@ textarea {
 .current-settlement-proposal > strong { color: #24342d; }
 .current-settlement-proposal > .form-hint { margin: 0; }
 
+.escrow-actions-terminal { background: #eef7f2; border-color: #8bbcaf; }
+
+.settlement-completed-record {
+  background: #fff;
+  border: 1px solid #8bbcaf;
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(15, 107, 87, .08);
+  display: grid;
+  gap: 14px;
+  max-width: 100%;
+  min-width: 0;
+  padding: 16px;
+}
+
+.settlement-completed-heading {
+  align-items: start;
+  display: grid;
+  gap: 11px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+}
+
+.settlement-completed-heading > svg { color: #0f6b57; }
+.settlement-completed-heading > div { display: grid; gap: 3px; min-width: 0; }
+.settlement-completed-heading span { color: #0f6b57; font-size: .7rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; }
+.settlement-completed-heading h5 { color: #173c35; font-size: 1.25rem; margin: 0; }
+.settlement-completed-heading p { color: #4f5f57; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+
+.settlement-terminal-meta {
+  display: grid;
+  gap: 9px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  min-width: 0;
+}
+
+.settlement-terminal-meta > div { background: #f6f8f7; border-radius: 10px; display: grid; gap: 3px; min-width: 0; padding: 10px; }
+.settlement-terminal-meta dt { color: #69766f; font-size: .7rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+.settlement-terminal-meta dd { color: #24342d; font-weight: 750; margin: 0; overflow-wrap: anywhere; }
+.terminal-status-badge { background: #dcefe7; border-radius: 999px; color: #0f6b57; display: inline-block; padding: 4px 8px; }
+
+.settlement-receipt-link {
+  align-items: center;
+  background: #0f6b57;
+  border-radius: 10px;
+  color: #fff;
+  display: inline-flex;
+  flex-wrap: wrap;
+  font-weight: 800;
+  gap: 6px;
+  justify-self: start;
+  max-width: 100%;
+  padding: 10px 12px;
+  white-space: normal;
+}
+
+.settlement-receipt-pending {
+  background: #fff9e8;
+  border: 1px solid #dccb91;
+  border-radius: 10px;
+  color: #5f511f;
+  line-height: 1.5;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 11px 12px;
+}
+
+.settlement-link-unavailable { margin: 0; }
+
+.settlement-review-cue {
+  align-items: center;
+  background: #eef7f2;
+  border: 1px solid #bdd8c7;
+  border-radius: 10px;
+  color: #315d50;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  padding: 10px 11px;
+}
+
 .secondary-button {
   background: #e7f3ef;
   border: 1px solid #8bbcaf;
@@ -3416,6 +3500,9 @@ textarea {
   .escrow-settlement-panel > button { width: 100%; }
   .escrow-lifecycle-controls > button { width: 100%; }
   .settlement-split-grid { grid-template-columns: minmax(0, 1fr); }
+  .settlement-terminal-meta { grid-template-columns: minmax(0, 1fr); }
+  .settlement-completed-heading { grid-template-columns: minmax(0, 1fr); }
+  .settlement-receipt-link { justify-content: center; width: 100%; }
   .delivery-submission-form { padding: 13px; }
   .milestone-actions { width: 100%; }
   .delivery-digest-composer { padding: 11px; }

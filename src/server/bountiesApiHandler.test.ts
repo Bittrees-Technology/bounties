@@ -7,6 +7,7 @@ const {
   databaseFromMock,
   providerGetAvatarMock,
   providerGetBlockNumberMock,
+  providerGetLogsMock,
   providerGetNetworkMock,
   providerLookupAddressMock,
   providerGetReceiptMock,
@@ -18,6 +19,7 @@ const {
   databaseFromMock: vi.fn(),
   providerGetAvatarMock: vi.fn(),
   providerGetBlockNumberMock: vi.fn(),
+  providerGetLogsMock: vi.fn(),
   providerGetNetworkMock: vi.fn(),
   providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock("ethers", async (importOriginal) => {
     JsonRpcProvider: class {
       getAvatar = providerGetAvatarMock;
       getBlockNumber = providerGetBlockNumberMock;
+      getLogs = providerGetLogsMock;
       getNetwork = providerGetNetworkMock;
       lookupAddress = providerLookupAddressMock;
       getTransactionReceipt = providerGetReceiptMock;
@@ -997,6 +1000,12 @@ describe("canonical escrow state endpoint", () => {
   const scheduleHash = `0x${"77".repeat(32)}`;
   const zeroHash = `0x${"00".repeat(32)}`;
   const zeroAddress = "0x0000000000000000000000000000000000000000";
+  const creationTxHash = `0x${"aa".repeat(32)}`;
+  const settlementTxHash = `0x${"bb".repeat(32)}`;
+  const tokenAddress = "0x3333333333333333333333333333333333333333";
+  const settlementInterface = new Interface([
+    "event BountySettled(uint256 indexed bountyId,address indexed provider,address indexed requester,address token,address proposer,address acceptor,uint256 providerPayout,uint256 requesterRefund)"
+  ]);
 
   const request = () => new Request("https://bounties.bittrees.org/api/bounties/escrow/state", {
     method: "POST",
@@ -1018,7 +1027,8 @@ describe("canonical escrow state endpoint", () => {
     escrow: {
       chain_id: 84532,
       contract_address: canonicalContext.contractAddress,
-      onchain_bounty_id: "10"
+      onchain_bounty_id: "10",
+      transaction_hash: creationTxHash
     }
   });
 
@@ -1030,6 +1040,9 @@ describe("canonical escrow state endpoint", () => {
     rpcMock.mockReset();
     databaseFromMock.mockReset();
     providerGetNetworkMock.mockReset().mockResolvedValue({ chainId: 84532n });
+    providerGetBlockNumberMock.mockReset();
+    providerGetLogsMock.mockReset();
+    providerGetReceiptMock.mockReset();
     contractGetBountyMock.mockReset().mockResolvedValue({
       amount: 100n,
       reviewDeadline: 0n,
@@ -1085,6 +1098,72 @@ describe("canonical escrow state endpoint", () => {
       p_current_milestone_detail: expect.objectContaining({ state: "Pending", amount_base_units: "100" })
     }));
     expect(databaseFromMock).not.toHaveBeenCalled();
+  });
+
+  it("discovers and preserves an existing exact settlement split from its unique canonical receipt", async () => {
+    const encoded = settlementInterface.encodeEventLog(
+      settlementInterface.getEvent("BountySettled")!,
+      [10n, canonicalContext.providerWallet, session.wallet_address, tokenAddress,
+        session.wallet_address, canonicalContext.providerWallet, 40n, 60n]
+    );
+    const settlementLog = {
+      address: canonicalContext.contractAddress,
+      topics: encoded.topics,
+      data: encoded.data,
+      index: 3,
+      blockNumber: 120,
+      transactionHash: settlementTxHash
+    };
+    contractGetBountyMock.mockResolvedValue({
+      requester: session.wallet_address,
+      provider: canonicalContext.providerWallet,
+      token: tokenAddress,
+      amount: 0n,
+      reviewDeadline: 0n,
+      state: 8n,
+      settlementProposer: zeroAddress,
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: 100n,
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash
+    });
+    providerGetReceiptMock.mockImplementation((hash: string) => Promise.resolve(hash === creationTxHash
+      ? { status: 1, blockNumber: 100, blockHash: `0x${"88".repeat(32)}`, logs: [] }
+      : { status: 1, blockNumber: 120, blockHash: `0x${"99".repeat(32)}`, logs: [settlementLog] }));
+    providerGetBlockNumberMock.mockResolvedValue(125);
+    providerGetLogsMock.mockResolvedValue([settlementLog]);
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({ data: bountyProjection(), error: null });
+      if (name === "app_record_escrow_state" || name === "app_record_settlement_result") {
+        return Promise.resolve({ data: args, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(request(), "escrow/state");
+
+    expect(response.status).toBe(200);
+    expect(providerGetLogsMock).toHaveBeenCalledWith(expect.objectContaining({
+      address: canonicalContext.contractAddress,
+      fromBlock: 100,
+      toBlock: 125
+    }));
+    expect(contractGetBountyMock).toHaveBeenCalledWith(10n, { blockTag: 120 });
+    expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_state", expect.objectContaining({
+      p_onchain_state: "Settled",
+      p_remaining_base_units: "0"
+    }));
+    expect(rpcMock).toHaveBeenCalledWith("app_record_settlement_result", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_settlement_transaction_hash: settlementTxHash,
+      p_settlement_provider_payout_base_units: "40",
+      p_settlement_requester_refund_base_units: "60"
+    });
   });
 
   it("denies a nonparticipant before reading or persisting chain state", async () => {

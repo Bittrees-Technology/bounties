@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockEscrowStateRefreshRejected, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettlementProposal, configureMockWalletChain, configureMockWalletEscrowStateReads } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockEscrowStateRefreshRejected, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockSelectedUnfundedProvider, configureMockSettledEscrow, configureMockSettlementProposal, configureMockWalletChain, configureMockWalletEscrowStateReads } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -387,6 +387,60 @@ it("does not offer acceptance for an expired counterparty proposal", async () =>
   const order = await renderConfiguredEscrow();
   expect(order.queryByRole("button", { name: /accept current exact split/i })).not.toBeInTheDocument();
   expect(order.getByText(/proposal has expired and cannot be accepted/i)).toBeInTheDocument();
+});
+
+it("shows an exact terminal settlement receipt and unlocks participant reviews", async () => {
+  configureMockSettledEscrow();
+  const order = await renderConfiguredEscrow();
+  const receipt = order.getByRole("region", { name: /^settlement completed$/i });
+  const shares = within(receipt).getAllByRole("article");
+
+  expect(within(receipt).getByRole("heading", { name: /^settlement completed$/i })).toBeInTheDocument();
+  expect(shares[0]).toHaveAccessibleName(/capital provider settlement share/i);
+  expect(shares[0]).toHaveTextContent("74.876544 / 150 USDC");
+  expect(shares[1]).toHaveAccessibleName(/labor provider settlement share/i);
+  expect(shares[1]).toHaveTextContent("75.123456 / 150 USDC");
+  expect(receipt).toHaveTextContent(/Base Sepolia/);
+  expect(receipt).toHaveTextContent(/Final onchain statusSettled/);
+  expect(receipt).toHaveTextContent(/Final escrow balance0 USDC/);
+  expect(within(receipt).getByRole("link", { name: /view settlement transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"99".repeat(32)}`));
+  expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
+  expect(order.queryByLabelText(/labor provider amount/i)).not.toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /propose settlement|accept current exact split|cancel my settlement proposal/i })).not.toBeInTheDocument();
+  expect(order.getByLabelText(/original funded escrow/i)).toHaveTextContent(/original escrow funded.*settlement completed on Base Sepolia.*Settled/i);
+  expect(within(order.getByLabelText(/original funded escrow/i)).getByRole("link", { name: /view original funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
+  expect(within(order.getByRole("list", { name: /bounty progress/i })).getByText(/^Settlement completed$/i).closest("li")).toHaveClass("current");
+  expect(order.getByText(/both parties can now review the work and payment experience/i)).toBeInTheDocument();
+  expect(order.getByLabelText(/rate the labor provider/i)).toBeInTheDocument();
+  expect(order.getByRole("button", { name: /publish review/i })).toBeInTheDocument();
+});
+
+it("withholds terminal party amounts instead of inferring them from cleared proposal storage", async () => {
+  configureMockSettledEscrow(false);
+  const order = await renderConfiguredEscrow();
+  const receipt = order.getByRole("region", { name: /^settlement completed$/i });
+
+  expect(within(receipt).getByRole("status")).toHaveTextContent(/verified settlement-event allocation is still being indexed/i);
+  expect(within(receipt).queryByRole("article")).not.toBeInTheDocument();
+  expect(within(receipt).queryByRole("link", { name: /settlement transaction/i })).not.toBeInTheDocument();
+  expect(receipt).toHaveTextContent(/verified settlement transaction link is not available/i);
+  expect(receipt).toHaveTextContent(/Final escrow balance0 USDC/);
+  expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
+});
+
+it("replaces settlement acceptance controls after receipt-backed canonical refresh", async () => {
+  configureMockSettlementProposal("provider", "2099-12-30T00:00:00.000Z");
+  configureMockEscrowRefreshOnchainState("Settled");
+  configureMockWalletEscrowStateReads(["ProviderAccepted", "Settled"]);
+  const order = await renderConfiguredEscrow();
+  const user = userEvent.setup();
+
+  await user.click(await order.findByRole("button", { name: /accept current exact split/i }));
+
+  const receipt = await order.findByRole("region", { name: /^settlement completed$/i });
+  expect(within(receipt).getByRole("link", { name: /view settlement transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"99".repeat(32)}`));
+  expect(order.queryByRole("button", { name: /accept current exact split/i })).not.toBeInTheDocument();
+  expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
 });
 
 it("blocks buyer approval when database evidence differs from the active onchain commitment", async () => {

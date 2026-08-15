@@ -76,7 +76,7 @@ import {
 import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
 import { deliveryProofMethodConfig, deliveryProofMethods, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryProofMethod } from "./deliveryProof";
 import { SavedDeliveryDescription } from "./DeliveryDescription";
-import { calculateSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
+import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -420,7 +420,7 @@ function SettlementSplitPreview({ split, symbol }: { split: ValidSettlementSplit
 function displayedOrderStatus(order: MarketplaceOrder): string {
   const onchain = order.escrowObservation?.onchain_state;
   if (onchain === "Released") return "Paid onchain";
-  if (onchain === "Settled") return "Settled bilaterally";
+  if (onchain === "Settled") return "Settlement completed";
   if (onchain === "Cancelled") return "Cancelled and refunded";
   if (onchain === "Refunded") return "Timeout refund completed";
   if (onchain === "Delivered") return "Delivered · seven-day review";
@@ -1255,7 +1255,6 @@ export default function App() {
         // state until the server or wallet RPC catches up with that block.
       }
       rememberCanonicalEscrow(order.id, after);
-      try { await refreshEscrowState(order.id); } catch { /* Keep the canonical wallet fallback until server reconciliation succeeds. */ }
       return result;
     });
   }
@@ -1388,6 +1387,31 @@ export default function App() {
         if (!escrowConfirmationIsRetryable(caught)) throw caught;
         scheduleEscrowReconciliation(order.id, lock);
       }
+    } else {
+      // Keep the receipt-confirmed canonical state visible even if database
+      // indexing lags. This is particularly important after settlement, when
+      // the contract clears the proposal fields as it enters its terminal state.
+      let canonical: CanonicalEscrowFallback | null = null;
+      try {
+        canonical = await readCanonicalEscrow(client, ref);
+        rememberCanonicalEscrow(order.id, canonical);
+        setSession((current) => current ? applyCanonicalEscrowFallbacks(current) : current);
+      } catch {
+        // The server can still verify and persist the confirmed receipt.
+      }
+      try {
+        const refreshed = await refreshEscrowState(order.id, result.txHash);
+        setSession((current) => current ? {
+          ...current,
+          orders: current.orders.map((candidate) => candidate.id === order.id && candidate.escrowObservation
+            ? { ...candidate, escrowObservation: { ...candidate.escrowObservation, ...refreshed } }
+            : candidate)
+        } : current);
+      } catch (caught) {
+        // A direct canonical read is a safe temporary display fallback. The
+        // selected-bounty reconciliation effect retries server persistence.
+        if (!canonical) throw caught;
+      }
     }
     return result;
   }
@@ -1486,6 +1510,41 @@ export default function App() {
     const timeoutReady = Boolean(activeMilestone) && state === "ProviderAccepted" && activeMilestoneState === "Pending"
       && activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now();
     const releaseLabel = activeMilestone ? `Release ${activeMilestone.label} payment` : "Release current milestone payment";
+    const completedSplit = completedSettlementSplit(
+      observation?.settlement_provider_payout_base_units,
+      observation?.settlement_requester_refund_base_units,
+      token.decimals
+    );
+    const settlementTransactionHash = observation?.settlement_transaction_hash && /^0x[0-9a-fA-F]{64}$/.test(observation.settlement_transaction_hash)
+      ? observation.settlement_transaction_hash
+      : null;
+    const settlementTransactionUrl = settlementTransactionHash ? `${chain.blockExplorer}/tx/${settlementTransactionHash}` : null;
+    const finalEscrowBalance = observation?.remaining_base_units && /^(0|[1-9][0-9]*)$/.test(observation.remaining_base_units)
+      ? `${formatUnits(BigInt(observation.remaining_base_units), token.decimals)} ${settlementSymbol}`
+      : "Unavailable";
+
+    if (state === "Settled") {
+      return (
+        <section id={`escrow-actions-${order.id}`} className="escrow-actions escrow-actions-terminal" aria-label={`Wallet escrow actions for ${order.title}`}>
+          <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
+          <section className="settlement-completed-record" aria-label="Settlement completed">
+            <header className="settlement-completed-heading">
+              <ShieldCheck size={24} aria-hidden="true" />
+              <div><span>Canonical terminal record</span><h5>Settlement completed</h5><p>The escrow reached its final bilateral settlement state. No further proposal or acceptance action is available.</p></div>
+            </header>
+            {completedSplit.status === "valid" ? <SettlementSplitPreview split={completedSplit} symbol={settlementSymbol} /> : (
+              <p className="settlement-receipt-pending" role="status">Canonical status is Settled, but the verified settlement-event allocation is still being indexed. Party amounts are withheld rather than inferred from cleared proposal fields.</p>
+            )}
+            <dl className="settlement-terminal-meta">
+              <div><dt>Network</dt><dd>{chain.name}</dd></div>
+              <div><dt>Final onchain status</dt><dd><span className="terminal-status-badge">Settled</span></dd></div>
+              <div><dt>Final escrow balance</dt><dd>{finalEscrowBalance}</dd></div>
+            </dl>
+            {settlementTransactionUrl ? <a className="settlement-receipt-link" href={settlementTransactionUrl} target="_blank" rel="noreferrer noopener">View settlement transaction <ExternalLink size={14} /></a> : <p className="form-hint settlement-link-unavailable">The verified settlement transaction link is not available in this snapshot.</p>}
+          </section>
+        </section>
+      );
+    }
 
     return (
       <section id={`escrow-actions-${order.id}`} className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
@@ -1658,6 +1717,7 @@ export default function App() {
     return (
       <section className="review-panel" aria-label={`Reviews for ${order.title}`}>
         <div className="review-heading"><Star size={17} /><h5>Participant reviews</h5></div>
+        {order.escrowObservation?.onchain_state === "Settled" && isParticipant(order) ? <p className="settlement-review-cue"><CheckCircle2 size={16} aria-hidden="true" /> Settlement is complete. Both parties can now review the work and payment experience.</p> : null}
         {participantReviews.length ? participantReviews.map((review) => (
           <article id={`review-${review.id}`} className={`review-row ${review.moderation_status === "hidden" ? "content-hidden" : ""}`} key={review.id}>
             <div>
@@ -1759,14 +1819,14 @@ export default function App() {
     return (
       <section className="lifecycle-panel">
         {observation && escrowTransactionUrl ? (
-          <aside className="funded-escrow-summary" aria-label="Funded escrow">
+          <aside className="funded-escrow-summary" aria-label={observation.onchain_state === "Settled" ? "Original funded escrow" : "Funded escrow"}>
             <ShieldCheck size={24} aria-hidden="true" />
             <div>
-              <span>Funds escrowed</span>
+              <span>{observation.onchain_state === "Settled" ? "Original escrow funded" : "Funds escrowed"}</span>
               <strong>{escrowedAmount} {order.tokenRecord?.symbol || "ERC20"}</strong>
-              <small>Confirmed on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {observation.onchain_state ?? observation.status}</small>
+              <small>{observation.onchain_state === "Settled" ? "Settlement completed" : "Confirmed"} on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {observation.onchain_state ?? observation.status}</small>
             </div>
-            <a href={escrowTransactionUrl} target="_blank" rel="noreferrer">View funding transaction <ExternalLink size={14} /></a>
+            <a href={escrowTransactionUrl} target="_blank" rel="noreferrer">View {observation.onchain_state === "Settled" ? "original " : ""}funding transaction <ExternalLink size={14} /></a>
           </aside>
         ) : null}
         {milestones.map((milestone, index) => {
@@ -1937,7 +1997,7 @@ export default function App() {
 
   function cardProgress(order: MarketplaceOrder) {
     const current = lifecycleStage(order);
-    const labels = ["Created", "Applications", "Applicant accepted", "Work submitted", "Work accepted"];
+    const labels = ["Created", "Applications", "Applicant accepted", "Work submitted", order.escrowObservation?.onchain_state === "Settled" ? "Settlement completed" : "Work accepted"];
     return (
       <ol className="card-progress" aria-label={`Bounty progress: step ${current} of 5`}>
         {labels.map((label, index) => (
@@ -2096,7 +2156,11 @@ export default function App() {
   const selectedBounty = selectedBountyId ? session?.orders.find((order) => order.id === selectedBountyId) ?? null : null;
   const selectedCanonicalBountyId = selectedBounty?.escrowObservation && isParticipant(selectedBounty) ? selectedBounty.id : null;
   const selectedCanonicalRefreshKey = selectedCanonicalBountyId
-    ? `${selectedCanonicalBountyId}:${selectedBounty!.escrowObservation!.transaction_hash}`
+    ? [
+        selectedCanonicalBountyId,
+        selectedBounty!.escrowObservation!.transaction_hash,
+        selectedBounty!.escrowObservation!.settlement_transaction_hash ?? ""
+      ].join(":")
     : null;
   const selectedCanonicalOrderRef = useRef<MarketplaceOrder | null>(null);
   const selectedCanonicalBoundaryRef = useRef(escrowBoundary);

@@ -24,6 +24,7 @@ const bountyEscrowInterface = new Interface([
   "function getMilestone(uint256 bountyId,uint256 milestoneIndex) view returns ((uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint64 revisionDeadline,uint8 state,bytes32 evidenceHash,bytes32 previousEvidenceHash,bytes32 approvalHash,bytes32 revisionReasonHash,bool revisionRequested) milestone)",
   "event BountyCreated(uint256 indexed bountyId,address indexed requester,address indexed token,address provider,uint256 requestedAmount,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,uint64 deliveryDeadline)",
   "event BountyFunded(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 amount)",
+  "event BountySettled(uint256 indexed bountyId,address indexed provider,address indexed requester,address token,address proposer,address acceptor,uint256 providerPayout,uint256 requesterRefund)",
   "event MilestoneRevisionRequested(uint256 indexed bountyId,uint256 indexed milestoneIndex,address indexed requester,bytes32 reasonHash,uint64 revisionDeadline)"
 ]);
 
@@ -56,6 +57,13 @@ type EscrowStateSource = {
   chainId: number;
   contractAddress: string;
   onchainBountyId: string;
+  creationTransactionHash: string | null;
+  settlementTransactionHash: string | null;
+};
+type VerifiedSettlementReceipt = {
+  transactionHash: string;
+  providerPayoutBaseUnits: string;
+  requesterRefundBaseUnits: string;
 };
 type CanonicalMilestoneContext = {
   milestoneId: string;
@@ -1166,7 +1174,7 @@ async function escrowStateSource(session: Session, bountyId: string): Promise<Es
     creator_id?: string;
     accepted_proposal_id?: string | null;
     proposals?: Array<{ id?: string; provider_id?: string }>;
-    escrow?: { chain_id?: unknown; contract_address?: string; onchain_bounty_id?: unknown } | null;
+    escrow?: { chain_id?: unknown; contract_address?: string; onchain_bounty_id?: unknown; transaction_hash?: unknown; settlement_transaction_hash?: unknown } | null;
   } | null>("app_bounty_json", { p_bounty_id: bountyId, p_actor_id: session.account_id });
   if (!bounty || bounty.id !== bountyId) throw new ApiError("BOUNTY_NOT_FOUND", 404);
   const accepted = bounty.proposals?.find((proposal) => proposal.id === bounty.accepted_proposal_id);
@@ -1179,7 +1187,141 @@ async function escrowStateSource(session: Session, bountyId: string): Promise<Es
   if (!supportedChainIds.has(chainId)) throw new ApiError("CHAIN_UNSUPPORTED", 400);
   const configuredAddress = resolveEscrowRecordContractAddress(chainId, String(escrow.contract_address));
   if (!/^[0-9]+$/.test(String(escrow.onchain_bounty_id))) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 400);
-  return { bountyId, chainId, contractAddress: configuredAddress, onchainBountyId: String(escrow.onchain_bounty_id) };
+  const creationTransactionHash = escrow.transaction_hash === undefined || escrow.transaction_hash === null
+    ? null : String(escrow.transaction_hash).toLowerCase();
+  const settlementTransactionHash = escrow.settlement_transaction_hash === undefined || escrow.settlement_transaction_hash === null
+    ? null : String(escrow.settlement_transaction_hash).toLowerCase();
+  if (creationTransactionHash !== null && !/^0x[0-9a-f]{64}$/.test(creationTransactionHash)
+    || settlementTransactionHash !== null && !/^0x[0-9a-f]{64}$/.test(settlementTransactionHash)) {
+    throw new ApiError("ESCROW_RECEIPT_NOT_FOUND", 404);
+  }
+  return {
+    bountyId,
+    chainId,
+    contractAddress: configuredAddress,
+    onchainBountyId: String(escrow.onchain_bounty_id),
+    creationTransactionHash,
+    settlementTransactionHash
+  };
+}
+
+async function verifySettlementReceipt(
+  session: Session,
+  bountyId: string,
+  txHash: string
+): Promise<VerifiedSettlementReceipt | null> {
+  const source = await escrowStateSource(session, bountyId);
+  const providerUrl = configuredServerRpcUrl(source.chainId);
+  if (!providerUrl) throw new ApiError("ESCROW_RPC_UNAVAILABLE", 503);
+  const provider = new JsonRpcProvider(providerUrl);
+  const network = await withTimeout(provider.getNetwork(), "ESCROW_RPC_TIMEOUT");
+  if (Number(network.chainId) !== source.chainId) throw new ApiError("ESCROW_CHAIN_MISMATCH", 503);
+  const receipt = await withTimeout(provider.getTransactionReceipt(txHash), "ESCROW_RPC_TIMEOUT");
+  if (!receipt) throw new ApiError("ESCROW_RECEIPT_NOT_FOUND", 404);
+  if (receipt.status !== 1) throw new ApiError("ESCROW_TX_NOT_SUCCESSFUL", 400);
+
+  const settlements: Array<{
+    bountyId: string;
+    provider: string;
+    requester: string;
+    token: string;
+    proposer: string;
+    acceptor: string;
+    providerPayout: bigint;
+    requesterRefund: bigint;
+  }> = [];
+  for (const log of receipt.logs) {
+    let logAddress: string;
+    try {
+      logAddress = getAddress(log.address);
+    } catch {
+      continue;
+    }
+    if (logAddress !== source.contractAddress) continue;
+    try {
+      const parsed = bountyEscrowInterface.parseLog({ topics: log.topics as string[], data: log.data });
+      if (parsed?.name !== "BountySettled") continue;
+      settlements.push({
+        bountyId: parsed.args.bountyId.toString(),
+        provider: getAddress(String(parsed.args.provider)),
+        requester: getAddress(String(parsed.args.requester)),
+        token: getAddress(String(parsed.args.token)),
+        proposer: getAddress(String(parsed.args.proposer)),
+        acceptor: getAddress(String(parsed.args.acceptor)),
+        providerPayout: BigInt(parsed.args.providerPayout),
+        requesterRefund: BigInt(parsed.args.requesterRefund)
+      });
+    } catch {
+      // Other configured-contract logs are not settlement proofs.
+    }
+  }
+  if (settlements.length === 0) return null;
+  if (settlements.length !== 1) throw new ApiError("ESCROW_SETTLEMENT_EVENT_AMBIGUOUS", 400);
+  const [settlement] = settlements;
+  if (settlement.bountyId !== source.onchainBountyId) throw new ApiError("ESCROW_BOUNTY_MISMATCH", 400);
+
+  const contract = new Contract(source.contractAddress, bountyEscrowInterface, provider);
+  const record = await withTimeout(
+    contract.getBounty(BigInt(source.onchainBountyId), { blockTag: receipt.blockNumber }),
+    "ESCROW_STATE_TIMEOUT"
+  ) as { requester: string; provider: string; token: string; amount: bigint; state: bigint };
+  requireSameAddress(settlement.requester, record.requester, "ESCROW_BUYER_MISMATCH");
+  requireSameAddress(settlement.provider, record.provider, "ESCROW_PROVIDER_MISMATCH");
+  requireSameAddress(settlement.token, record.token, "ESCROW_TOKEN_MISMATCH");
+  const parties = new Set([getAddress(record.requester), getAddress(record.provider)]);
+  if (!parties.has(settlement.proposer) || !parties.has(settlement.acceptor)
+    || settlement.proposer === settlement.acceptor || record.state !== 8n || record.amount !== 0n) {
+    throw new ApiError("ESCROW_SETTLEMENT_POST_STATE_INVALID", 409);
+  }
+
+  return {
+    transactionHash: txHash.toLowerCase(),
+    providerPayoutBaseUnits: settlement.providerPayout.toString(),
+    requesterRefundBaseUnits: settlement.requesterRefund.toString()
+  };
+}
+
+async function discoverSettlementReceipt(session: Session, bountyId: string): Promise<VerifiedSettlementReceipt> {
+  const source = await escrowStateSource(session, bountyId);
+  const providerUrl = configuredServerRpcUrl(source.chainId);
+  if (!providerUrl) throw new ApiError("ESCROW_RPC_UNAVAILABLE", 503);
+  const provider = new JsonRpcProvider(providerUrl);
+  const network = await withTimeout(provider.getNetwork(), "ESCROW_RPC_TIMEOUT");
+  if (Number(network.chainId) !== source.chainId) throw new ApiError("ESCROW_CHAIN_MISMATCH", 503);
+  if (!source.creationTransactionHash) throw new ApiError("ESCROW_RECEIPT_NOT_FOUND", 404);
+  const creationReceipt = await withTimeout(provider.getTransactionReceipt(source.creationTransactionHash), "ESCROW_RPC_TIMEOUT");
+  if (!creationReceipt || creationReceipt.status !== 1) throw new ApiError("ESCROW_RECEIPT_NOT_FOUND", 404);
+  const latestBlock = await withTimeout(provider.getBlockNumber(), "ESCROW_RPC_TIMEOUT");
+  if (!Number.isSafeInteger(latestBlock) || latestBlock < creationReceipt.blockNumber) {
+    throw new ApiError("ESCROW_RPC_UNAVAILABLE", 503);
+  }
+  const event = bountyEscrowInterface.getEvent("BountySettled");
+  if (!event) throw new ApiError("ESCROW_SETTLEMENT_EVENT_MISSING", 400);
+  const bountyTopic = `0x${BigInt(source.onchainBountyId).toString(16).padStart(64, "0")}`;
+  const chunkSize = 10_000;
+  const maxScannedBlocks = 1_000_000;
+  let scannedBlocks = 0;
+  let toBlock = latestBlock;
+  while (toBlock >= creationReceipt.blockNumber && scannedBlocks < maxScannedBlocks) {
+    const fromBlock = Math.max(creationReceipt.blockNumber, toBlock - chunkSize + 1);
+    const logs = await withTimeout(provider.getLogs({
+      address: source.contractAddress,
+      fromBlock,
+      toBlock,
+      topics: [event.topicHash, bountyTopic]
+    }), "ESCROW_RPC_TIMEOUT");
+    const transactionHashes = [...new Set(logs.map((log) => log.transactionHash.toLowerCase()))];
+    if (transactionHashes.length > 1) throw new ApiError("ESCROW_SETTLEMENT_EVENT_AMBIGUOUS", 400);
+    if (transactionHashes.length === 1) {
+      const settlement = await verifySettlementReceipt(session, bountyId, transactionHashes[0]);
+      if (!settlement) throw new ApiError("ESCROW_SETTLEMENT_EVENT_MISSING", 400);
+      return settlement;
+    }
+    scannedBlocks += toBlock - fromBlock + 1;
+    toBlock = fromBlock - 1;
+  }
+  if (toBlock >= creationReceipt.blockNumber) throw new ApiError("ESCROW_SETTLEMENT_SCAN_LIMIT", 409);
+  throw new ApiError("ESCROW_SETTLEMENT_EVENT_MISSING", 400);
 }
 
 async function readCanonicalEscrowState(session: Session, bountyId: string) {
@@ -1241,8 +1383,16 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
   };
 }
 
-async function persistCanonicalEscrowState(session: Session, bountyId: string) {
+async function persistCanonicalEscrowState(session: Session, bountyId: string, txHash?: string) {
   const observed = await readCanonicalEscrowState(session, bountyId);
+  const settlement = txHash
+    ? await verifySettlementReceipt(session, bountyId, txHash)
+    : observed.onchainState === "Settled" && !observed.source.settlementTransactionHash
+      ? await discoverSettlementReceipt(session, bountyId) : null;
+  if ((txHash && observed.onchainState === "Settled" && !settlement)
+    || (settlement && observed.onchainState !== "Settled")) {
+    throw new ApiError("ESCROW_SETTLEMENT_POST_STATE_INVALID", 409);
+  }
   const record = await callRpc<Record<string, unknown>>("app_record_escrow_state", {
     p_actor_id: session.account_id,
     p_bounty_id: bountyId,
@@ -1259,6 +1409,16 @@ async function persistCanonicalEscrowState(session: Session, bountyId: string) {
     p_schedule_hash: observed.scheduleHash,
     p_current_milestone_detail: observed.currentMilestoneDetail
   });
+  if (settlement) {
+    const settledRecord = await callRpc<Record<string, unknown>>("app_record_settlement_result", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_settlement_transaction_hash: settlement.transactionHash,
+      p_settlement_provider_payout_base_units: settlement.providerPayoutBaseUnits,
+      p_settlement_requester_refund_base_units: settlement.requesterRefundBaseUnits
+    });
+    return { ...record, ...settledRecord, onchain_state: observed.onchainState, current_milestone: observed.currentMilestone };
+  }
   return { ...record, onchain_state: observed.onchainState, current_milestone: observed.currentMilestone };
 }
 
@@ -1583,7 +1743,9 @@ async function handle(request: Request, action: string): Promise<Response> {
   }
 
   if (action === "escrow/state" && method === "POST") {
-    return Response.json(await persistCanonicalEscrowState(session, requiredUuid(body, "bountyId")), { headers });
+    const bountyId = requiredUuid(body, "bountyId");
+    const txHash = body.txHash === undefined ? undefined : transactionHash(body, "txHash");
+    return Response.json(await persistCanonicalEscrowState(session, bountyId, txHash), { headers });
   }
 
   if (action === "revisions" && method === "POST") {
