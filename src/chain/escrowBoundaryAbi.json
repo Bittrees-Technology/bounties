@@ -1,8 +1,8 @@
 {
   "interfaceVersion": "escrow-adapter.v1",
-  "artifactHash": "sha256:ffe78acb40df31468374905d22018e944f7919fe687f0d221b9e6fca7b155bae",
+  "artifactHash": "sha256:915fbb69750901fd5655202a3bb460a5115163afd482b4b4c3e68dc742de0674",
   "artifactHashAlgorithm": "sha256 of contracts/out/BountyEscrow.sol/BountyEscrow.json deployedBytecode.object bytes with the Solidity CBOR metadata trailer removed",
-  "status": "one-time-creation-bounded-settlement-revision-milestone-escrow-v1",
+  "status": "pre-acceptance-cancellation-one-time-creation-bounded-settlement-revision-milestone-escrow-v1",
   "compilerAbi": [
     "function createBounty(address token, uint256 requestedAmount, uint64 deliveryDeadline, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",
     "function createMilestoneBounty(address token, uint256 requestedAmount, uint256[] milestoneAmounts, uint64[] milestoneDeadlines, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",

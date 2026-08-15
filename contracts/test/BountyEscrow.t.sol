@@ -801,7 +801,7 @@ contract BountyEscrowTest is Test {
         assertEq(escrow.totalLiability(address(blockingToken)), 0);
     }
 
-    function testCancellationClosesOnlyUnfundedRecordAndBlocksFundedCommitment() public {
+    function testCancellationRefundsBeforeProviderAcceptanceAndBlocksAfterAcceptance() public {
         uint256 amount = 750 ether;
         uint64 deadline = uint64(block.timestamp + 2 days);
         bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(14)));
@@ -826,17 +826,16 @@ contract BountyEscrowTest is Test {
             escrow.createBounty(address(token), amount, deadline, fundedScopeHash, provider, PROPOSAL_HASH);
         uint256 requesterBefore = token.balanceOf(requester);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(IBountyEscrow.CancellationUnavailable.selector, fundedId, IBountyEscrow.State.Funded)
-        );
+        vm.expectEmit(true, true, true, true);
+        emit IBountyEscrow.BountyCancelled(fundedId, requester, address(token), amount);
         vm.prank(requester);
         escrow.cancelBounty(fundedId);
 
-        BountyEscrow.Bounty memory funded = escrow.getBounty(fundedId);
-        assertEq(uint256(funded.state), uint256(IBountyEscrow.State.Funded));
-        assertEq(funded.amount, amount);
-        assertEq(token.balanceOf(requester), requesterBefore);
-        assertEq(escrow.totalLiability(address(token)), amount);
+        BountyEscrow.Bounty memory fundedCancellation = escrow.getBounty(fundedId);
+        assertEq(uint256(fundedCancellation.state), uint256(IBountyEscrow.State.Cancelled));
+        assertEq(fundedCancellation.amount, 0);
+        assertEq(token.balanceOf(requester), requesterBefore + amount);
+        assertEq(escrow.totalLiability(address(token)), 0);
 
         bytes32 acceptedScopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(151)));
         bytes32 acceptedTermsHash = _termsHash(acceptedScopeHash, PROPOSAL_HASH, provider);
@@ -853,6 +852,45 @@ contract BountyEscrowTest is Test {
         );
         vm.prank(requester);
         escrow.cancelBounty(acceptedId);
+    }
+
+    function testFundedCancellationRefundFailureRollsBackStateAndLiability() public {
+        RecipientBlockingERC20 blockingToken = new RecipientBlockingERC20();
+        uint256 amount = 450 ether;
+        blockingToken.mint(requester, amount);
+        vm.prank(requester);
+        blockingToken.approve(address(escrow), amount);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(
+            address(blockingToken),
+            amount,
+            uint64(block.timestamp + 1 days),
+            bytes32(uint256(153)),
+            provider,
+            PROPOSAL_HASH
+        );
+
+        blockingToken.setBlockedRecipient(requester, true);
+        vm.expectRevert(abi.encodeWithSelector(RecipientBlockingERC20.RecipientBlocked.selector, requester));
+        vm.prank(requester);
+        escrow.cancelBounty(bountyId);
+
+        BountyEscrow.Bounty memory unchanged = escrow.getBounty(bountyId);
+        assertEq(uint256(unchanged.state), uint256(IBountyEscrow.State.Funded));
+        assertEq(unchanged.amount, amount);
+        assertEq(escrow.totalLiability(address(blockingToken)), amount);
+        assertEq(blockingToken.balanceOf(address(escrow)), amount);
+
+        blockingToken.setBlockedRecipient(requester, false);
+        vm.prank(requester);
+        escrow.cancelBounty(bountyId);
+
+        BountyEscrow.Bounty memory cancelled = escrow.getBounty(bountyId);
+        assertEq(uint256(cancelled.state), uint256(IBountyEscrow.State.Cancelled));
+        assertEq(cancelled.amount, 0);
+        assertEq(blockingToken.balanceOf(requester), amount);
+        assertEq(escrow.totalLiability(address(blockingToken)), 0);
     }
 
     function testFundedBountyRefundsAtDeadlineWhenProviderNeverAccepts() public {

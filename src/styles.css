@@ -3530,27 +3530,6 @@ textarea {
   padding: 10px 11px;
 }
 
-.escrow-commitment-notice {
-  align-items: flex-start;
-  background: #eef7f2;
-  border: 1px solid #bdd8c7;
-  border-radius: 10px;
-  color: #315d50;
-  display: flex;
-  gap: 8px;
-  line-height: 1.5;
-  margin: 0;
-  max-width: 100%;
-  overflow-wrap: anywhere;
-  padding: 10px 11px;
-}
-
-.escrow-commitment-notice svg {
-  color: #0f6b57;
-  flex: 0 0 auto;
-  margin-top: 3px;
-}
-
 .secondary-button {
   background: #e7f3ef;
   border: 1px solid #8bbcaf;

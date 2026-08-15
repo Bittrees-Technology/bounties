@@ -1,13 +1,15 @@
 # Multi-network testnet review packet
 
-Status: source and deterministic milestone tests prepared; deployment template unexecuted.
+Status: revised pre-provider-acceptance cancellation source and tests prepared;
+deployment template unexecuted.
 
 ## Intended review configuration
 
 - Networks: Ethereum Sepolia (11155111), Base Sepolia (84532), and Robinhood
   Chain Testnet (46630), none selected for broadcast in this repository.
 - Sender: unset; deployment-operator is the only default broadcaster.
-- Target: one new deployment per test network; no contract address exists.
+- Target: one new revised deployment per test network; no address exists for
+  this source revision.
 - Constructor: none; the contract creates no administrator or privileged role.
 - Review token: `TOKEN_ADDRESS`; not transferred or approved by this task.
 - Value: 0 native ETH in constructor and all v1 bounty operations.
@@ -42,5 +44,10 @@ and deadline against the offchain schedule, prove their sum equals funding, then
 exercise at least two sequential tranche releases, one review-expiry release,
 one active-deadline refund after partial completion, and one bilateral split of
 remaining principal. A later milestone must never submit before its predecessor releases.
+
+Cancellation review must prove both `Created -> Cancelled` and
+`Funded -> Cancelled`, including an exact funded-principal return and zero
+remaining liability. The same call must revert in `ProviderAccepted` and every
+later state.
 
 No RPC, fork, broadcast, funded transaction, or deployment command was run.

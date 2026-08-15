@@ -93,7 +93,7 @@ contract BountyEscrowHandler is Test {
         uint256 index = rawIndex % _tracked.length;
         TrackedBounty storage tracked = _tracked[index];
         BountyEscrow.Bounty memory bounty = escrow.getBounty(tracked.id);
-        if (bounty.state != IBountyEscrow.State.Created) return;
+        if (bounty.state != IBountyEscrow.State.Created && bounty.state != IBountyEscrow.State.Funded) return;
         if (tracked.deadline != 0 && block.timestamp >= tracked.deadline) return;
 
         vm.prank(requester);

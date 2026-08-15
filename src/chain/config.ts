@@ -42,6 +42,13 @@ const globallyEnabled = import.meta.env.VITE_ESCROW_ENABLED === "true";
 export const ESCROW_CREATION_ENABLED = globallyEnabled && import.meta.env.VITE_ESCROW_CREATION_ENABLED === "true";
 
 /**
+ * Funded cancellation is available only on deployments whose bytecode permits
+ * `Funded -> Cancelled` before the provider accepts the committed terms.
+ */
+export const PRE_ACCEPTANCE_CANCELLATION_ENABLED =
+  globallyEnabled && import.meta.env.VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED === "true";
+
+/**
  * Operations must set both the enable flag and a valid public deployment address. Missing or
  * malformed configuration remains fail-closed in every build.
  */

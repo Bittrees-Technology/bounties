@@ -14,9 +14,10 @@ The stateful Foundry campaign targets the smallest realistic risk boundary: one 
 
 ## Deterministic lifecycle properties
 
-- Only the requester can fund or close an unfunded `Created` record. Funding
-  removes unilateral cancellation. A timeout refund may be triggered by anyone
-  at the active deadline, but it always pays the requester.
+- Only the requester can fund or cancel a `Created` or `Funded` record. A funded
+  cancellation refunds the exact outstanding principal. Once the provider accepts
+  onchain, unilateral cancellation is unavailable. A timeout refund may be
+  triggered by anyone at the active deadline, but it always pays the requester.
 - The requester commits the provider at creation time, and only that provider can accept and mark delivery.
 - Delivered funds cannot release before the stored seven-day review deadline
   without buyer approval, and anyone may release at the exact deadline.

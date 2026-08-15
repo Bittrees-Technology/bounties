@@ -30,6 +30,17 @@ describe("live escrow environment gate", () => {
     expect((await import("./config")).ESCROW_CREATION_ENABLED).toBe(true);
   });
 
+  it("keeps funded pre-acceptance cancellation fail-closed until revised bytecode is deployed", async () => {
+    vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+    vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+    vi.resetModules();
+    expect((await import("./config")).PRE_ACCEPTANCE_CANCELLATION_ENABLED).toBe(false);
+
+    vi.stubEnv("VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED", "true");
+    vi.resetModules();
+    expect((await import("./config")).PRE_ACCEPTANCE_CANCELLATION_ENABLED).toBe(true);
+  });
+
   it("fails closed when the address is malformed", async () => {
     vi.stubEnv("VITE_ESCROW_ENABLED", "true");
     vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "not-an-address");

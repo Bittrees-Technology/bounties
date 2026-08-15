@@ -27,7 +27,7 @@ address. Token symbols, decimals, names, and offchain prices are never read.
 ```text
 Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
     |          |              ^      |       |
-    +-> Cancelled             |      |       +-> Released (at/after reviewDeadline)
+    +----------+-> Cancelled  |      |       +-> Released (at/after reviewDeadline)
                |              +-- Revision (once, seven days to resubmit)
                +-------------> Refunded (missed active delivery/revision deadline)
                \__________________________________-> Settled (bilateral exact split)
@@ -61,13 +61,13 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
   escrowAddress, scopeHash, milestoneAmounts, milestoneDeadlines))`, and
   `termsHash = keccak256(abi.encode(MILESTONE_TERMS_DOMAIN, chainId,
   escrowAddress, scopeHash, proposalHash, provider, scheduleHash))`.
-- Only an unfunded `Created` record may be cancelled. Funding commits the
-  requester to the selected provider and removes unilateral requester
-  cancellation. If the provider has not accepted onchain or has accepted but
-  misses the active milestone deadline, anyone may trigger the deterministic
-  refund of all unreleased principal to the requester. Bilateral settlement
-  likewise splits only unreleased principal; completed milestone payments remain
-  final.
+- A requester may cancel a `Created` or `Funded` record before the committed
+  provider accepts onchain. Cancelling a funded record returns the exact
+  outstanding principal to the requester. Once the provider accepts, unilateral
+  cancellation is unavailable. If the provider misses the active milestone
+  deadline, anyone may trigger the deterministic refund of all unreleased
+  principal to the requester. Bilateral settlement likewise splits only
+  unreleased principal; completed milestone payments remain final.
 - Settlement offers last at most `SETTLEMENT_PROPOSAL_PERIOD` (seven days) and
   are shortened to the active delivery or review deadline. Acceptance is invalid
   at the exact expiry boundary. The current proposer may cancel without changing
@@ -90,9 +90,10 @@ delivery/review deadlines, state, evidence, and approval commitments. Legacy
 top-level evidence/deadline fields mirror the active milestone.
 
 - Anyone can create a record.
-- The requester alone funds it, approves delivery, and closes an unfunded
-  record. Funding removes unilateral cancellation. A deterministic timeout
-  refund may be triggered by anyone, but it always pays the requester.
+- The requester alone funds it, approves delivery, and cancels before provider
+  acceptance. A funded cancellation refunds the exact outstanding principal.
+  A deterministic timeout refund may be triggered by anyone, but it always pays
+  the requester.
 - The requester commits the provider and proposal hash at creation time. The
   stored terms hash is
   `keccak256(abi.encode(TERMS_DOMAIN, chainId, escrowAddress, scopeHash, proposalHash, provider))`.

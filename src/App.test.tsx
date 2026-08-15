@@ -75,7 +75,7 @@ describe("App", () => {
     expect(within(alternativeOutcomes).getByText("Refunded")).toBeInTheDocument();
     expect(within(alternativeOutcomes).getByText("Settled")).toBeInTheDocument();
     expect(Array.from(alternativeOutcomes.querySelectorAll("article > span")).map((outcome) => outcome.textContent)).toEqual([
-      "Created → Cancelled",
+      "Created / Funded → Cancelled",
       "Delivered → ProviderAccepted",
       "Funded / ProviderAccepted → Refunded",
       "Funded / ProviderAccepted / Delivered / BuyerApproved → Settled"

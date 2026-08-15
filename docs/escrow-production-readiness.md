@@ -1,7 +1,9 @@
 # Escrow production readiness
 
-Status: **testnet creation paused after a duplicate committed bounty was created;
-replacement deployment and verification are required, and production remains NO-GO**.
+Status: **the current source restores funded cancellation before provider
+acceptance and therefore differs from the verified testnet-v2 bytecode. Three
+revised testnet deployments and verification are required; production remains
+NO-GO**.
 
 The repository includes an original Foundry escrow implementation, deterministic and stateful invariant tests, a fail-closed wallet adapter, wallet-only persistence, and server-verified escrow observations. None of this constitutes an audit, legal approval, deployment authorization, or custody approval.
 
@@ -22,7 +24,8 @@ The repository includes an original Foundry escrow implementation, deterministic
   no later than the active delivery or review boundary; the proposer may cancel,
   and only the counterparty may accept an unexpired offer. Acceptance atomically
   pays the provider and refunds the full remainder to the requester.
-- Requester controls scope acceptance and pre-assignment cancellation.
+- The requester may cancel in `Created` or `Funded`; funded principal is returned
+  exactly. Cancellation is unavailable after the provider accepts onchain.
 - The selected provider controls acceptance and delivery; only the requester can approve delivery.
 - No arbiter, pause role, allowlist, marketplace administrator, or dispute path exists in Bounties.
 - WETH, BTREE, BIT, WBTC, USDC, and USDT are curated labels, but identity is always chain ID plus inspected contract address. Any ERC20 may be added through the same inspection boundary.
@@ -38,7 +41,8 @@ The repository includes an original Foundry escrow implementation, deterministic
 6. **Three-testnet replacement and soak** — the replacement `BountyEscrow`
    artifact with the one-time creation-key invariant is deployed and
    source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
-   Testnet. Before setting `VITE_ESCROW_CREATION_ENABLED=true`, exercise
+   Testnet. Before setting `VITE_ESCROW_CREATION_ENABLED=true` or
+   `VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED=true`, exercise
    every lifecycle branch, reconcile events against token balances, and run
    monitoring for at least one complete original-delivery and revised-delivery
    cycle on each network. Include both revision resubmission and missed-revision refund.
@@ -46,12 +50,15 @@ The repository includes an original Foundry escrow implementation, deterministic
 8. **Production canary** — operator-approved deployment with clearly published risk limits and a documented observation period before widening use.
 
 The immutable receipts, verification jobs, Safe address, deterministic salt, and
-bytecode hashes for the testnet deployment are in
+bytecode hashes for the preceding testnet-v2 deployment are in
 [`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json).
-All three replacement testnets use the same verified escrow address. The prior
+Those addresses enforce `Created`-only cancellation and are not deployment
+evidence for the revised source. Existing escrow records remain bound to their
+persisted contract address; new listings must not use the revised cancellation
+feature until new addresses are deployed, verified, and configured. The original
 deployment remains in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
-as retired incident evidence with zero BIT balance and liability; it is not a
-configured application target. No mainnet address is set.
+as retired incident evidence with zero BIT balance and liability. No mainnet
+address is set.
 
 ## Operator decisions still required
 

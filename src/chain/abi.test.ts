@@ -24,7 +24,7 @@ describe("escrow boundary ABI descriptor", () => {
 
   it("is pinned to the current compiler artifact and exposes its state-changing methods", () => {
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toBe(
-      "sha256:ffe78acb40df31468374905d22018e944f7919fe687f0d221b9e6fca7b155bae"
+      "sha256:915fbb69750901fd5655202a3bb460a5115163afd482b4b4c3e68dc742de0674"
     );
     expect(BOUNTY_ESCROW_ABI.map((entry) => ("name" in entry ? entry.name : undefined))).toEqual([
       "createBounty",

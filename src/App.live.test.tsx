@@ -13,6 +13,7 @@ afterEach(() => {
 async function renderConfiguredEscrow() {
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
   vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
   vi.resetModules();
   const { default: App } = await import("./App");
@@ -268,6 +269,7 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   configureMockEscrowRecordOutcomes(["pending", "success"]);
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
   vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
   window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
     "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
@@ -286,8 +288,7 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
 
-  expect(await screen.findByText(/applicant accepted.*cannot be cancelled unilaterally/i)).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: /cancel and refund before provider acceptance/i })).not.toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /cancel and refund before provider accepts terms/i })).toBeInTheDocument();
   expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
   expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
 });

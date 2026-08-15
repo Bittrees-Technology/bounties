@@ -90,6 +90,29 @@ contract BountyEscrowFundingFuzzTest is Test {
         assertEq(escrow.totalLiability(address(token)), amount);
     }
 
+    function testFuzzFundedCancellationBeforeProviderAcceptanceReturnsExactPrincipal(uint96 rawAmount, uint32 rawDelay)
+        public
+    {
+        uint256 amount = bound(rawAmount, 1, type(uint96).max);
+        uint64 deadline = uint64(block.timestamp + bound(uint256(rawDelay), 1, 30 days));
+        address provider = makeAddr("cancellation-fuzz-provider");
+        bytes32 scopeHash = _scopeHash(amount, deadline, bytes32(uint256(4)));
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        uint256 requesterBalanceAfterFunding = token.balanceOf(requester);
+
+        vm.prank(requester);
+        escrow.cancelBounty(bountyId);
+
+        BountyEscrow.Bounty memory cancelled = escrow.getBounty(bountyId);
+        assertEq(uint256(cancelled.state), uint256(IBountyEscrow.State.Cancelled));
+        assertEq(cancelled.amount, 0);
+        assertEq(token.balanceOf(requester), requesterBalanceAfterFunding + amount);
+        assertEq(token.balanceOf(address(escrow)), 0);
+        assertEq(escrow.totalLiability(address(token)), 0);
+    }
+
     function testFuzzRefundBoundary(uint96 rawAmount, uint32 rawDelay) public {
         uint256 amount = bound(rawAmount, 1, type(uint96).max);
         uint64 deadline = uint64(block.timestamp + bound(uint256(rawDelay), 1, 30 days));

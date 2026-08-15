@@ -403,19 +403,19 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         emit SettlementProposalCancelled(bountyId, proposer);
     }
 
-    /// @notice Closes an unfunded bounty record before principal enters escrow.
-    /// @dev Funding commits the requester to the selected provider. Funded principal can only
-    ///      leave through delivery, a bilateral settlement, or the deterministic deadline refund.
+    /// @notice Cancels a bounty before the committed provider has accepted it onchain.
+    /// @dev A funded cancellation refunds exact principal and still terminates as `Cancelled`.
     function cancelBounty(uint256 bountyId) external override nonReentrant {
         Bounty storage bounty = _getBounty(bountyId);
         _onlyRequester(bountyId, bounty);
         State current = bounty.state;
-        if (current != State.Created) {
+        if (current != State.Created && current != State.Funded) {
             revert CancellationUnavailable(bountyId, current);
         }
 
         IERC20 token = bounty.token;
         uint256 amount = bounty.amount;
+        if (amount != 0) _requireSolvent(token);
 
         bounty.amount = 0;
         _clearSettlement(bounty);
