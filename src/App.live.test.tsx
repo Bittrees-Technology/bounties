@@ -289,7 +289,8 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
 
-  expect(await screen.findByRole("button", { name: /cancel and refund before provider acceptance/i })).toBeInTheDocument();
+  expect(await screen.findByText(/applicant accepted.*cannot be cancelled unilaterally/i)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /cancel and refund before provider acceptance/i })).not.toBeInTheDocument();
   expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
   expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
 });

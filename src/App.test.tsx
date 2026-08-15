@@ -75,9 +75,9 @@ describe("App", () => {
     expect(within(alternativeOutcomes).getByText("Refunded")).toBeInTheDocument();
     expect(within(alternativeOutcomes).getByText("Settled")).toBeInTheDocument();
     expect(Array.from(alternativeOutcomes.querySelectorAll("article > span")).map((outcome) => outcome.textContent)).toEqual([
-      "Created / Funded → Cancelled",
+      "Created → Cancelled",
       "Delivered → ProviderAccepted",
-      "ProviderAccepted → Refunded",
+      "Funded / ProviderAccepted → Refunded",
       "Funded / ProviderAccepted / Delivered / BuyerApproved → Settled"
     ]);
     expect(within(escrowWorkflow).getByRole("link", { name: /read the escrow lifecycle/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md#lifecycle"));

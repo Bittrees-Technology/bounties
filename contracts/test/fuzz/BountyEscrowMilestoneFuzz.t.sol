@@ -234,8 +234,8 @@ contract MilestoneInvariantHandler is Test {
     function refund() external {
         IBountyEscrow.Bounty memory bounty = escrow.getBounty(bountyId);
         if (
-            bounty.state != IBountyEscrow.State.ProviderAccepted || bounty.deliveryDeadline == 0
-                || block.timestamp < bounty.deliveryDeadline
+            (bounty.state != IBountyEscrow.State.Funded && bounty.state != IBountyEscrow.State.ProviderAccepted)
+                || bounty.deliveryDeadline == 0 || block.timestamp < bounty.deliveryDeadline
         ) return;
         vm.prank(address(0xCA11));
         escrow.refundBounty(bountyId);

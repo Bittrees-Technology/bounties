@@ -403,19 +403,19 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         emit SettlementProposalCancelled(bountyId, proposer);
     }
 
-    /// @notice Cancels a bounty before any provider has accepted it.
-    /// @dev A funded cancellation refunds exact principal and still terminates as `Cancelled`.
+    /// @notice Closes an unfunded bounty record before principal enters escrow.
+    /// @dev Funding commits the requester to the selected provider. Funded principal can only
+    ///      leave through delivery, a bilateral settlement, or the deterministic deadline refund.
     function cancelBounty(uint256 bountyId) external override nonReentrant {
         Bounty storage bounty = _getBounty(bountyId);
         _onlyRequester(bountyId, bounty);
         State current = bounty.state;
-        if (current != State.Created && current != State.Funded) {
+        if (current != State.Created) {
             revert CancellationUnavailable(bountyId, current);
         }
 
         IERC20 token = bounty.token;
         uint256 amount = bounty.amount;
-        if (amount != 0) _requireSolvent(token);
 
         bounty.amount = 0;
         _clearSettlement(bounty);
@@ -427,12 +427,15 @@ contract BountyEscrow is IBountyEscrow, ReentrancyGuard {
         if (amount != 0) _pushExact(token, msg.sender, amount, remainingLiability);
     }
 
-    /// @notice Refunds an accepted bounty that was not delivered before its deadline.
+    /// @notice Refunds a funded bounty that was not delivered before its deadline.
     /// @dev Anyone may trigger the deterministic refund, but funds always return to the requester.
     ///      The exact boundary is inclusive: `block.timestamp >= deliveryDeadline`.
     function refundBounty(uint256 bountyId) external override nonReentrant {
         Bounty storage bounty = _getBounty(bountyId);
-        _onlyState(bountyId, bounty, State.ProviderAccepted);
+        State current = bounty.state;
+        if (current != State.Funded && current != State.ProviderAccepted) {
+            revert InvalidState(bountyId, current, State.ProviderAccepted);
+        }
 
         uint64 deliveryDeadline = bounty.deliveryDeadline;
         if (deliveryDeadline == 0 || block.timestamp < deliveryDeadline) {

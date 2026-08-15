@@ -228,7 +228,9 @@ interface IBountyEscrow {
     function proposeSettlement(uint256 bountyId, uint256 providerPayout) external;
     function acceptSettlement(uint256 bountyId, uint256 providerPayout) external;
     function cancelSettlementProposal(uint256 bountyId) external;
+    /// @notice Closes only an unfunded `Created` record. Funding commits the requester to the provider.
     function cancelBounty(uint256 bountyId) external;
+    /// @notice Returns missed-deadline funds from `Funded` or `ProviderAccepted` to the requester.
     function refundBounty(uint256 bountyId) external;
     function getBounty(uint256 bountyId) external view returns (Bounty memory);
     function getMilestone(uint256 bountyId, uint256 milestoneIndex) external view returns (Milestone memory);

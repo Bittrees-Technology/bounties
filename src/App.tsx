@@ -1778,7 +1778,7 @@ export default function App() {
       && settlementProposer?.toLowerCase() === wallet?.toLowerCase();
     const reviewReady = Boolean(activeMilestone) && evidenceCommitmentMatches && (state === "BuyerApproved" && activeMilestoneState === "Approved" && approvalCommitmentMatches
       || (state === "Delivered" && activeMilestoneState === "Submitted" && activeReviewDeadline !== null && activeReviewDeadline <= Date.now()));
-    const timeoutReady = Boolean(activeMilestone) && state === "ProviderAccepted" && activeMilestoneState === "Pending"
+    const timeoutReady = Boolean(activeMilestone) && (state === "Funded" || state === "ProviderAccepted") && activeMilestoneState === "Pending"
       && activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now();
     const releaseLabel = activeMilestone ? `Release ${activeMilestone.label} payment` : "Release current milestone payment";
     const completedSplit = completedSettlementSplit(
@@ -1877,7 +1877,7 @@ export default function App() {
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && !evidenceCommitmentMatches ? <p className="commitment-warning" role="alert">Delivery evidence does not match the current onchain milestone. Refresh canonical escrow state before reviewing or approving this work.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && !derivedApprovalHash ? <p className="commitment-warning" role="alert">The canonical approval commitment is not ready. Refresh this bounty before approving the milestone.</p> : null}
         {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>{releaseLabel}</button> : null}
-        {state === "Funded" && isBuyer(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel and refund before provider acceptance</button> : null}
+        {state === "Funded" && isBuyer(order) ? <p className="escrow-commitment-notice"><CheckCircle2 size={16} aria-hidden="true" /> Applicant accepted. This funded escrow cannot be cancelled unilaterally. If work is not submitted by the delivery deadline, the funds can be returned to you.</p> : null}
         {timeoutReady ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
         {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
         {activeMilestone && milestoneCount ? <p className="form-hint">Active milestone {currentMilestone! + 1} of {milestoneCount}: {activeMilestone.label}</p> : null}
@@ -2688,9 +2688,9 @@ export default function App() {
                 </ol>
                 <p className="workflow-continuation">For milestone bounties, each release pays only the active allocation. If another milestone remains, the contract returns to <strong>ProviderAccepted</strong>; the final payment ends in <strong>Released</strong>.</p>
                 <div className="workflow-alternatives" aria-label="Alternative escrow outcomes">
-                  <article><strong>Cancelled</strong><span><b>Created / Funded</b> → Cancelled</span><small>The requester may cancel before provider acceptance; funded principal returns to the requester.</small></article>
+                  <article><strong>Cancelled</strong><span><b>Created</b> → Cancelled</span><small>An unfunded record may be closed before principal enters escrow.</small></article>
                   <article><strong>Revision</strong><span><b>Delivered</b> → ProviderAccepted</span><small>During review, the requester may request one revision; the provider receives seven days to resubmit.</small></article>
-                  <article><strong>Refunded</strong><span><b>ProviderAccepted</b> → Refunded</span><small>A missed active delivery or revision deadline returns all unreleased principal to the requester.</small></article>
+                  <article><strong>Refunded</strong><span><b>Funded / ProviderAccepted</b> → Refunded</span><small>A missed active delivery or revision deadline returns all unreleased principal to the requester.</small></article>
                   <article><strong>Settled</strong><span><b>Funded / ProviderAccepted / Delivered / BuyerApproved</b> → Settled</span><small>Either party may propose an exact split; only the counterparty can accept it before expiry.</small></article>
                 </div>
                 <a className="workflow-docs-link" href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md#lifecycle" target="_blank" rel="noreferrer noopener">Read the escrow lifecycle <ExternalLink size={13} /></a>

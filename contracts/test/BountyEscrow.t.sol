@@ -801,7 +801,7 @@ contract BountyEscrowTest is Test {
         assertEq(escrow.totalLiability(address(blockingToken)), 0);
     }
 
-    function testCancellationRefundsBeforeAcceptanceAndBlocksAfterAcceptance() public {
+    function testCancellationClosesOnlyUnfundedRecordAndBlocksFundedCommitment() public {
         uint256 amount = 750 ether;
         uint64 deadline = uint64(block.timestamp + 2 days);
         bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(14)));
@@ -826,13 +826,17 @@ contract BountyEscrowTest is Test {
             escrow.createBounty(address(token), amount, deadline, fundedScopeHash, provider, PROPOSAL_HASH);
         uint256 requesterBefore = token.balanceOf(requester);
 
-        vm.expectEmit(true, true, true, true);
-        emit IBountyEscrow.BountyCancelled(fundedId, requester, address(token), amount);
+        vm.expectRevert(
+            abi.encodeWithSelector(IBountyEscrow.CancellationUnavailable.selector, fundedId, IBountyEscrow.State.Funded)
+        );
         vm.prank(requester);
         escrow.cancelBounty(fundedId);
 
-        assertEq(token.balanceOf(requester), requesterBefore + amount);
-        assertEq(escrow.totalLiability(address(token)), 0);
+        BountyEscrow.Bounty memory funded = escrow.getBounty(fundedId);
+        assertEq(uint256(funded.state), uint256(IBountyEscrow.State.Funded));
+        assertEq(funded.amount, amount);
+        assertEq(token.balanceOf(requester), requesterBefore);
+        assertEq(escrow.totalLiability(address(token)), amount);
 
         bytes32 acceptedScopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(151)));
         bytes32 acceptedTermsHash = _termsHash(acceptedScopeHash, PROPOSAL_HASH, provider);
@@ -849,6 +853,31 @@ contract BountyEscrowTest is Test {
         );
         vm.prank(requester);
         escrow.cancelBounty(acceptedId);
+    }
+
+    function testFundedBountyRefundsAtDeadlineWhenProviderNeverAccepts() public {
+        uint256 amount = 625 ether;
+        uint64 deadline = uint64(block.timestamp + 1 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(152)));
+        uint256 requesterBefore = token.balanceOf(requester);
+
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+
+        vm.expectRevert(abi.encodeWithSelector(IBountyEscrow.RefundNotAvailable.selector, bountyId, deadline));
+        escrow.refundBounty(bountyId);
+
+        vm.warp(deadline);
+        vm.expectEmit(true, true, true, true);
+        emit IBountyEscrow.BountyRefunded(bountyId, requester, address(token), amount, deadline);
+        vm.prank(stranger);
+        escrow.refundBounty(bountyId);
+
+        BountyEscrow.Bounty memory refunded = escrow.getBounty(bountyId);
+        assertEq(uint256(refunded.state), uint256(IBountyEscrow.State.Refunded));
+        assertEq(refunded.amount, 0);
+        assertEq(token.balanceOf(requester), requesterBefore);
+        assertEq(escrow.totalLiability(address(token)), 0);
     }
 
     function testRefundRequiresDeadlineAndIsAllowedExactlyAtBoundary() public {
