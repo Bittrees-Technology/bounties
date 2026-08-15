@@ -1,20 +1,24 @@
 # Multi-network testnet review packet
 
-Status: revised pre-provider-acceptance cancellation source and tests prepared;
-deployment template unexecuted.
+Status: testnet-v3 deployed through the 1-of-1 operations Safe, runtime bytecode
+matched locally, and source verified with exact matches on all three testnets.
+Mainnet remains unauthorized.
 
 ## Intended review configuration
 
 - Networks: Ethereum Sepolia (11155111), Base Sepolia (84532), and Robinhood
-  Chain Testnet (46630), none selected for broadcast in this repository.
-- Sender: unset; deployment-operator is the only default broadcaster.
-- Target: one new revised deployment per test network; no address exists for
-  this source revision.
+  Chain Testnet (46630).
+- Sender: operations Safe `0x594f3B031992C2d6855383b3755653D6Fde35F01`,
+  with its 1-of-1 owner approving each testnet transaction.
+- Target: deterministic `BountyEscrow` address
+  `0x45b64083d97947D5872464d8C1b6045f83D0193e` on all three networks.
 - Constructor: none; the contract creates no administrator or privileged role.
 - Review token: `TOKEN_ADDRESS`; not transferred or approved by this task.
 - Value: 0 native ETH in constructor and all v1 bounty operations.
-- Calldata/gas/simulation: pending operator-selected addresses and preflight.
-- Expected state change: deployment only, followed by source and bytecode verification.
+- Calldata/gas/simulation: Safe/CreateCall CREATE2 calldata generated from the
+  pinned Foundry artifact and simulated before each broadcast.
+- Expected state change: deployment only; no escrow record, token approval, or
+  token transfer was included.
 - Abort conditions: bytecode mismatch, unsupported chain ID, failed simulation, unexpected
   token behavior, missing validator approval, or any funded/mainnet intent.
 - Monitoring: deployment receipt, bytecode verification, bounty transition events,
@@ -24,11 +28,10 @@ deployment template unexecuted.
 
 Foundry: `forge 1.7.1` (`4072e48705af9d93e3c0f6e29e93b5e9a40caed8`).
 
-The Operations/GitHub release gate must rerun `forge fmt --check`, `forge build`,
-and `forge test` from the contract package rather than relying on checked-in
-generated logs. It must include milestone unit, fuzz, and stateful invariant
-suites. No current pass count is asserted because manual contract test execution
-is intentionally held for Operations/CI.
+The release gate reruns `forge fmt --check`, `forge build`, and `forge test` from
+the contract package rather than relying on checked-in generated logs. The
+deployment artifact passed 71 tests, including milestone unit, fuzz, and stateful
+invariant suites, immediately before deployment.
 
 Timestamp comparisons cover both boundaries: timeout refund is available at
 `deliveryDeadline`, while permissionless full release is available at the stored
@@ -50,4 +53,6 @@ Cancellation review must prove both `Created -> Cancelled` and
 remaining liability. The same call must revert in `ProviderAccepted` and every
 later state.
 
-No RPC, fork, broadcast, funded transaction, or deployment command was run.
+Receipt, bytecode, Safe authority, deterministic salt, and source-verification
+evidence are recorded in [`deployments/testnet-v3.json`](deployments/testnet-v3.json).
+No mainnet transaction, private key, token approval, or escrow funding was used.

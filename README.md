@@ -37,10 +37,10 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Provide wallet profiles with owner-managed public details and separate reputation
   summaries for capital-provider payment experience and labor-provider service work.
 - Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported
-  test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). The verified
-  testnet deployments are recorded in
-  [the replacement deployment manifest](contracts/deployments/testnet-v2.json); mainnet remains
-  unset and fail-closed.
+  test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). The current
+  exact-match verified testnet deployments are recorded in
+  [the v3 deployment manifest](contracts/deployments/testnet-v3.json); mainnet
+  remains unset and fail-closed.
 - Ship with mainnet settlement fail-closed; the contract boundary defines mandatory
   delivery deadlines, one seven-day revision window per milestone, seven-day
   post-delivery release, and bilateral exact-split settlement, while wallet

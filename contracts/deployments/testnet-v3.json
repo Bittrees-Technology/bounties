@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "contract": "src/BountyEscrow.sol:BountyEscrow",
+  "sourceCommit": "bca878b260729a0b9b6eda5132c7fc8b5556792e",
+  "compiler": {
+    "version": "0.8.24",
+    "evmVersion": "shanghai",
+    "optimizer": true,
+    "optimizerRuns": 200
+  },
+  "deployment": {
+    "method": "Safe 1.4.1 execTransaction to CreateCall 1.4.1 performCreate2",
+    "createCallAddress": "0x9b35Af71d77eaf8d7e40252370304687390A1A52",
+    "safeAddress": "0x594f3B031992C2d6855383b3755653D6Fde35F01",
+    "safeOwner": "0xE5350D96FC3161BF5c385843ec5ee24E8B465B2f",
+    "safeThreshold": 1,
+    "saltPhrase": "bounties-escrow-v3-staged-milestone-funding-2026-08-16",
+    "salt": "0x918c3fdb4d42e65565dbde9a67eb4d5b4cb3a2a905ffd1fa25b73be751dd3f4c",
+    "contractAddress": "0x45b64083d97947D5872464d8C1b6045f83D0193e",
+    "creationBytecodeBytes": 16804,
+    "runtimeBytecodeBytes": 16767,
+    "creationBytecodeKeccak256": "0xef774c502de5a2d80e4fb2af38af9f28d326562d08689fb0cd60cd0ea22abc97",
+    "runtimeBytecodeKeccak256": "0x1c994fba792bba77ac3e0d875d27f3cfd9ce95b8f078c487ab41f5dec63bfae9",
+    "runtimeAuthority": "none; the deployment Safe, owner, and CreateCall factory receive no escrow role"
+  },
+  "networks": [
+    {
+      "name": "Ethereum Sepolia",
+      "chainId": 11155111,
+      "transactionHash": "0xf0601a41617d2f6149bee9e7f7fd2bea639dfc4d7e7320da5ad46d42871c7cee",
+      "blockNumber": 11497406,
+      "deployedAt": "2026-08-15T23:33:48Z",
+      "gasUsed": "3917907",
+      "transactionFeeWei": "8307547257262428",
+      "explorerUrl": "https://sepolia.etherscan.io/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match",
+        "creationMatch": "exact_match",
+        "runtimeMatch": "exact_match",
+        "jobId": "53c2b462-9930-46d0-a21f-ad00320426c9"
+      }
+    },
+    {
+      "name": "Base Sepolia",
+      "chainId": 84532,
+      "transactionHash": "0x487c1957bd9037459cebf6b2ade446c08d942931caacf295acc0d2a1593944ba",
+      "blockNumber": 45534440,
+      "deployedAt": "2026-08-15T23:39:28Z",
+      "gasUsed": "3917907",
+      "transactionFeeWei": "43616456460391",
+      "explorerUrl": "https://sepolia.basescan.org/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match",
+        "creationMatch": "exact_match",
+        "runtimeMatch": "exact_match",
+        "jobId": "cd06605d-cf9e-4503-a00d-28c46d6797ca"
+      }
+    },
+    {
+      "name": "Robinhood Chain Testnet",
+      "chainId": 46630,
+      "safeActivationTransactionHash": "0xd65a8c165a44ad004f2d2682850ee40c4b58a136314b58f67d65fd218ca2db7a",
+      "safeActivationBlockNumber": 100452376,
+      "transactionHash": "0x4a9dbed97b90075567e8fff78cacc27a2fcd0d8cdff5c51434b22dc843ee0268",
+      "blockNumber": 101847230,
+      "deployedAt": "2026-08-15T23:47:23Z",
+      "gasUsed": "4240089",
+      "transactionFeeWei": "42400890000000",
+      "explorerUrl": "https://explorer.testnet.chain.robinhood.com/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match",
+        "creationMatch": "exact_match",
+        "runtimeMatch": "exact_match",
+        "jobId": "0e3ed592-7af1-4c7d-bef5-f7089f705e17"
+      }
+    }
+  ],
+  "applicationConfiguration": {
+    "environment": "Vercel production",
+    "configuredAt": "2026-08-15T23:55:00Z",
+    "serverAddressVariablesUpdated": true,
+    "clientAddressVariablesUpdated": true,
+    "stagedMilestoneFundingEnabled": true,
+    "legacyAddressVariablesConfigured": false
+  },
+  "predecessor": {
+    "manifest": "testnet-v2.json",
+    "contractAddress": "0xD894B170EEeB78a440892f942cB5dCE1c23FC7ED",
+    "status": "retired from application configuration; immutable records, if any, remain bound to their persisted contract address"
+  },
+  "mainnetAuthorized": false
+}

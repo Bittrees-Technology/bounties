@@ -10,15 +10,16 @@ same committed terms reverts with `DuplicateBounty` before any ERC20 transfer.
 The reservation remains after cancellation or settlement, so an intentional
 replacement must use a freshly salted scope commitment.
 
-The preceding deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain
-Testnet deployments, Safe authority, transaction receipts, bytecode hashes, and
-source verification records are published in [`deployments/testnet-v2.json`](deployments/testnet-v2.json).
-Those immutable addresses predate staged milestone funding and differ from this
-source. A verified testnet-v3 release is required before the staged-funding
-feature flag can be enabled. The predecessor deployment
-is retired with zero BIT balance and liability. It remains recorded in
-[`deployments/testnet.json`](deployments/testnet.json) as incident evidence and
-is not a configured application target.
+The deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain Testnet
+deployments for this source, together with Safe authority, transaction receipts,
+bytecode hashes, and exact-match source verification records, are published in
+[`deployments/testnet-v3.json`](deployments/testnet-v3.json). All three networks
+use `0x45b64083d97947D5872464d8C1b6045f83D0193e`; Vercel production is configured
+for this address and staged milestone funding. The preceding v2 release is
+retired from application configuration and remains recorded in
+[`deployments/testnet-v2.json`](deployments/testnet-v2.json). The original
+deployment remains in [`deployments/testnet.json`](deployments/testnet.json) as
+incident evidence and is not a configured application target.
 
 Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
 address. Token symbols, decimals, names, and offchain prices are never read.
@@ -173,6 +174,7 @@ forge build
 forge test
 ```
 
-No RPC endpoint, signer, fork, deployment, or broadcast is required. The script
-package contains only a local construction/simulation template and no broadcast
-instruction.
+No RPC endpoint, signer, fork, deployment, or broadcast is required for local
+development or tests. The reproducible deployment-batch generator records the
+reviewed Safe/CreateCall calldata used by operations; it contains no private key
+or automatic signer.

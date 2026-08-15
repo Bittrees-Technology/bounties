@@ -1,9 +1,9 @@
 # Escrow production readiness
 
 Status: **the current source restores funded cancellation before provider
-acceptance and adds opt-in sequential milestone funding. It therefore differs
-from the verified testnet-v2 bytecode. Three testnet-v3 deployments and
-verification are required; production remains NO-GO**.
+acceptance and adds opt-in sequential milestone funding. Exact-match testnet-v3
+deployments are configured on all three approved test networks. Lifecycle soak,
+independent audit, and mainnet authorization remain NO-GO gates**.
 
 The repository includes an original Foundry escrow implementation, deterministic and stateful invariant tests, a fail-closed wallet adapter, wallet-only persistence, and server-verified escrow observations. None of this constitutes an audit, legal approval, deployment authorization, or custody approval.
 
@@ -49,29 +49,30 @@ The repository includes an original Foundry escrow implementation, deterministic
 4. **Deployment authority** — use the operations-controlled deployment process, verify source and bytecode, document the deployer, and confirm the deployer receives no runtime authority over user records or escrow outcomes.
 5. **Legal/compliance approval** — publish escrow terms covering custody characterization, buyer/provider IP, refunds, sanctions/AML posture, tax/reporting, contributor classification, jurisdiction, and privacy.
 6. **Three-testnet-v3 replacement and soak** — the replacement `BountyEscrow`
-   artifact with the one-time creation-key invariant is deployed and
-   source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
+   artifact with the one-time creation-key invariant is deployed, bytecode-matched,
+   and source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
    Testnet. Before setting `VITE_ESCROW_CREATION_ENABLED=true` or
    `VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED=true`, exercise
    every lifecycle branch, reconcile events against token balances, and run
    monitoring for at least one complete original-delivery and revised-delivery
    cycle on each network. Include both revision resubmission, missed-revision
    refund, staged next-milestone funding, duplicate-tranche rejection, and
-   unfunded partial closure. Set `VITE_ESCROW_STAGED_MILESTONE_FUNDING_ENABLED=true`
-   only after the configured address is verified as this staged-funding artifact.
+   unfunded partial closure. `VITE_ESCROW_STAGED_MILESTONE_FUNDING_ENABLED=true`
+   now targets only the exact-match v3 address; this enables testnet rehearsal,
+   not mainnet or production-value approval.
 7. **Operations readiness** — alert on unexpected balances, failed transactions, receipt-reconciliation failures, and application rollback conditions; rehearse incident response and frontend rollback.
 8. **Production canary** — operator-approved deployment with clearly published risk limits and a documented observation period before widening use.
 
-The immutable receipts, verification jobs, Safe address, deterministic salt, and
-bytecode hashes for the preceding testnet-v2 deployment are in
-[`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json).
-Those addresses enforce `Created`-only cancellation and are not deployment
-evidence for the revised source. Existing escrow records remain bound to their
-persisted contract address; new listings must not use the revised cancellation
-feature until new addresses are deployed, verified, and configured. The original
-deployment remains in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
+The immutable receipts, exact-match verification jobs, Safe address,
+deterministic salt, and bytecode hashes for the current v3 release are in
+[`contracts/deployments/testnet-v3.json`](../contracts/deployments/testnet-v3.json).
+The preceding v2 release remains in
+[`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json)
+and is retired from application configuration. Existing escrow records always
+remain bound to their persisted contract address. The original deployment remains
+in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
 as retired incident evidence with zero BIT balance and liability. No mainnet
-address is set.
+address is set or authorized.
 
 ## Operator decisions still required
 
