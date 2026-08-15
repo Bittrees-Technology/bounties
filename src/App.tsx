@@ -1945,7 +1945,7 @@ export default function App() {
 
         {escrowControls(order)}
 
-        {order.escrowObservation ? (
+        {order.escrowObservation && order.escrowObservation.onchain_state !== "Settled" ? (
           <div className="escrow-lifecycle-controls" role="group" aria-label="Escrow lifecycle controls">
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}

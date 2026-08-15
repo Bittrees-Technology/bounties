@@ -437,6 +437,8 @@ it("shows an exact terminal settlement receipt and unlocks participant reviews",
   expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
   expect(order.queryByLabelText(/labor provider amount/i)).not.toBeInTheDocument();
   expect(order.queryByRole("button", { name: /propose settlement|accept current exact split|cancel my settlement proposal/i })).not.toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /refresh canonical escrow state/i })).not.toBeInTheDocument();
+  expect(order.queryByRole("group", { name: /escrow lifecycle controls/i })).not.toBeInTheDocument();
   expect(order.getByLabelText(/original funded escrow/i)).toHaveTextContent(/original escrow funded.*settlement completed on Base Sepolia.*Settled/i);
   expect(within(order.getByLabelText(/original funded escrow/i)).getByRole("link", { name: /view original funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
   expect(within(order.getByRole("list", { name: /bounty progress/i })).getByText(/^Settlement completed$/i).closest("li")).toHaveClass("current");
