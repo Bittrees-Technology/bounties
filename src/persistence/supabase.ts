@@ -1,9 +1,9 @@
 import { parseCriteria, parseSupport, resolvedCategory, resolvedWorkType } from "../bountyModel";
 import { SIWE_AUTHENTICATION_METHOD, validateSiweChallenge } from "../auth/siwe";
 import { hashSourceJson } from "../chain/hashCodec";
-import type { MarketplaceOrder, Proposal, RequestDraft } from "../types";
+import type { ApplicationSupportingMaterial, MarketplaceOrder, Proposal, RequestDraft } from "../types";
 import { formatUnits, getAddress, keccak256, toHex } from "viem";
-import { canonicalizeDeliveryProofUri, type DeliveryProofMethod } from "../deliveryProof";
+import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryProofMethod } from "../deliveryProof";
 
 type EthereumProvider = { request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> };
 declare global { interface Window { ethereum?: EthereumProvider } }
@@ -228,7 +228,7 @@ export type ModerationReport = {
 };
 type Evidence = { id: string; uri: string; description?: string | null; content_hash: string; evidence_hash: string; canonical_approval_hash?: string | null; revision: number };
 type ApiMilestone = { id: string; ordinal: number; title: string; amount_base_units: string; delivery_deadline?: string | null; status: string; evidence?: Evidence[]; revision_request?: { reason: string; reason_hash: `0x${string}`; transaction_hash: `0x${string}` } | null; scope_source?: { criteria?: string[]; deliveryDeadline?: string } };
-export type ApiProposal = { id: string; provider_id: string; provider_wallet_address: string; proposal_hash: string | null; note: string; proposed_total_base_units: string; status: string };
+export type ApiProposal = { id: string; provider_id: string; provider_wallet_address: string; proposal_hash: string | null; note: string; proposed_total_base_units: string; proposed_milestones?: unknown; status: string };
 export type BountyRow = { id: string; creator_id: string; title: string; description: string; scope_source: Record<string, unknown>; scope_hash: `0x${string}`; chain_id: number; token_id: string; token_decimals: number; budget_base_units: string; status: string; escrow_schedule_status?: "structured" | "requires_recreation"; moderation_status?: "visible" | "hidden"; moderation_reason?: string | null; created_at: string; accepted_proposal_id?: string; token: TokenRecord; milestones: ApiMilestone[]; proposals: ApiProposal[]; escrow?: EscrowObservation | null; reviews?: ParticipantReview[] };
 export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; myReports: ModerationReport[]; moderationReports: ModerationReport[] };
 export type RatingSummary = {
@@ -278,6 +278,30 @@ export function toBase(amount: number | string, decimals: number): string {
 }
 const status = (value: string): MarketplaceOrder["status"] => value === "accepted" ? "matched" : value === "funding_pending" || value === "funded" ? "escrowed" : value === "completed" ? "accepted" : "open";
 
+function mapApplicationSupportingMaterials(value: unknown): ApplicationSupportingMaterial[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+    const material = candidate as Record<string, unknown>;
+    if (material.kind !== "application-supporting-material.v1"
+      || !isDeliveryProofMethod(material.proofMethod)
+      || typeof material.uri !== "string") return [];
+    try {
+      const uri = canonicalizeDeliveryProofUri(material.uri, material.proofMethod);
+      const description = typeof material.description === "string" && material.description.trim().length <= 1_000
+        ? material.description.trim() || undefined
+        : undefined;
+      const normalizedHash = typeof material.contentHash === "string" ? material.contentHash.trim().toLowerCase() : "";
+      const contentHash = /^0x[0-9a-f]{64}$/.test(normalizedHash) && !/^0x0{64}$/.test(normalizedHash)
+        ? normalizedHash as `0x${string}`
+        : undefined;
+      return [{ kind: "application-supporting-material.v1" as const, proofMethod: material.proofMethod, uri, description, contentHash }];
+    } catch {
+      return [];
+    }
+  }).slice(0, 1);
+}
+
 export function mapBounty(row: BountyRow): MarketplaceOrder {
   const source = row.scope_source ?? {};
   const criteria = Array.isArray(source.criteria) ? source.criteria as string[] : [];
@@ -290,7 +314,7 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
       provider: providerAddress.toLowerCase(),
       amountBaseUnits: p.proposed_total_base_units
     })));
-    return { id: p.id, provider: providerAddress, providerId: p.provider_id, providerAddress, proposalHash, note: p.note, proposedBudget: fromBase(p.proposed_total_base_units, row.token_decimals) };
+    return { id: p.id, provider: providerAddress, providerId: p.provider_id, providerAddress, proposalHash, note: p.note, proposedBudget: fromBase(p.proposed_total_base_units, row.token_decimals), supportingMaterials: mapApplicationSupportingMaterials(p.proposed_milestones) };
   });
   const accepted = proposals.find(p => p.id === row.accepted_proposal_id);
   const milestones = (row.milestones ?? []).map((m) => {
@@ -380,7 +404,30 @@ export const inspectToken = async (chainId: number, contractAddress: string): Pr
     throw error;
   }
 };
-export const createProposal = (order: MarketplaceOrder, note: string) => request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), proposedMilestones: [] }) });
+export type ApplicationSupportingMaterialDraft = Pick<ApplicationSupportingMaterial, "proofMethod" | "uri"> & Partial<Pick<ApplicationSupportingMaterial, "description" | "contentHash">>;
+
+export const createProposal = (order: MarketplaceOrder, note: string, material?: ApplicationSupportingMaterialDraft) => {
+  const applicationMaterials: ApplicationSupportingMaterial[] = [];
+  if (material) {
+    const uri = canonicalizeDeliveryProofUri(material.uri, material.proofMethod);
+    const description = material.description?.trim() || undefined;
+    if (description && (description.length > 1_000 || hasDisallowedPlainTextControl(description))) {
+      throw new PersistenceError("Supporting-material descriptions must be plain text containing no more than 1,000 characters.");
+    }
+    const normalizedHash = material.contentHash?.trim().toLowerCase() ?? "";
+    if (normalizedHash && (!/^0x[0-9a-f]{64}$/.test(normalizedHash) || /^0x0{64}$/.test(normalizedHash))) {
+      throw new PersistenceError("A supporting-material SHA-256 digest must be 0x followed by 64 hexadecimal characters.");
+    }
+    applicationMaterials.push({
+      kind: "application-supporting-material.v1",
+      proofMethod: material.proofMethod,
+      uri,
+      description,
+      contentHash: normalizedHash ? normalizedHash as `0x${string}` : undefined
+    });
+  }
+  return request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), applicationMaterials }) });
+};
 export const acceptProposal = async (bountyId: string, proposalId: string): Promise<MarketplaceOrder> => mapBounty(await request<BountyRow>("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) }));
 function hasDisallowedPlainTextControl(value: string): boolean {
   return [...value].some((character) => {

@@ -292,6 +292,47 @@ function deliveryDescriptionField(body: Record<string, unknown>): string | null 
   return description;
 }
 
+function applicationMaterialsField(body: Record<string, unknown>): Array<Record<string, unknown>> {
+  const raw = body.applicationMaterials;
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw) || raw.length > 1) throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+  return raw.map((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+      throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+    }
+    const material = candidate as Record<string, unknown>;
+    if (material.kind !== "application-supporting-material.v1" || !isDeliveryProofMethod(material.proofMethod) || typeof material.uri !== "string") {
+      throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+    }
+    let uri: string;
+    try {
+      uri = canonicalizeDeliveryProofUri(material.uri, material.proofMethod as DeliveryProofMethod);
+    } catch {
+      throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+    }
+    const rawDescription = material.description;
+    const description = typeof rawDescription === "string" ? rawDescription.trim() : "";
+    if (rawDescription !== undefined && typeof rawDescription !== "string"
+      || description.length > 1_000
+      || hasDisallowedPlainTextControl(description)) {
+      throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+    }
+    const rawContentHash = material.contentHash;
+    const contentHash = typeof rawContentHash === "string" ? rawContentHash.trim().toLowerCase() : "";
+    if (rawContentHash !== undefined && typeof rawContentHash !== "string"
+      || contentHash && (!/^0x[0-9a-f]{64}$/.test(contentHash) || /^0x0{64}$/.test(contentHash))) {
+      throw new ApiError("INVALID_APPLICATION_MATERIALS", 400);
+    }
+    return {
+      kind: "application-supporting-material.v1",
+      proofMethod: material.proofMethod,
+      uri,
+      ...(description ? { description } : {}),
+      ...(contentHash ? { contentHash } : {})
+    };
+  });
+}
+
 function optionalBoolean(body: Record<string, unknown>, field: string, fallback = false): boolean {
   const value = body[field];
   if (value === undefined || value === null) return fallback;
@@ -1658,7 +1699,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_bounty_id: requiredUuid(body, "bountyId"),
       p_note: requiredString(body, "note"),
       p_proposed_total_base_units: baseUnitString(body, "proposedTotalBaseUnits"),
-      p_proposed_milestones: requiredJsonArray(body, "proposedMilestones")
+      p_proposed_milestones: applicationMaterialsField(body)
     });
     return Response.json(data, { headers });
   }

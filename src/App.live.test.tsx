@@ -73,6 +73,9 @@ it("keeps applicant acceptance visible when immediate wallet funding does not fi
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  expect(await screen.findByRole("link", { name: /open supporting material/i })).toHaveAttribute("href", "https://github.com/example/work/pull/12");
+  expect(screen.getByText("A comparable public implementation.")).toBeInTheDocument();
+  expect(screen.getByText(/sha-256:/i)).toHaveTextContent(`0x${"ab".repeat(32)}`);
   await user.click(await screen.findByRole("button", { name: /accept applicant and fund/i }));
 
   expect(await screen.findByText(/applicant accepted\. escrow funding did not finish/i)).toBeInTheDocument();

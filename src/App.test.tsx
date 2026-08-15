@@ -746,6 +746,26 @@ describe("App", () => {
     expect(screen.getByLabelText(/your application/i)).toBeInTheDocument();
     expect(screen.getByText(/submitting an application is gasless/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /apply for this bounty/i })).toBeInTheDocument();
+
+    await user.click(screen.getByText(/add supporting material/i));
+    await user.type(screen.getByLabelText(/your application/i), "I can deliver this with a documented implementation plan.");
+    await user.selectOptions(screen.getByLabelText(/supporting material type/i), "repository");
+    await user.type(screen.getByLabelText(/supporting link or uri/i), "https://github.com/example/work/pull/12");
+    await user.type(screen.getByLabelText(/supporting description/i), "A comparable public implementation.");
+    await user.type(screen.getByLabelText(/supporting file sha-256 digest/i), `0x${"ab".repeat(32)}`);
+    await user.click(screen.getByRole("button", { name: /apply for this bounty/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/application submitted/i);
+    const proposalCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/proposals"));
+    expect(JSON.parse(String(proposalCall?.[1]?.body))).toMatchObject({
+      applicationMaterials: [{
+        kind: "application-supporting-material.v1",
+        proofMethod: "repository",
+        uri: "https://github.com/example/work/pull/12",
+        description: "A comparable public implementation.",
+        contentHash: `0x${"ab".repeat(32)}`
+      }]
+    });
   });
 
   it("preserves a legacy specialty as a custom category on the next profile save", async () => {

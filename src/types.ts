@@ -1,3 +1,5 @@
+import type { DeliveryProofMethod } from "./deliveryProof";
+
 export type WorkScope =
   | "task"
   | "deliverable"
@@ -40,6 +42,15 @@ export interface Proposal {
   proposedBudget: number;
   providerAddress?: `0x${string}`;
   proposalHash?: `0x${string}`;
+  supportingMaterials?: ApplicationSupportingMaterial[];
+}
+
+export interface ApplicationSupportingMaterial {
+  kind: "application-supporting-material.v1";
+  proofMethod: DeliveryProofMethod;
+  uri: string;
+  description?: string;
+  contentHash?: `0x${string}`;
 }
 
 export type FeatureProposalStatus = "Planned" | "In review" | "Shipped";

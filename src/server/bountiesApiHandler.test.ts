@@ -294,6 +294,68 @@ describe("delivery content digest boundary", () => {
   });
 });
 
+describe("application supporting-material boundary", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string) => Promise.resolve(name === "app_resolve_wallet_session"
+      ? { data: [session], error: null }
+      : { data: { ok: true }, error: null }));
+  });
+
+  function proposalRequest(applicationMaterials: unknown) {
+    return new Request("https://bounties.bittrees.org/api/bounties/proposals", {
+      method: "POST",
+      headers: {
+        cookie: "bounties_session=opaque-session",
+        "content-type": "application/json",
+        origin: "https://bounties.bittrees.org",
+        "x-csrf-token": "opaque-csrf"
+      },
+      body: JSON.stringify({
+        bountyId: "30000000-0000-4000-8000-000000000020",
+        note: "I can deliver this work.",
+        proposedTotalBaseUnits: "250000000",
+        applicationMaterials
+      })
+    });
+  }
+
+  it("stores one canonical public supporting material with an optional fingerprint", async () => {
+    const response = await handleBountiesApi(proposalRequest([{
+      kind: "application-supporting-material.v1",
+      proofMethod: "repository",
+      uri: "https://github.com/example/work/pull/12",
+      description: "  Comparable implementation.  ",
+      contentHash: `0x${"AB".repeat(32)}`
+    }]), "proposals");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_create_proposal", expect.objectContaining({
+      p_proposed_milestones: [{
+        kind: "application-supporting-material.v1",
+        proofMethod: "repository",
+        uri: "https://github.com/example/work/pull/12",
+        description: "Comparable implementation.",
+        contentHash: `0x${"ab".repeat(32)}`
+      }]
+    }));
+  });
+
+  it("rejects unsafe or malformed supporting material before proposal persistence", async () => {
+    const response = await handleBountiesApi(proposalRequest([{
+      kind: "application-supporting-material.v1",
+      proofMethod: "web",
+      uri: "javascript:alert(1)"
+    }]), "proposals");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_APPLICATION_MATERIALS" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_create_proposal", expect.anything());
+  });
+});
+
 describe("terminal escrow observation diagnostics", () => {
   beforeEach(() => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");

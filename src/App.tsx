@@ -498,6 +498,8 @@ export default function App() {
   const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
   const [deliveryProofMethodByMilestone, setDeliveryProofMethodByMilestone] = useState<Record<string, DeliveryProofMethod>>({});
   const [deliveryFileHashByMilestone, setDeliveryFileHashByMilestone] = useState<Record<string, DeliveryFileHashState>>({});
+  const [applicationProofMethodByOrder, setApplicationProofMethodByOrder] = useState<Record<string, DeliveryProofMethod>>({});
+  const [applicationFileHashByOrder, setApplicationFileHashByOrder] = useState<Record<string, DeliveryFileHashState>>({});
   const [settlementDraftByOrder, setSettlementDraftByOrder] = useState<Record<string, string>>({});
   const initialProfileSearchHydrated = useRef(false);
   const initialMarketplaceStatusResolved = useRef(false);
@@ -1794,19 +1796,81 @@ export default function App() {
   }
 
   function proposalForm(order: MarketplaceOrder) {
+    const proofMethod = applicationProofMethodByOrder[order.id] ?? "web";
+    const proofMethodDetails = deliveryProofMethodConfig(proofMethod);
+    const fileHashState = applicationFileHashByOrder[order.id];
     return (
       <form
         className="proposal-form"
         onSubmit={(event) => {
           event.preventDefault();
-          const note = String(new FormData(event.currentTarget).get("note") ?? "");
-          void act(() => createProposal(order, note));
+          const form = new FormData(event.currentTarget);
+          const note = String(form.get("note") ?? "");
+          const uri = String(form.get("applicationUri") ?? "").trim();
+          const description = String(form.get("applicationDescription") ?? "").trim();
+          const contentHash = String(form.get("applicationContentHash") ?? "").trim();
+          const hasSupportingMaterial = Boolean(uri || description || contentHash);
+          void act(() => createProposal(order, note, hasSupportingMaterial ? { proofMethod, uri, description: description || undefined, contentHash: contentHash ? contentHash as `0x${string}` : undefined } : undefined), "Application submitted.");
         }}
       >
-        <label>
+        <label className="wide-field">
           Your application
           <textarea name="note" required placeholder="Explain your approach, relevant experience, timing, and planned evidence." />
         </label>
+        <details className="application-materials-control wide-field">
+          <summary><FileCheck2 size={16} aria-hidden="true" /> Add supporting material (optional)</summary>
+          <div className="application-materials-fields">
+            <p>Share a public example, portfolio item, repository, document, or onchain reference that supports your application.</p>
+            <div className="delivery-proof-location-grid">
+              <label>Supporting material type
+                <select name="applicationProofMethod" value={proofMethod} onChange={(event) => setApplicationProofMethodByOrder((current) => ({ ...current, [order.id]: event.target.value as DeliveryProofMethod }))}>
+                  {deliveryProofMethods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}
+                </select>
+              </label>
+              <label>Supporting link or URI
+                <input name="applicationUri" type="text" inputMode="url" maxLength={4096} spellCheck={false} placeholder={proofMethodDetails.placeholder} aria-describedby={`application-proof-help-${order.id}`} />
+              </label>
+            </div>
+            <span className="proof-method-guidance" id={`application-proof-help-${order.id}`}>{proofMethodDetails.guidance}</span>
+            <label>Supporting description (optional)
+              <textarea name="applicationDescription" maxLength={1000} rows={3} placeholder="Explain why this material is relevant and what the requester should review." />
+            </label>
+            <fieldset className="application-digest-composer">
+              <legend>Verify a supporting file (optional)</legend>
+              <label className="local-file-hash-control">Calculate from a local file
+                <input type="file" onChange={(event) => {
+                  const fileInput = event.currentTarget;
+                  const file = fileInput.files?.[0];
+                  const digestInput = fileInput.form?.elements.namedItem("applicationContentHash");
+                  if (!file) {
+                    setApplicationFileHashByOrder((current) => {
+                      const next = { ...current };
+                      delete next[order.id];
+                      return next;
+                    });
+                    return;
+                  }
+                  setApplicationFileHashByOrder((current) => ({ ...current, [order.id]: { fileName: file.name, status: "hashing", message: "Calculating SHA-256 on this device…" } }));
+                  void hashLocalDeliveryFile(file).then((digest) => {
+                    if (fileInput.files?.[0] !== file) return;
+                    if (digestInput instanceof HTMLInputElement) digestInput.value = digest;
+                    setApplicationFileHashByOrder((current) => ({ ...current, [order.id]: { fileName: file.name, status: "ready", message: "Digest calculated locally. The file was not uploaded." } }));
+                  }).catch((caught) => {
+                    if (fileInput.files?.[0] !== file) return;
+                    setApplicationFileHashByOrder((current) => ({ ...current, [order.id]: { fileName: file.name, status: "error", message: caught instanceof Error ? caught.message : "This file could not be hashed locally." } }));
+                  });
+                }} />
+              </label>
+              <span className="form-hint">Your browser calculates the fingerprint locally. No file bytes are uploaded.</span>
+              {fileHashState ? <span className={`local-file-hash-status ${fileHashState.status}`} role={fileHashState.status === "error" ? "alert" : "status"}><strong>{fileHashState.fileName}</strong>{fileHashState.message}</span> : null}
+              <div className="proof-input-divider"><span>or enter the digest manually</span></div>
+              <label>Supporting file SHA-256 digest (optional)
+                <input name="applicationContentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" />
+              </label>
+            </fieldset>
+            <span className="form-hint">Supporting material is public and offchain. It does not submit completed work or change the escrow terms.</span>
+          </div>
+        </details>
         <p className="form-hint">Submitting an application is gasless. Wallet approval is only required for later escrow actions if you are selected.</p>
         <button type="submit">Apply for this bounty</button>
       </form>
@@ -1827,6 +1891,15 @@ export default function App() {
                     <button className="wallet-link" type="button" onClick={() => openProfile(proposal.provider)}>{short(proposal.provider)}</button>
                     <p>{proposal.note}</p>
                     <span>Application for {proposal.proposedBudget} {order.token}</span>
+                    {proposal.supportingMaterials?.map((material, index) => {
+                      const href = safeDeliveryProofHref(material.uri);
+                      return <aside className="application-supporting-material" key={`${material.uri}-${index}`}>
+                        <strong>Supporting material · {deliveryProofMethodConfig(material.proofMethod).label}</strong>
+                        {href ? <a href={href} target="_blank" rel="noreferrer noopener">Open supporting material <ExternalLink size={13} aria-hidden="true" /></a> : <span>Stored reference is not a safe public link.</span>}
+                        {material.description ? <p>{material.description}</p> : null}
+                        {material.contentHash ? <span>SHA-256: <code>{material.contentHash}</code></span> : null}
+                      </aside>;
+                    })}
                   </div>
                   {isBuyer(order) ? <button onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
                 </div>

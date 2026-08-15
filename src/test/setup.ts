@@ -150,6 +150,13 @@ export function configureMockOpenBountyWithApplicantForBuyer(fundOnApplicantAcce
       proposal_hash: `0x${"22".repeat(32)}`,
       note: "I can complete this work",
       proposed_total_base_units: "250000000000000000000",
+      proposed_milestones: [{
+        kind: "application-supporting-material.v1",
+        proofMethod: "repository",
+        uri: "https://github.com/example/work/pull/12",
+        description: "A comparable public implementation.",
+        contentHash: `0x${"ab".repeat(32)}`
+      }],
       status: "active"
     }]
   }];

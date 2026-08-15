@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { browsePublicProfiles, createBounty, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, recordEscrowObservation, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
-import type { RequestDraft } from "../types";
+import { browsePublicProfiles, createBounty, createProposal, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, recordEscrowObservation, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import type { MarketplaceOrder, RequestDraft } from "../types";
 
 const token: TokenRecord = {
   id: "00000000-0000-4000-8000-000000000010",
@@ -101,6 +101,13 @@ describe("Supabase marketplace mapping", () => {
         proposal_hash: null,
         note: "Delivery plan",
         proposed_total_base_units: "250000000",
+        proposed_milestones: [{
+          kind: "application-supporting-material.v1",
+          proofMethod: "repository",
+          uri: "https://github.com/example/work/pull/12",
+          description: "A comparable public implementation.",
+          contentHash: `0x${"ab".repeat(32)}`
+        }],
         status: "accepted"
       }]
     };
@@ -111,6 +118,13 @@ describe("Supabase marketplace mapping", () => {
     expect(order.providerAddress).toBe("0x3333333333333333333333333333333333333333");
     expect(order.proposalHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(order.scopeHash).toBe("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(order.proposals?.[0].supportingMaterials).toEqual([{
+      kind: "application-supporting-material.v1",
+      proofMethod: "repository",
+      uri: "https://github.com/example/work/pull/12",
+      description: "A comparable public implementation.",
+      contentHash: `0x${"ab".repeat(32)}`
+    }]);
   });
 
   it("converts decimal token amounts without silently rounding precision", () => {
@@ -120,6 +134,36 @@ describe("Supabase marketplace mapping", () => {
     expect(() => toBase("0.0000001", 6)).toThrow(/at most 6 decimal places/i);
     expect(() => toBase(1e21, 18)).toThrow(/plain positive decimal/i);
     expect(toBase("0.123456789012345678", 18)).toBe("123456789012345678");
+  });
+
+  it("submits optional public application materials without changing the gasless proposal boundary", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ok: true }));
+    const order = {
+      id: "00000000-0000-4000-8000-000000000020",
+      budget: 250,
+      budgetBaseUnits: "250000000",
+      tokenRecord: token
+    } as MarketplaceOrder;
+
+    await createProposal(order, "I can deliver this work.", {
+      proofMethod: "repository",
+      uri: "https://github.com/example/work/pull/12",
+      description: "  A comparable public implementation.  ",
+      contentHash: `0x${"AB".repeat(32)}`
+    });
+
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls.at(-1)?.[1]?.body))).toEqual({
+      bountyId: order.id,
+      note: "I can deliver this work.",
+      proposedTotalBaseUnits: "250000000",
+      applicationMaterials: [{
+        kind: "application-supporting-material.v1",
+        proofMethod: "repository",
+        uri: "https://github.com/example/work/pull/12",
+        description: "A comparable public implementation.",
+        contentHash: `0x${"ab".repeat(32)}`
+      }]
+    });
   });
 
   it("maps canonical moderation, review, and terminal escrow state", () => {
