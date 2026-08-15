@@ -1601,7 +1601,7 @@ export default function App() {
             {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
           </section>
         ) : null}
-        {escrowTxHashes[order.id] ? <p className="escrow-transaction-link">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}
+        {escrowTxHashes[order.id] ? <p className="escrow-transaction-link" role="status" aria-label="Escrow transaction status">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}
       </section>
     );
   }
@@ -1870,10 +1870,10 @@ export default function App() {
         {escrowControls(order)}
 
         {order.escrowObservation ? (
-          <>
+          <div className="escrow-lifecycle-controls" role="group" aria-label="Escrow lifecycle controls">
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}
-          </>
+          </div>
         ) : null}
       </section>
     );

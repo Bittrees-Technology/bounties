@@ -233,6 +233,8 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   const workGuidance = order.getByRole("complementary", { name: /work submission/i });
   const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
   const proofComposer = order.getByRole("form", { name: /delivery proof composer for phase two/i });
+  const lifecycleControls = order.getByRole("group", { name: /escrow lifecycle controls/i });
+  const reviewPanel = order.getByRole("region", { name: /reviews for two-phase active milestone/i });
 
   expect(digest).toHaveAttribute("pattern", "0x[a-fA-F0-9]{64}");
   expect(digest).toHaveAttribute("minlength", "66");
@@ -259,6 +261,8 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(workGuidance).getByRole("link", { name: /go to evidence form/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(settlement).getByText(/settle by mutual agreement/i)).toBeInTheDocument();
   expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
+  expect(within(lifecycleControls).getByRole("button", { name: /refresh canonical escrow state/i })).toBeInTheDocument();
+  expect(lifecycleControls.compareDocumentPosition(reviewPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const settlementInput = within(settlement).getByLabelText(/labor provider amount \(USDC\)/i);
   const settlementButton = within(settlement).getByRole("button", { name: /propose settlement split/i });
   const splitEditor = within(settlement).getByRole("group", { name: /exact settlement split/i });
