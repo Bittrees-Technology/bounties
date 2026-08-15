@@ -69,6 +69,7 @@ import {
   type ProfileDirectoryOrder
 } from "./profileDirectory";
 import {
+  bountyStatusGroup,
   filterAndOrderBounties,
   type BountyDirectoryOrder,
   type BountyStatusFilter
@@ -486,7 +487,7 @@ export default function App() {
   const [marketplaceQuery, setMarketplaceQuery] = useState("");
   const [marketplaceWorkType, setMarketplaceWorkType] = useState("");
   const [marketplaceCategory, setMarketplaceCategory] = useState("");
-  const [marketplaceStatus, setMarketplaceStatus] = useState<BountyStatusFilter>("");
+  const [marketplaceStatus, setMarketplaceStatus] = useState<BountyStatusFilter>("open");
   const [marketplaceChain, setMarketplaceChain] = useState("");
   const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
   const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
@@ -499,6 +500,7 @@ export default function App() {
   const [deliveryFileHashByMilestone, setDeliveryFileHashByMilestone] = useState<Record<string, DeliveryFileHashState>>({});
   const [settlementDraftByOrder, setSettlementDraftByOrder] = useState<Record<string, string>>({});
   const initialProfileSearchHydrated = useRef(false);
+  const initialMarketplaceStatusResolved = useRef(false);
 
   const resetProfileEditorDraft = useCallback(() => {
     const customWorkTypes = uniqueProfileSelections((publicProfile?.work_types ?? []).filter((value) => !standardWorkTypeValues.has(value)));
@@ -546,6 +548,12 @@ export default function App() {
     // lock or canonical session state changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrowCreationLocks, session]);
+
+  useEffect(() => {
+    if (initialMarketplaceStatusResolved.current || !session?.orders.length) return;
+    initialMarketplaceStatusResolved.current = true;
+    if (!session.orders.some((order) => bountyStatusGroup(order) === "open")) setMarketplaceStatus("");
+  }, [session]);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -2513,7 +2521,7 @@ export default function App() {
                         <label className="bounty-keyword-field">Keywords<input value={marketplaceQuery} onChange={(event) => setMarketplaceQuery(event.target.value)} placeholder="Title, description, token, or requester" /></label>
                         <label>Work type<select value={marketplaceWorkType} onChange={(event) => setMarketplaceWorkType(event.target.value)}><option value="">Any work type</option>{marketplaceWorkTypes.map((scope) => <option key={scope} value={scope}>{workTypeLabel(scope)}</option>)}</select></label>
                         <label>Category<select value={marketplaceCategory} onChange={(event) => setMarketplaceCategory(event.target.value)}><option value="">Any category</option>{marketplaceCategories.map((category) => <option key={category} value={category}>{category}</option>)}</select></label>
-                        <label>Status<select value={marketplaceStatus} onChange={(event) => setMarketplaceStatus(event.target.value as BountyStatusFilter)}><option value="">Any status</option><option value="open">Open for applications</option><option value="active">In progress</option><option value="review">In review</option><option value="completed">Completed</option><option value="closed">Cancelled or refunded</option></select></label>
+                        <label>Status<select value={marketplaceStatus} onChange={(event) => setMarketplaceStatus(event.target.value as BountyStatusFilter)}><option value="open">Open for applications</option><option value="">Any status</option><option value="active">In progress</option><option value="review">In review</option><option value="completed">Completed</option><option value="closed">Cancelled or refunded</option></select></label>
                         <label>Network<select value={marketplaceChain} onChange={(event) => setMarketplaceChain(event.target.value)}><option value="">Any network</option>{marketplaceChains.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId as SupportedChainId]?.name ?? chainId}</option>)}</select></label>
                         <label>Order<select value={marketplaceOrder} onChange={(event) => setMarketplaceOrder(event.target.value as BountyDirectoryOrder)}><option value="deadline-asc">Deadline soonest</option><option value="title-asc">Title A–Z</option><option value="title-desc">Title Z–A</option><option value="budget-desc">Budget high to low</option></select></label>
                       </div>

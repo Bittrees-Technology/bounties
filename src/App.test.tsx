@@ -732,6 +732,16 @@ describe("App", () => {
     render(<App />);
     await connectWallet(user);
 
+    const statusFilter = screen.getByLabelText(/^status$/i);
+    expect(statusFilter).toHaveValue("open");
+    expect(within(statusFilter).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Open for applications",
+      "Any status",
+      "In progress",
+      "In review",
+      "Completed",
+      "Cancelled or refunded"
+    ]);
     await user.click(screen.getByRole("link", { name: /view bounty/i }));
     expect(screen.getByLabelText(/your application/i)).toBeInTheDocument();
     expect(screen.getByText(/submitting an application is gasless/i)).toBeInTheDocument();
