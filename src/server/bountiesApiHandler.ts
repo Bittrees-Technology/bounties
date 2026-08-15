@@ -1758,7 +1758,7 @@ async function handle(request: Request, action: string): Promise<Response> {
 
   if (action === "escrow" && method === "POST") {
     const verified = await verifyEscrowReceipt(session, body);
-    const data = await callRpc("app_record_escrow_observation", {
+    await callRpc("app_record_escrow_observation", {
       p_actor_id: session.account_id,
       p_bounty_id: verified.expected.bounty_id,
       p_contract_address: verified.contractAddress,
@@ -1780,7 +1780,30 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_terms_hash: verified.termsHash,
       p_current_milestone_detail: verified.currentMilestoneDetail
     });
-    return Response.json(data, { headers });
+    return Response.json({
+      status: "confirmed",
+      transaction_hash: verified.txHash,
+      block_hash: verified.blockHash,
+      contract_address: verified.contractAddress,
+      interface_version: "escrow-adapter.v1",
+      onchain_bounty_id: verified.onchainBountyId,
+      requested_base_units: verified.requestedBaseUnits,
+      received_base_units: verified.receivedBaseUnits,
+      remaining_base_units: verified.remainingBaseUnits,
+      onchain_state: verified.onchainState,
+      review_deadline: null,
+      state_checked_at: new Date().toISOString(),
+      settlement_proposer: null,
+      proposed_provider_payout_base_units: null,
+      settlement_proposal_expiry: null,
+      allocated_amount_base_units: verified.allocatedAmountBaseUnits,
+      released_amount_base_units: verified.releasedAmountBaseUnits,
+      milestone_count: verified.milestoneCount,
+      current_milestone: verified.currentMilestone,
+      schedule_hash: verified.scheduleHash,
+      terms_hash: verified.termsHash,
+      current_milestone_detail: verified.currentMilestoneDetail
+    }, { headers });
   }
 
   if (action === "escrow/state" && method === "POST") {

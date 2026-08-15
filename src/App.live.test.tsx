@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockEscrowStateRefreshRejected, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockPublicProfileIdentity, configureMockSelectedUnfundedProvider, configureMockSettledEscrow, configureMockSettlementProposal, configureMockWalletChain, configureMockWalletEscrowStateReads } from "./test/setup";
+import { configureMockAcceptedUnfundedBuyer, configureMockEscrowRecordOutcome, configureMockEscrowRecordOutcomes, configureMockEscrowRefreshOnchainState, configureMockEscrowStateRefreshRejected, configureMockMilestoneEscrow, configureMockOpenBountyWithApplicantForBuyer, configureMockPublicProfileIdentity, configureMockSelectedUnfundedProvider, configureMockSettledEscrow, configureMockSettlementProposal, configureMockSnapshotExpiryAfterEscrowRecord, configureMockWalletChain, configureMockWalletEscrowStateReads } from "./test/setup";
 
 afterEach(() => {
   cleanup();
@@ -202,12 +202,38 @@ it("checks pending escrow confirmation without holding the global updating state
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  expect(screen.getByRole("link", { name: /funding confirmation pending/i })).toHaveTextContent("Confirmation pending");
   await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
 
   await waitFor(() => expect(vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/escrow"))).toHaveLength(1));
   expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
   expect(screen.getByText(/locked against another funding attempt/i)).toBeInTheDocument();
   expect(await screen.findByText(/will check again in the background/i)).toBeInTheDocument();
+});
+
+it("shows a verified funded escrow immediately when the following marketplace refresh loses its session", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockSnapshotExpiryAfterEscrowRecord();
+  vi.stubEnv("VITE_ESCROW_ENABLED", "true");
+  vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
+  vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
+    "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
+  }));
+  window.history.replaceState({}, "", "/marketplace");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
+
+  expect(await screen.findByRole("link", { name: /funded — view funding transaction/i })).toHaveTextContent("Funded");
+  expect(screen.getByRole("complementary", { name: /funded escrow/i })).toHaveTextContent(/funds escrowed.*250 usdc.*confirmed/i);
+  expect(screen.queryByRole("link", { name: /unfunded — view funding status/i })).not.toBeInTheDocument();
+  expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
 });
 
 it("automatically resumes a hydrated lock and reveals lifecycle actions after confirmation", async () => {

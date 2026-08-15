@@ -57,6 +57,7 @@ import {
   updateMyProfile,
   type MarketplaceSnapshot,
   type ModerationDecision,
+  type EscrowObservation,
   PersistenceError,
   type PublicWalletProfile,
   type TokenRecord
@@ -1393,6 +1394,21 @@ export default function App() {
     }
   }
 
+  function applyVerifiedEscrowObservation(orderId: string, observation: EscrowObservation) {
+    setSession((current) => current ? {
+      ...current,
+      orders: current.orders.map((candidate) => candidate.id === orderId ? {
+        ...candidate,
+        persistenceStatus: "funded",
+        status: "escrowed",
+        escrowObservation: observation,
+        milestones: candidate.milestones?.map((milestone, index) => index === (observation.current_milestone ?? 0)
+          ? { ...milestone, status: observation.onchain_state === "Funded" ? "escrowed" : milestone.status }
+          : milestone)
+      } : candidate)
+    } : current);
+  }
+
   async function reconcileEscrowCreationInBackground(orderId: string, lock: EscrowCreationLock, retryIndex = 0, userRequested = false) {
     if (escrowReconciliationInFlight.current.has(orderId)) return;
     escrowReconciliationInFlight.current.add(orderId);
@@ -1412,16 +1428,19 @@ export default function App() {
         updateEscrowCreationLock(orderId, currentLock);
       }
       if (!txHash) throw new Error("The submitted escrow identifier is unavailable. The bounty remains locked for safety.");
-      await recordEscrowObservation(orderId, txHash);
-      const next = await loadMarketplace();
-      if (!next.orders.some((order) => order.id === orderId && order.escrowObservation)) {
-        scheduleEscrowReconciliation(orderId, currentLock, retryIndex);
-        return;
-      }
-      setSession(next);
+      const observation = await recordEscrowObservation(orderId, txHash);
+      applyVerifiedEscrowObservation(orderId, observation);
       updateEscrowCreationLock(orderId, null);
       setError(null);
       setNotice("Escrow funding confirmed.");
+      try {
+        const next = await loadMarketplace();
+        if (next.orders.some((order) => order.id === orderId && order.escrowObservation)) setSession(next);
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : "Reconnect your wallet to refresh the marketplace.";
+        setError(message);
+        setExpired(message.toLowerCase().includes("expired"));
+      }
     } catch (caught) {
       const definitivelyFailed = caught instanceof PersistenceError && caught.serverCode === "ESCROW_TX_NOT_SUCCESSFUL"
         || caught instanceof EscrowClientError && caught.code === "CONTRACT_REVERTED" && Boolean(currentLock.bundleId);
@@ -1469,7 +1488,8 @@ export default function App() {
     if (observeCreation) {
       const lock = creationLock ?? { txHash: result.txHash, createdAt: new Date().toISOString() };
       try {
-        await recordEscrowObservation(order.id, result.txHash);
+        const observation = await recordEscrowObservation(order.id, result.txHash);
+        applyVerifiedEscrowObservation(order.id, observation);
         updateEscrowCreationLock(order.id, null);
       } catch (caught) {
         if (!escrowConfirmationIsRetryable(caught)) throw caught;
@@ -2154,12 +2174,15 @@ export default function App() {
     const chain = token ? chains[token.chain_id as SupportedChainId] : null;
     const transactionUrl = observation && chain ? `${chain.blockExplorer}/tx/${observation.transaction_hash}` : null;
     const funded = Boolean(observation && BigInt(observation.received_base_units || "0") >= BigInt(observation.requested_base_units || "0"));
+    const fundingPending = Boolean(!observation && escrowCreationLocks[order.id]);
 
     return (
       <div className="bounty-funding-summary">
         <strong>{order.budgetDisplay ?? order.budget} {token?.symbol || "ERC20"}</strong>
         {funded && transactionUrl ? (
           <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label="Funded — view funding transaction">Funded <ExternalLink size={12} /></a>
+        ) : fundingPending ? (
+          <a href={`#escrow-actions-${order.id}`} aria-label="Funding confirmation pending — view funding status">Confirmation pending</a>
         ) : (
           <a href={`#escrow-actions-${order.id}`} aria-label="Unfunded — view funding status">Unfunded</a>
         )}

@@ -558,6 +558,19 @@ describe("terminal escrow observation diagnostics", () => {
     ), "escrow");
 
     expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      status: "confirmed",
+      transaction_hash: `0x${"ab".repeat(32)}`,
+      contract_address: contractAddress,
+      onchain_bounty_id: "1",
+      requested_base_units: amount,
+      received_base_units: amount,
+      onchain_state: "Funded",
+      allocated_amount_base_units: amount,
+      milestone_count: 1,
+      current_milestone: 0,
+      current_milestone_detail: expect.objectContaining({ amount_base_units: amount, state: "Pending" })
+    });
     expect(databaseFromMock).toHaveBeenCalledWith("bounties");
     expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_observation", expect.objectContaining({
       p_requested_base_units: amount,

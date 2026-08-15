@@ -454,7 +454,7 @@ export async function submitEvidence(milestoneId: string, uri: string, contentHa
   });
 }
 export const acceptEvidence = (milestoneId: string) => request("/evidence/accept", { method: "POST", body: JSON.stringify({ milestoneId }) });
-export const recordEscrowObservation = (bountyId: string, txHash: string) => request("/escrow", { method: "POST", body: JSON.stringify({ bountyId, txHash }) });
+export const recordEscrowObservation = (bountyId: string, txHash: string) => request<EscrowObservation>("/escrow", { method: "POST", body: JSON.stringify({ bountyId, txHash }) });
 export const refreshEscrowState = (bountyId: string, txHash?: string) => request<EscrowObservation>("/escrow/state", { method: "POST", body: JSON.stringify({ bountyId, ...(txHash ? { txHash } : {}) }) });
 export const recordRevisionRequest = (milestoneId: string, reason: string, reasonHash: `0x${string}`, txHash: string) => request("/revisions", { method: "POST", body: JSON.stringify({ milestoneId, reason, reasonHash, txHash }) });
 export const createParticipantReview = (bountyId: string, rating: number, body: string) => request<ParticipantReview>("/reviews", { method: "POST", body: JSON.stringify({ bountyId, rating, body }) });

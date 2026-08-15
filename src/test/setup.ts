@@ -42,6 +42,8 @@ let escrowRecordOutcome: EscrowRecordOutcome = "success";
 let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
 let escrowRefreshOnchainState: "ProviderAccepted" | "Settled" | null = null;
 let escrowStateRefreshRejected = false;
+let snapshotExpiresAfterEscrowRecord = false;
+let escrowRecordPersisted = false;
 type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled";
 let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
 let activeWalletEscrowState: MockWalletEscrowState | null = null;
@@ -61,6 +63,10 @@ export function configureMockEscrowRefreshOnchainState(state: "ProviderAccepted"
 
 export function configureMockEscrowStateRefreshRejected(rejected = true) {
   escrowStateRefreshRejected = rejected;
+}
+
+export function configureMockSnapshotExpiryAfterEscrowRecord(enabled = true) {
+  snapshotExpiresAfterEscrowRecord = enabled;
 }
 
 export function configureMockWalletEscrowStateReads(states: Array<MockWalletEscrowState | null>) {
@@ -420,6 +426,8 @@ beforeEach(() => {
   escrowRecordOutcomeSequence = [];
   escrowRefreshOnchainState = null;
   escrowStateRefreshRejected = false;
+  snapshotExpiresAfterEscrowRecord = false;
+  escrowRecordPersisted = false;
   walletEscrowStateReads = null;
   activeWalletEscrowState = null;
   walletChainId = "0x14a34";
@@ -552,6 +560,10 @@ beforeEach(() => {
     const publicProfileRead = String(init?.method ?? "GET").toUpperCase() === "GET"
       && (url.includes("/api/bounties/profiles/search") || /\/api\/bounties\/profiles\/0x[0-9a-f]{40}$/i.test(url));
     if (!authenticated && url.includes("/api/bounties") && !publicProfileRead) return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
+    if (url.endsWith("/snapshot") && snapshotExpiresAfterEscrowRecord && escrowRecordPersisted) {
+      authenticated = false;
+      return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
+    }
     if (url.endsWith("/snapshot")) return Response.json({
       account: { id: "00000000-0000-4000-8000-000000000111", wallet_address: testWallet },
       roles: snapshotRoles,
@@ -797,7 +809,8 @@ beforeEach(() => {
           } : null
         };
       }
-      return Response.json({ ok: true });
+      escrowRecordPersisted = true;
+      return Response.json(bounty?.escrow ?? { ok: true });
     }
     if (url.endsWith("/api/bounties/escrow/state")) {
       if (escrowStateRefreshRejected) return Response.json({ code: "ESCROW_MILESTONE_MISMATCH" }, { status: 400 });
