@@ -3237,58 +3237,6 @@ textarea {
 
 .escrow-lifecycle-controls > .form-hint { margin: 0; overflow-wrap: anywhere; }
 
-.funding-timing-choice {
-  background: #f1f8f4;
-  border: 1px solid #bdd8c7;
-  border-radius: 14px;
-  display: grid;
-  gap: 9px;
-  margin: 6px 0 0;
-  min-width: 0;
-  padding: 14px;
-}
-
-.funding-timing-choice > h3 {
-  color: #24342d;
-  font-size: 1rem;
-  line-height: 1.35;
-  margin: 0;
-}
-.funding-timing-choice > p { color: #4f5f57; line-height: 1.5; margin: 0 0 2px; }
-
-.funding-timing-choice > label {
-  align-items: flex-start;
-  background: #fff;
-  border: 1px solid #d4e2da;
-  border-radius: 10px;
-  display: flex;
-  gap: 10px;
-  max-width: none;
-  padding: 11px;
-}
-
-.funding-timing-choice input {
-  flex: 0 0 auto;
-  margin-top: 4px;
-  min-height: auto;
-  width: auto;
-}
-
-.funding-timing-choice input:disabled + span {
-  opacity: 0.62;
-}
-
-.funding-timing-choice span {
-  display: grid;
-  gap: 4px;
-}
-
-.funding-timing-choice small {
-  color: #5a6862;
-  font-weight: 500;
-  line-height: 1.45;
-}
-
 .preselection-funding-guidance,
 .escrow-funding-ready {
   background: #f1f8f4;

@@ -107,8 +107,7 @@ const emptyDraft: RequestDraft = {
   milestones: "Delivery",
   support: "",
   criteria: "",
-  fundOnApplicantAcceptance: true,
-  prepareFundingOnPublish: false
+  fundOnApplicantAcceptance: true
 };
 const categories: Array<{ value: ServiceCategory; label: string }> = [
   { value: "Software Engineering", label: "Software engineering" },
@@ -1241,11 +1240,8 @@ export default function App() {
       deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline
     };
     if (!isDraftValid(scheduledDraft) || !scheduleValid) return setError("Complete each deliverable and make sure its amounts total the budget and its deadlines move forward.");
-    let createdListing = false;
-    let fundingPreparationError: string | null = null;
     await act(async () => {
       const created = await createBounty(scheduledDraft, selectedToken);
-      createdListing = true;
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
@@ -1253,22 +1249,8 @@ export default function App() {
       if (window.location.pathname !== bountyPath(created.id)) window.history.pushState({}, "", bountyPath(created.id));
       setActivePage("marketplace");
       window.scrollTo({ top: 0, behavior: "smooth" });
-      if (scheduledDraft.prepareFundingOnPublish === true) {
-        try {
-          await prepareListingFunding(created);
-        } catch (caught) {
-          fundingPreparationError = caught instanceof Error ? caught.message : "The wallet approval did not finish.";
-        }
-      }
     });
-    if (!createdListing) return;
-    if (fundingPreparationError) {
-      setError(`Bounty listing published, but funding approval did not finish: ${fundingPreparationError} Funding will still open automatically after you accept an applicant.`);
-      return;
-    }
-    setNotice(scheduledDraft.prepareFundingOnPublish === true
-      ? "Bounty listing published and token funding approved. No tokens moved yet; the escrow will be created and funded after you accept an applicant."
-      : "Bounty listing published. After you accept an applicant, Bounties will open your wallet to approve the token if needed, then create and fund escrow.");
+    setNotice("Bounty listing published. After you accept an applicant, Bounties will open your wallet to approve the token if needed, then create and fund escrow.");
   }
 
   function updateMilestone(index: number, field: "title" | "amount" | "deliveryDeadline", value: string) {
@@ -1429,23 +1411,6 @@ export default function App() {
         ...submission,
         createdAt: new Date().toISOString()
       })
-    });
-  }
-
-  async function prepareListingFunding(order: MarketplaceOrder) {
-    if (!order.tokenRecord || !order.budgetBaseUnits) {
-      throw new Error("The published listing is missing its exact token funding amount.");
-    }
-    const client = escrowClientFor(order);
-    await client.prepareFunding({
-      amountBaseUnits: order.budgetBaseUnits,
-      token: {
-        chainId: order.tokenRecord.chain_id as SupportedChainId,
-        contractAddress: order.tokenRecord.checksum_address as `0x${string}`,
-        symbol: order.tokenRecord.symbol ?? undefined,
-        decimals: order.tokenRecord.decimals,
-        explorerUrl: order.tokenRecord.explorer_url
-      }
     });
   }
 
@@ -2437,7 +2402,7 @@ export default function App() {
               <WalletCards size={20} aria-hidden="true" />
               <div>
                 <strong>Escrow funding starts after you select an applicant</strong>
-                <p>The onchain escrow commits to the chosen labor-provider wallet, so tokens move only after you accept an applicant. {order.fundOnApplicantAcceptance === false ? "You chose manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : order.prepareFundingOnPublish ? "You approved the exact token allowance when publishing; accepting an applicant will create and fund escrow without another approval step." : "When you accept an applicant, Bounties will open the wallet approval and funding flow automatically."}</p>
+                <p>The onchain escrow commits to the chosen labor-provider wallet, so tokens move only after you accept an applicant. {order.fundOnApplicantAcceptance === false ? "This earlier listing uses manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : "When you accept an applicant, Bounties will open the wallet approval and funding flow automatically."}</p>
               </div>
             </aside>
           ) : null}
@@ -2847,24 +2812,12 @@ export default function App() {
                   </fieldset>
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
-                  <section className="funding-timing-choice" role="group" aria-labelledby="funding-timing-heading">
-                    <h3 id="funding-timing-heading">When should the wallet funding flow begin?</h3>
-                    <p>The escrow contract must include the selected labor provider. You can approve the exact token allowance now, but tokens remain in your wallet until an applicant is accepted and escrow is created.</p>
-                    <label>
-                      <input type="radio" name="fundingTiming" value="acceptance" checked={draft.prepareFundingOnPublish !== true} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true, prepareFundingOnPublish: false })} />
-                      <span><strong>After I accept an applicant</strong><small>Recommended. Accepting an applicant opens the wallet to approve the ERC20 if needed, then creates and funds escrow.</small></span>
-                    </label>
-                    <label>
-                      <input type="radio" name="fundingTiming" value="publication" checked={draft.prepareFundingOnPublish === true} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true, prepareFundingOnPublish: true })} disabled={!ESCROW_CREATION_ENABLED} />
-                      <span><strong>When I publish the listing</strong><small>Publishing opens the wallet to approve the exact token amount. Tokens move into escrow only after you accept an applicant.</small></span>
-                    </label>
-                  </section>
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
                     disabled={wallet ? !isDraftValid({ ...draft, deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline }) || !selectedToken || !scheduleValid : false}
                   >
-                    {wallet ? draft.prepareFundingOnPublish ? "Publish listing and approve funding" : "Publish bounty listing" : "Connect wallet to publish"}
+                    {wallet ? "Publish bounty listing" : "Connect wallet to publish"}
                   </button>
                 </form> : null}
 

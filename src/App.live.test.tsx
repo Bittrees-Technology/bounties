@@ -28,7 +28,7 @@ async function renderConfiguredEscrow() {
   return within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
 }
 
-it("can prepare the exact token approval while publishing a listing", async () => {
+it("publishes a listing without opening the wallet funding flow", async () => {
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
   vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
@@ -41,20 +41,18 @@ it("can prepare the exact token approval while publishing a listing", async () =
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
-  await user.type(screen.getByLabelText(/bounty title/i), "Prepare escrow funding");
+  await user.type(screen.getByLabelText(/bounty title/i), "Fund after applicant acceptance");
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
   await user.type(screen.getByLabelText(/resources provided/i), "Project brief and source files");
   await user.type(screen.getByLabelText(/acceptance criteria/i), "Delivery matches the approved scope");
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC.*USDC test token/i }));
-  const fundingTiming = screen.getByRole("group", { name: /when should the wallet funding flow begin/i });
-  expect(within(fundingTiming).getByRole("radio", { name: /after i accept an applicant/i })).toBeChecked();
-  await user.click(within(fundingTiming).getByRole("radio", { name: /when i publish the listing/i }));
-  await user.click(screen.getByRole("button", { name: /publish listing and approve funding/i }));
+  expect(screen.queryByRole("group", { name: /wallet funding flow/i })).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: /^publish bounty listing$/i }));
 
-  expect(await screen.findByRole("status")).toHaveTextContent(/listing published and token funding approved.*no tokens moved yet.*after you accept an applicant/i);
-  expect(await screen.findByRole("heading", { name: "Prepare escrow funding" })).toBeInTheDocument();
-  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(true);
+  expect(await screen.findByRole("status")).toHaveTextContent(/listing published.*after you accept an applicant.*approve the token.*create and fund escrow/i);
+  expect(await screen.findByRole("heading", { name: "Fund after applicant acceptance" })).toBeInTheDocument();
+  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(false);
 });
 
 it("keeps applicant acceptance visible when immediate wallet funding does not finish", async () => {

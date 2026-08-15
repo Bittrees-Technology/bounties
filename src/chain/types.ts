@@ -80,7 +80,6 @@ export type EscrowContractName = "BountyEscrow";
 
 /** Operations the UI may request through the typed escrow boundary. */
 export type EscrowAction =
-  | "prepareEscrowFunding"
   | "createEscrow"
   | "fundEscrow"
   | "acceptBounty"
@@ -223,8 +222,6 @@ export interface EscrowRevisionInput {
 export interface EscrowClient {
   readonly chainId: SupportedChainId;
   readonly mode: "mock" | "live";
-  /** Confirms balance and grants only the exact token allowance needed for a later escrow creation. */
-  prepareFunding(funding: EscrowFundingInput): Promise<EscrowTxResult>;
   createEscrow(order: EscrowOrderRef, funding: EscrowFundingInput): Promise<EscrowTxResult>;
   fundEscrow(order: EscrowOrderRef, funding: EscrowFundingInput): Promise<EscrowTxResult>;
   acceptBounty(order: EscrowOrderRef): Promise<EscrowTxResult>;

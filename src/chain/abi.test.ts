@@ -6,7 +6,6 @@ describe("escrow boundary ABI descriptor", () => {
     expect(ESCROW_BOUNDARY_ABI.interfaceVersion).toBe("escrow-adapter.v1");
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toMatch(/^sha256:/);
     expect(ESCROW_BOUNDARY_ABI.functions.map((entry) => entry.name)).toEqual([
-      "prepareEscrowFunding",
       "createEscrow",
       "fundEscrow",
       "acceptBounty",
