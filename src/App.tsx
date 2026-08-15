@@ -406,7 +406,7 @@ function settlementRoleLabel(role: SettlementPerspective): string {
   return role === "capital" ? "Capital provider" : "Labor provider";
 }
 
-function SettlementSplitPreview({ split, symbol, perspective }: { split: ValidSettlementSplit; symbol: string; perspective?: SettlementPerspective }) {
+function SettlementSplitPreview({ split, symbol, perspective, completed = false }: { split: ValidSettlementSplit; symbol: string; perspective?: SettlementPerspective; completed?: boolean }) {
   const roles: SettlementPerspective[] = perspective === "labor" ? ["labor", "capital"] : ["capital", "labor"];
   return (
     <div className="settlement-split-grid" role="group" aria-label="Exact settlement split">
@@ -415,10 +415,10 @@ function SettlementSplitPreview({ split, symbol, perspective }: { split: ValidSe
         const roleLabel = settlementRoleLabel(role);
         const display = role === "capital" ? split.capitalDisplay : split.laborDisplay;
         return (
-          <article className={`settlement-party-card ${role}-provider-split ${yours ? "viewer-settlement-share" : ""}`} aria-label={yours ? `Your expected settlement as ${roleLabel.toLowerCase()}` : `${roleLabel} settlement share`} key={role}>
-            <span>{yours ? "You receive" : roleLabel}</span>
+          <article className={`settlement-party-card ${role}-provider-split ${yours ? "viewer-settlement-share" : ""}`} aria-label={yours ? `Your ${completed ? "completed" : "expected"} settlement as ${roleLabel.toLowerCase()}` : completed ? `Amount received by ${roleLabel.toLowerCase()}` : `${roleLabel} settlement share`} key={role}>
+            <span>{yours ? completed ? "You received" : "You receive" : completed ? `${roleLabel} received` : roleLabel}</span>
             <strong>{display} / {split.totalDisplay} {symbol}</strong>
-            <small>{yours ? `Your expected outcome as the ${roleLabel.toLowerCase()}` : role === "capital" ? "Returned from remaining escrow" : "Paid from remaining escrow"}</small>
+            <small>{yours ? `Your ${completed ? "final settlement" : "expected outcome"} as the ${roleLabel.toLowerCase()}` : role === "capital" ? "Returned from remaining escrow" : "Paid from remaining escrow"}</small>
           </article>
         );
       })}
@@ -1540,9 +1540,9 @@ export default function App() {
           <section className="settlement-completed-record" aria-label="Settlement completed">
             <header className="settlement-completed-heading">
               <ShieldCheck size={24} aria-hidden="true" />
-              <div><span>Canonical terminal record</span><h5>Settlement completed</h5><p>The escrow reached its final bilateral settlement state. No further proposal or acceptance action is available.</p></div>
+              <div><span>Canonical terminal record</span><h5>Settlement completed</h5><p>The escrow reached its final bilateral settlement state. No further proposal or acceptance action remained.</p></div>
             </header>
-            {completedSplit.status === "valid" ? <SettlementSplitPreview split={completedSplit} symbol={settlementSymbol} perspective={settlementPerspective} /> : (
+            {completedSplit.status === "valid" ? <SettlementSplitPreview split={completedSplit} symbol={settlementSymbol} perspective={settlementPerspective} completed /> : (
               <p className="settlement-receipt-pending" role="status">Canonical status is Settled, but the verified settlement-event allocation is still being indexed. Party amounts are withheld rather than inferred from cleared proposal fields.</p>
             )}
             <dl className="settlement-terminal-meta">

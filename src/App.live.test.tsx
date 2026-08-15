@@ -426,10 +426,11 @@ it("shows an exact terminal settlement receipt and unlocks participant reviews",
   const shares = within(receipt).getAllByRole("article");
 
   expect(within(receipt).getByRole("heading", { name: /^settlement completed$/i })).toBeInTheDocument();
-  expect(shares[0]).toHaveAccessibleName(/your expected settlement as capital provider/i);
-  expect(shares[0]).toHaveTextContent("74.876544 / 150 USDC");
-  expect(shares[1]).toHaveAccessibleName(/labor provider settlement share/i);
-  expect(shares[1]).toHaveTextContent("75.123456 / 150 USDC");
+  expect(shares[0]).toHaveAccessibleName(/your completed settlement as capital provider/i);
+  expect(shares[0]).toHaveTextContent(/you received.*74\.876544 \/ 150 USDC.*your final settlement as the capital provider/i);
+  expect(shares[1]).toHaveAccessibleName(/amount received by labor provider/i);
+  expect(shares[1]).toHaveTextContent(/labor provider received.*75\.123456 \/ 150 USDC/i);
+  expect(receipt).toHaveTextContent(/no further proposal or acceptance action remained/i);
   expect(receipt).toHaveTextContent(/Base Sepolia/);
   expect(receipt).toHaveTextContent(/Final onchain statusSettled/);
   expect(receipt).toHaveTextContent(/Final escrow balance0 USDC/);
