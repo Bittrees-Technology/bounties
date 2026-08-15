@@ -9,6 +9,7 @@ const temporaryRoot = await mkdtemp(join(projectRoot, "node_modules/.server-esm-
 const productionServerSources = [
   "src/chain/errors.ts",
   "src/chain/hashCodec.ts",
+  "src/deliveryProof.ts",
   "src/server/chainRpc.ts",
   "src/server/vercelProxy.ts",
   "src/server/serverEnv.ts",

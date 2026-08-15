@@ -74,6 +74,7 @@ import {
   type BountyStatusFilter
 } from "./marketplaceDirectory";
 import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
+import { deliveryProofMethodConfig, deliveryProofMethods, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryProofMethod } from "./deliveryProof";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -164,6 +165,7 @@ type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
 type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowMilestoneRecord | null };
+type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
 const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
 const ESCROW_STATE_ORDER: EscrowOnchainState[] = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"];
@@ -469,6 +471,8 @@ export default function App() {
   const escrowReconciliationTimers = useRef(new Map<string, number>());
   const escrowReconciliationInFlight = useRef(new Set<string>());
   const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
+  const [deliveryProofMethodByMilestone, setDeliveryProofMethodByMilestone] = useState<Record<string, DeliveryProofMethod>>({});
+  const [deliveryFileHashByMilestone, setDeliveryFileHashByMilestone] = useState<Record<string, DeliveryFileHashState>>({});
   const initialProfileSearchHydrated = useRef(false);
 
   const resetProfileEditorDraft = useCallback(() => {
@@ -1722,6 +1726,10 @@ export default function App() {
           const derivedApprovalHash = deriveMilestoneApprovalHash(order, milestone, index, wallet);
           const serverApprovalMatches = Boolean(derivedApprovalHash && milestone.deliveryApprovalHash) && derivedApprovalHash!.toLowerCase() === milestone.deliveryApprovalHash!.toLowerCase();
           const approvalMatches = serverApprovalMatches && Boolean(observation?.current_milestone_detail?.approval_hash) && milestone.deliveryApprovalHash!.toLowerCase() === observation!.current_milestone_detail!.approval_hash.toLowerCase();
+          const proofMethod = deliveryProofMethodByMilestone[milestone.id] ?? "web";
+          const proofMethodDetails = deliveryProofMethodConfig(proofMethod);
+          const fileHashState = deliveryFileHashByMilestone[milestone.id];
+          const evidenceHref = milestone.deliveryEvidence ? safeDeliveryProofHref(milestone.deliveryEvidence) : null;
           return (
           <div id={`delivery-${milestone.id}`} className={`milestone-row ${isActiveMilestone ? "active-milestone" : ""}`} key={milestone.id}>
             <div>
@@ -1731,26 +1739,68 @@ export default function App() {
               {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>Due {formatDeadline(milestone.deliveryDeadline)}</p> : null}
               {milestone.deliveryEvidence ? (
                 <>
-                  <p>Evidence: <a href={milestone.deliveryEvidence} target="_blank" rel="noreferrer">{milestone.deliveryEvidence}</a></p>
+                  <p>Evidence: {evidenceHref ? <a href={evidenceHref} target="_blank" rel="noreferrer noopener">{milestone.deliveryEvidence}</a> : <span>Stored reference is not a safe public proof link.</span>}</p>
                   {milestone.deliveryContentHash ? <p>Delivered bytes SHA-256: <code>{milestone.deliveryContentHash}</code></p> : null}
                 </>
               ) : null}
             </div>
-            <div>
+            <div className="milestone-actions">
               {isProvider(order) && isActiveMilestone && milestone.status === "escrowed" && observation?.onchain_state === "ProviderAccepted" && observation.current_milestone_detail?.state === "Pending" ? (
-                <form className="delivery-submission-form"
+                <form className="delivery-submission-form" aria-label={`Delivery proof composer for ${milestone.label}`}
                   onSubmit={(event) => {
                     event.preventDefault();
                     const form = new FormData(event.currentTarget);
                     const uri = String(form.get("uri") ?? "");
                     const contentHash = String(form.get("contentHash") ?? "");
-                    void act(() => submitEvidence(milestone.id, uri, contentHash));
+                    const submittedProofMethod = String(form.get("proofMethod") ?? "web") as DeliveryProofMethod;
+                    void act(() => submitEvidence(milestone.id, uri, contentHash, submittedProofMethod));
                   }}
                 >
-                  <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Add a public HTTPS delivery link and the SHA-256 digest of the delivered files.</span></div></div>
-                  <label>Work evidence link<input name="uri" type="url" placeholder="https://…" required /></label>
-                  <label>Delivered bytes SHA-256<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" aria-describedby={`content-hash-help-${milestone.id}`} required /></label>
-                  <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Hash the exact delivered file or a documented canonical bundle of the delivered bytes. Do not hash the link. Prefix the 64-character SHA-256 digest with 0x.</span>
+                  <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Share one public proof location and lock it to the exact delivered bytes.</span></div></div>
+                  <div className="delivery-proof-location-grid">
+                    <label>Proof location type
+                      <select name="proofMethod" value={proofMethod} onChange={(event) => setDeliveryProofMethodByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryProofMethod }))}>
+                        {deliveryProofMethods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}
+                      </select>
+                    </label>
+                    <label>Work evidence link or URI
+                      <input name="uri" type="text" inputMode="url" maxLength={4096} spellCheck={false} placeholder={proofMethodDetails.placeholder} aria-describedby={`proof-location-help-${milestone.id}`} required />
+                    </label>
+                  </div>
+                  <span className="proof-method-guidance" id={`proof-location-help-${milestone.id}`}>{proofMethodDetails.guidance} Only this one canonical location is included in the evidence commitment.</span>
+                  <fieldset className="delivery-digest-composer">
+                    <legend>Verify the delivered bytes</legend>
+                    <p>SHA-256 is a fingerprint of the actual delivered file. It lets the requester confirm the downloaded bytes are exactly the ones you submitted.</p>
+                    <label className="local-file-hash-control">Calculate from a local file (optional)
+                      <input type="file" aria-describedby={`local-file-hash-help-${milestone.id}`} onChange={(event) => {
+                        const fileInput = event.currentTarget;
+                        const file = event.currentTarget.files?.[0];
+                        const digestInput = event.currentTarget.form?.elements.namedItem("contentHash");
+                        if (!file) {
+                          setDeliveryFileHashByMilestone((current) => {
+                            const next = { ...current };
+                            delete next[milestone.id];
+                            return next;
+                          });
+                          return;
+                        }
+                        setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "hashing", message: "Calculating SHA-256 on this device…" } }));
+                        void hashLocalDeliveryFile(file).then((digest) => {
+                          if (fileInput.files?.[0] !== file) return;
+                          if (digestInput instanceof HTMLInputElement) digestInput.value = digest;
+                          setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "ready", message: "Digest calculated locally and added below. The file was not uploaded." } }));
+                        }).catch((caught) => {
+                          if (fileInput.files?.[0] !== file) return;
+                          setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "error", message: caught instanceof Error ? caught.message : "This file could not be hashed locally." } }));
+                        });
+                      }} />
+                    </label>
+                    <span className="form-hint" id={`local-file-hash-help-${milestone.id}`}>Your browser reads the selected file only to calculate its digest. No file bytes are uploaded. For a folder or bundle, create one canonical archive first.</span>
+                    {fileHashState ? <span className={`local-file-hash-status ${fileHashState.status}`} role={fileHashState.status === "error" ? "alert" : "status"}><strong>{fileHashState.fileName}</strong>{fileHashState.message}</span> : null}
+                    <div className="proof-input-divider"><span>or enter the digest manually</span></div>
+                    <label>Delivered bytes SHA-256 digest<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" aria-describedby={`content-hash-help-${milestone.id}`} required /></label>
+                    <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Hash the exact delivered file or a documented canonical bundle of the delivered bytes. Do not hash the link. Prefix the 64-character SHA-256 digest with 0x.</span>
+                  </fieldset>
                   <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit work evidence"}</button>
                 </form>
               ) : null}

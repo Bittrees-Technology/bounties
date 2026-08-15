@@ -3,6 +3,7 @@ import { SIWE_AUTHENTICATION_METHOD, validateSiweChallenge } from "../auth/siwe"
 import { hashSourceJson } from "../chain/hashCodec";
 import type { MarketplaceOrder, Proposal, RequestDraft } from "../types";
 import { formatUnits, getAddress, keccak256, toHex } from "viem";
+import { canonicalizeDeliveryProofUri, type DeliveryProofMethod } from "../deliveryProof";
 
 type EthereumProvider = { request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> };
 declare global { interface Window { ethereum?: EthereumProvider } }
@@ -377,14 +378,15 @@ export const inspectToken = async (chainId: number, contractAddress: string): Pr
 };
 export const createProposal = (order: MarketplaceOrder, note: string) => request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), proposedMilestones: [] }) });
 export const acceptProposal = async (bountyId: string, proposalId: string): Promise<MarketplaceOrder> => mapBounty(await request<BountyRow>("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) }));
-export async function submitEvidence(milestoneId: string, uri: string, contentHash: string) {
+export async function submitEvidence(milestoneId: string, uri: string, contentHash: string, proofMethod: DeliveryProofMethod = "web") {
+  const canonicalUri = canonicalizeDeliveryProofUri(uri, proofMethod);
   const normalizedContentHash = contentHash.trim().toLowerCase();
   if (!/^0x[0-9a-f]{64}$/.test(normalizedContentHash) || /^0x0{64}$/.test(normalizedContentHash)) {
     throw new PersistenceError("Enter the SHA-256 digest of the delivered bytes as 0x followed by 64 hexadecimal characters.");
   }
   return request("/evidence", {
     method: "POST",
-    body: JSON.stringify({ milestoneId, uri, contentHash: normalizedContentHash })
+    body: JSON.stringify({ milestoneId, uri: canonicalUri, proofMethod, contentHash: normalizedContentHash })
   });
 }
 export const acceptEvidence = (milestoneId: string) => request("/evidence/accept", { method: "POST", body: JSON.stringify({ milestoneId }) });

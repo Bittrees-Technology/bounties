@@ -10,6 +10,7 @@ import { requestRateLimitDigest } from "./requestRateLimit.js";
 import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } from "./vercelProxy.js";
 import { requiredServerEnv, serverEnv } from "./serverEnv.js";
 import { resolveSharedModerator } from "./sharedRoleResolver.js";
+import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryProofMethod } from "../deliveryProof.js";
 
 const encoder = new TextEncoder();
 const erc20Abi = [
@@ -368,6 +369,16 @@ function contentHashField(body: Record<string, unknown>): Bytes32Hex {
     throw new ApiError("INVALID_CONTENT_HASH", 400);
   }
   return value as Bytes32Hex;
+}
+
+function evidenceUriField(body: Record<string, unknown>): { method: DeliveryProofMethod; uri: string } {
+  const methodValue = body.proofMethod ?? "web";
+  if (!isDeliveryProofMethod(methodValue)) throw new ApiError("INVALID_EVIDENCE_PROOF_METHOD", 400);
+  try {
+    return { method: methodValue, uri: canonicalizeDeliveryProofUri(requiredString(body, "uri"), methodValue) };
+  } catch {
+    throw new ApiError("INVALID_EVIDENCE_URI", 400);
+  }
 }
 
 function contentType(body: Record<string, unknown>, field = "entityType"): "bounty" | "review" | "profile" | "token" {
@@ -1483,7 +1494,7 @@ async function handle(request: Request, action: string): Promise<Response> {
 
   if (action === "evidence" && method === "POST") {
     const milestoneId = requiredUuid(body, "milestoneId");
-    const uri = requiredString(body, "uri").trim();
+    const { uri } = evidenceUriField(body);
     const contentHash = contentHashField(body);
     const context = await reconcileMilestone(session, milestoneId);
     const canonical = deriveCanonicalEvidenceCommitments(context, uri, contentHash);

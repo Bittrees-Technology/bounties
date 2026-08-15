@@ -232,6 +232,7 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   const digest = order.getByLabelText(/delivered bytes sha-256/i);
   const workGuidance = order.getByRole("complementary", { name: /work submission/i });
   const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
+  const proofComposer = order.getByRole("form", { name: /delivery proof composer for phase two/i });
 
   expect(digest).toHaveAttribute("pattern", "0x[a-fA-F0-9]{64}");
   expect(digest).toHaveAttribute("minlength", "66");
@@ -239,6 +240,15 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(order.getByText(/hash the exact delivered file.*do not hash the link/i)).toBeInTheDocument();
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
   expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
+  expect(within(proofComposer).getByLabelText(/proof location type/i)).toHaveValue("web");
+  expect(within(proofComposer).getByRole("option", { name: /source repository or pull request/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /cloud document or folder/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /ipfs content/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /arweave content/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /onchain transaction/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByLabelText(/calculate from a local file/i)).toHaveAttribute("type", "file");
+  expect(within(proofComposer).getByText(/no file bytes are uploaded/i)).toBeInTheDocument();
+  expect(within(proofComposer).getByText(/only this one canonical location is included/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(workGuidance).getByText(/submit work evidence for phase two/i)).toBeInTheDocument();
   expect(within(workGuidance).getByText(/active milestone form earlier on this page/i)).toBeInTheDocument();

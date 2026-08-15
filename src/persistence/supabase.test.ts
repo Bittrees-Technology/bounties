@@ -279,6 +279,7 @@ describe("Supabase marketplace mapping", () => {
     expect(JSON.parse(String(request?.body))).toEqual({
       milestoneId: "00000000-0000-4000-8000-000000000035",
       uri: "https://example.test/delivery",
+      proofMethod: "web",
       contentHash: `0x${"ab".repeat(32)}`
     });
 
@@ -289,5 +290,18 @@ describe("Supabase marketplace mapping", () => {
       "0x1234"
     )).rejects.toThrow(/sha-256 digest.*64 hexadecimal/i);
     expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ok: true }));
+    await submitEvidence(
+      "00000000-0000-4000-8000-000000000035",
+      "ipfs://QmYwAPJzv5CZsnAzt8auVZRnZVVH9nYVYVqS1X7fqa2MMe/delivery.zip",
+      `0x${"cd".repeat(32)}`,
+      "ipfs"
+    );
+    const ipfsRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
+    expect(JSON.parse(String(ipfsRequest?.body))).toMatchObject({
+      uri: "https://ipfs.io/ipfs/QmYwAPJzv5CZsnAzt8auVZRnZVVH9nYVYVqS1X7fqa2MMe/delivery.zip",
+      proofMethod: "ipfs"
+    });
   });
 });
