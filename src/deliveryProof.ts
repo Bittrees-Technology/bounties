@@ -7,13 +7,13 @@ export const deliveryProofMethods = [
   },
   {
     value: "repository",
-    label: "Source repository or pull request",
+    label: "Source repository / PR",
     placeholder: "https://github.com/owner/repository/pull/123",
     guidance: "Link to the exact public repository, commit, release, or pull request that contains the delivery."
   },
   {
     value: "cloud",
-    label: "Cloud document or folder",
+    label: "Cloud document / folder",
     placeholder: "https://drive.example.com/public-delivery",
     guidance: "Use a public HTTPS share link and confirm the requester can open it without requesting access."
   },

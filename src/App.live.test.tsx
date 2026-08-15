@@ -355,8 +355,8 @@ it("supports a canonical non-file record and keeps exact file fingerprinting ava
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
   expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
   expect(within(proofComposer).getByLabelText(/proof location type/i)).toHaveValue("web");
-  expect(within(proofComposer).getByRole("option", { name: /source repository or pull request/i })).toBeInTheDocument();
-  expect(within(proofComposer).getByRole("option", { name: /cloud document or folder/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /source repository \/ pr/i })).toBeInTheDocument();
+  expect(within(proofComposer).getByRole("option", { name: /cloud document \/ folder/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /ipfs content/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /arweave content/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /onchain transaction/i })).toBeInTheDocument();

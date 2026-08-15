@@ -5,6 +5,7 @@ import { buildCanonicalEvidenceCommitment } from "./chain/hashCodec";
 import {
   MAX_LOCAL_HASH_FILE_BYTES,
   canonicalizeDeliveryProofUri,
+  deliveryProofMethods,
   hashCanonicalDeliveryDescription,
   hashLocalDeliveryFile,
   safeDeliveryProofHref
@@ -88,5 +89,14 @@ describe("delivery proof responsive layout", () => {
     const styles = readFileSync("src/styles.css", "utf8");
     expect(styles).toMatch(/\.delivery-proof-location-grid\s*\{[^}]*repeat\(auto-fit, minmax\(min\(220px, 100%\), 1fr\)\)/s);
     expect(styles).toMatch(/@media \(max-width: 760px\)[\s\S]*\.delivery-submission-form > button\s*\{\s*width: 100%;\s*\}/);
+  });
+
+  it("keeps Android Chrome controls and delivery copy fully visible", () => {
+    const styles = readFileSync("src/styles.css", "utf8");
+    expect(styles).toMatch(/html\s*\{[^}]*-webkit-text-size-adjust:\s*100%;[^}]*text-size-adjust:\s*100%;/s);
+    expect(styles).toMatch(/button, input, select, textarea\s*\{[^}]*max-width:\s*100%;[^}]*min-width:\s*0;/s);
+    expect(styles).toMatch(/\.delivery-submission-form :is\(label, legend, p, span, small, strong, button\)\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+    expect(styles).toMatch(/\.delivery-digest-composer select\s*\{[^}]*text-overflow:\s*clip;[^}]*white-space:\s*normal;/s);
+    expect(deliveryProofMethods.every((method) => method.label.length <= 24)).toBe(true);
   });
 });
