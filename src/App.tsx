@@ -1011,7 +1011,9 @@ export default function App() {
       if (window.location.pathname !== bountyPath(created.id)) window.history.pushState({}, "", bountyPath(created.id));
       setActivePage("marketplace");
       window.scrollTo({ top: 0, behavior: "smooth" });
-    });
+    }, scheduledDraft.fundOnApplicantAcceptance !== false
+      ? "Bounty listing published. No tokens moved. After you select an applicant, Bounties will open your wallet to create and fund escrow."
+      : "Bounty listing published. No tokens moved. After you select an applicant, use the manual funding action on the bounty page to create and fund escrow.");
   }
 
   function updateMilestone(index: number, field: "title" | "amount" | "deliveryDeadline", value: string) {
@@ -1451,7 +1453,9 @@ export default function App() {
         const detail = caught instanceof Error ? caught.message : "The wallet request did not finish.";
         throw new Error(`Applicant accepted. Escrow funding did not finish: ${detail} You can retry from Wallet escrow.`);
       }
-    }, order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Applicant accepted." : "Applicant accepted. Escrow funding was submitted for confirmation.");
+    }, order.fundOnApplicantAcceptance === false
+      ? "Applicant accepted. Use “Create and fund escrow” in Wallet escrow to open the funding transaction."
+      : !ESCROW_CREATION_ENABLED ? "Applicant accepted. Escrow funding is temporarily unavailable." : "Applicant accepted. Escrow funding was submitted for confirmation.");
   }
 
   function escrowControls(order: MarketplaceOrder) {
@@ -1582,10 +1586,14 @@ export default function App() {
           <p className="commitment-warning" role="alert">New escrow funding is temporarily paused while the duplicate-funding contract guard is upgraded. Existing escrow actions remain available.</p>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && !creationLock && ESCROW_CREATION_ENABLED ? (
-          <button disabled={loading} onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
-            amountBaseUnits: order.budgetBaseUnits!,
-            token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
-          }), true)}>Create and fund escrow</button>
+          <section className="escrow-funding-ready" aria-label="Escrow ready to fund">
+            <strong>Applicant selected · escrow not funded</strong>
+            <p>{order.fundOnApplicantAcceptance === false ? "You selected manual funding, so your wallet has not been asked to transact yet." : "The automatic wallet flow did not finish, so funding is still available here."} Creating escrow may require an ERC20 approval followed by the escrow funding transaction.</p>
+            <button disabled={loading} onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
+              amountBaseUnits: order.budgetBaseUnits!,
+              token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
+            }), true)}>Create and fund escrow</button>
+          </section>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
@@ -2045,6 +2053,15 @@ export default function App() {
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
           {providerNextAction(order)}
           {providerSubmissionGuidance(order)}
+          {isBuyer(order) && order.status === "open" && !order.providerAddress ? (
+            <aside className="preselection-funding-guidance" aria-label="Escrow funding timing">
+              <WalletCards size={20} aria-hidden="true" />
+              <div>
+                <strong>Escrow funding starts after you select an applicant</strong>
+                <p>The onchain escrow commits to the chosen labor-provider wallet, so publishing this listing did not request a wallet transaction or move tokens. {order.fundOnApplicantAcceptance === false ? "You chose manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : "When you accept an applicant, Bounties will open the wallet funding flow automatically."}</p>
+              </div>
+            </aside>
+          ) : null}
           {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
           {lifecycle(order)}
           {reviews(order)}
@@ -2442,16 +2459,24 @@ export default function App() {
                   </fieldset>
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
-                  <label className="funding-choice">
-                    <input type="checkbox" checked={draft.fundOnApplicantAcceptance !== false} onChange={(event) => setDraft({ ...draft, fundOnApplicantAcceptance: event.target.checked })} />
-                    <span><strong>Fund escrow when I accept an applicant</strong><small>Recommended. Your wallet will check its token balance, request approval if needed, and create the funded escrow after you choose a provider. No tokens move when this form is published.</small></span>
-                  </label>
+                  <fieldset className="funding-timing-choice">
+                    <legend>When should escrow funding begin?</legend>
+                    <p>Publishing creates the bounty listing only. The escrow contract must include the selected labor provider, so no wallet transaction or token transfer occurs until after you accept an applicant.</p>
+                    <label>
+                      <input type="radio" name="fundingTiming" value="automatic" checked={draft.fundOnApplicantAcceptance !== false} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true })} />
+                      <span><strong>Open my wallet after I accept an applicant</strong><small>Recommended. Accepting an applicant starts the wallet flow to approve the ERC20 if needed, then create and fund escrow.</small></span>
+                    </label>
+                    <label>
+                      <input type="radio" name="fundingTiming" value="manual" checked={draft.fundOnApplicantAcceptance === false} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: false })} />
+                      <span><strong>Accept an applicant, then fund manually</strong><small>The applicant is selected first. A clear “Create and fund escrow” action then appears on that bounty; work cannot begin until funding is confirmed.</small></span>
+                    </label>
+                  </fieldset>
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
                     disabled={wallet ? !isDraftValid({ ...draft, deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline }) || !selectedToken || !scheduleValid : false}
                   >
-                    {wallet ? "Publish bounty" : "Connect wallet to publish"}
+                    {wallet ? "Publish bounty listing" : "Connect wallet to publish"}
                   </button>
                 </form> : null}
 

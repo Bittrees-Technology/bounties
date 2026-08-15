@@ -110,7 +110,7 @@ export function configureMockOpenBountyForAnotherWallet() {
   }];
 }
 
-export function configureMockOpenBountyWithApplicantForBuyer() {
+export function configureMockOpenBountyWithApplicantForBuyer(fundOnApplicantAcceptance = true) {
   const token = tokens.find((candidate) => candidate.symbol === "BIT")!;
   bounties = [{
     id: "00000000-0000-4000-8000-000000000711",
@@ -124,7 +124,7 @@ export function configureMockOpenBountyWithApplicantForBuyer() {
       buyer: "Test requester",
       deliveryDeadline: "2099-12-31T23:59:59.999Z",
       criteria: ["Preserve the accepted state"],
-      fundOnApplicantAcceptance: true
+      fundOnApplicantAcceptance
     },
     scope_hash: `0x${"21".repeat(32)}`,
     chain_id: token.chain_id,
