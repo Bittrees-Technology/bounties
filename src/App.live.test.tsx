@@ -230,6 +230,8 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
   const order = await renderConfiguredEscrow();
   const digest = order.getByLabelText(/delivered bytes sha-256/i);
+  const workGuidance = order.getByRole("complementary", { name: /work submission/i });
+  const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
 
   expect(digest).toHaveAttribute("pattern", "0x[a-fA-F0-9]{64}");
   expect(digest).toHaveAttribute("minlength", "66");
@@ -238,6 +240,13 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
   expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
+  expect(within(workGuidance).getByText(/submit work evidence for phase two/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByText(/active milestone form earlier on this page/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByRole("link", { name: /go to evidence form/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
+  expect(within(settlement).getByText(/settle by mutual agreement/i)).toBeInTheDocument();
+  expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
+  expect(within(settlement).getByLabelText(/provider receives \(USDC\)/i)).toHaveAttribute("name", "providerPayout");
+  expect(within(settlement).getByRole("button", { name: /propose exact bilateral split/i })).toBeInTheDocument();
   expect(order.getByLabelText(/funded escrow/i)).toHaveTextContent(/250 USDC/i);
   expect(order.getByRole("link", { name: /funded.*view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
   expect(within(order.getByLabelText(/funded escrow/i)).getByRole("link", { name: /^view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));

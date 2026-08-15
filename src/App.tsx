@@ -1464,6 +1464,17 @@ export default function App() {
     return (
       <section id={`escrow-actions-${order.id}`} className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
         <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
+        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeMilestone ? (
+          <aside className="escrow-work-guidance" aria-label="Work submission">
+            <FileCheck2 size={20} aria-hidden="true" />
+            <div>
+              <span>Current step</span>
+              <strong>{activeEvidenceHash ? `${revisionRequested ? "Revised work" : "Work evidence"} saved for ${activeMilestone.label}` : `${revisionRequested ? "Submit revised work" : "Submit work evidence"} for ${activeMilestone.label}`}</strong>
+              <p>{activeEvidenceHash ? "Review any validation notice below, then use the delivery action when it is available to commit this evidence onchain. Saving evidence alone does not submit it to the escrow contract." : "Use the active milestone form earlier on this page to add a public HTTPS link and the SHA-256 digest of the delivered files. Saving evidence does not move funds."}</p>
+            </div>
+            {!activeEvidenceHash ? <a href={`#delivery-${activeMilestone.id}`}>Go to evidence form</a> : null}
+          </aside>
+        ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && creationLock ? (
           <div className="escrow-creation-pending" role="status">
             <strong>Escrow creation submitted</strong>
@@ -1485,7 +1496,6 @@ export default function App() {
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
         {state === "ProviderAccepted" && revisionRequested && activeEvidenceHash && previousEvidenceHash && activeEvidenceHash.toLowerCase() === previousEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">Revised work must use a new evidence commitment. Submit the revised location and exact delivered-bytes digest before committing it onchain.</p> : null}
-        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeMilestone && !activeEvidenceHash ? <p className="form-hint">Submit an evidence location and delivered-bytes digest for {activeMilestone.label} below before committing delivery onchain.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && derivedApprovalHash ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptDelivery({ ...ref, approvalHash: derivedApprovalHash }))}>Approve {activeMilestone.label} onchain</button> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && activeReviewDeadline !== null && activeReviewDeadline > Date.now() && !revisionRequested ? (
           <form onSubmit={(event) => {
@@ -1515,18 +1525,28 @@ export default function App() {
         {state === "BuyerApproved" && activeMilestoneState === "Approved" && activeMilestone && isBuyer(order) && (!evidenceCommitmentMatches || !approvalCommitmentMatches) ? <p className="commitment-warning" role="alert">The accepted work commitments do not match the current onchain milestone. Refresh canonical escrow state before recording acceptance.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeReviewDeadline !== null && activeReviewDeadline <= Date.now() && !evidenceCommitmentMatches ? <p className="commitment-warning" role="alert">Payment release is unavailable because the displayed evidence differs from the active onchain milestone. Refresh canonical escrow state before releasing this tranche.</p> : null}
         {isSettlementState && isParticipant(order) ? (
-          <form onSubmit={(event) => {
-            event.preventDefault();
-            const value = String(new FormData(event.currentTarget).get("providerPayout") ?? "");
-            void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementBaseUnits(value, token.decimals) }));
-          }}>
-            <label>Proposed provider payout ({token.symbol ?? "token"})<input name="providerPayout" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" required /></label>
-            <button type="submit">Propose exact bilateral split</button>
-          </form>
+          <section className="escrow-settlement-panel" aria-label="Optional mutual settlement">
+            <header className="escrow-settlement-heading">
+              <span>Optional</span>
+              <div>
+                <strong>Settle by mutual agreement</strong>
+                <p>Use this only when both parties want to end the escrow with a different payout split. A proposal moves no funds until the other party accepts it.</p>
+              </div>
+            </header>
+            <form className="escrow-settlement-form" onSubmit={(event) => {
+              event.preventDefault();
+              const value = String(new FormData(event.currentTarget).get("providerPayout") ?? "");
+              void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementBaseUnits(value, token.decimals) }));
+            }}>
+              <label>Provider receives ({token.symbol ?? "token"})<input name="providerPayout" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" aria-describedby={`settlement-help-${order.id}`} required /></label>
+              <span className="form-hint" id={`settlement-help-${order.id}`}>Enter the token amount for the provider. The remaining escrow returns to the requester only if the counterparty accepts this exact split.</span>
+              <button type="submit">Propose exact bilateral split</button>
+            </form>
+            {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
+            {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
+            {hasSettlementProposal ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. {settlementProposalActive ? <>Only the counterparty can accept it before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p> : null}
+          </section>
         ) : null}
-        {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
-        {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
-        {hasSettlementProposal ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. {settlementProposalActive ? <>Only the counterparty can accept it before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p> : null}
         {escrowTxHashes[order.id] ? <p className="escrow-transaction-link">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}
       </section>
     );
