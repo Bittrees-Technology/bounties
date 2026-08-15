@@ -146,7 +146,15 @@ describe("Supabase marketplace mapping", () => {
         title: "Final delivery",
         amount_base_units: "1234567",
         delivery_deadline: "2099-01-31T23:59:59.999Z",
-        status: "accepted"
+        status: "accepted",
+        evidence: [{
+          id: "00000000-0000-4000-8000-000000000036",
+          uri: "https://example.test/delivery",
+          description: "Includes the final source archive and verification notes.",
+          content_hash: `0x${"cc".repeat(32)}`,
+          evidence_hash: `0x${"dd".repeat(32)}`,
+          revision: 1
+        }]
       }],
       proposals: [{
         id: "00000000-0000-4000-8000-000000000032",
@@ -190,6 +198,7 @@ describe("Supabase marketplace mapping", () => {
     expect(order.reviews?.[0]).toMatchObject({ rating: 5, direction: "service_received" });
     expect(order.milestones?.[0].deliveryDeadline).toBe("2099-01-31T23:59:59.999Z");
     expect(order.milestones?.[0].amountBaseUnits).toBe("1234567");
+    expect(order.milestones?.[0].deliveryDescription).toBe("Includes the final source archive and verification notes.");
   });
 
   it("uses the public profile routes and preserves separate rating summaries", async () => {
@@ -303,5 +312,28 @@ describe("Supabase marketplace mapping", () => {
       uri: "https://ipfs.io/ipfs/QmYwAPJzv5CZsnAzt8auVZRnZVVH9nYVYVqS1X7fqa2MMe/delivery.zip",
       proofMethod: "ipfs"
     });
+
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ ok: true }));
+    await submitEvidence(
+      "00000000-0000-4000-8000-000000000035",
+      "https://example.test/delivery",
+      `0x${"ef".repeat(32)}`,
+      "web",
+      "  Includes values where x < 3 and the final source archive.  "
+    );
+    const describedRequest = vi.mocked(fetch).mock.calls.at(-1)?.[1];
+    expect(JSON.parse(String(describedRequest?.body))).toMatchObject({
+      description: "Includes values where x < 3 and the final source archive."
+    });
+
+    vi.mocked(fetch).mockClear();
+    await expect(submitEvidence(
+      "00000000-0000-4000-8000-000000000035",
+      "https://example.test/delivery",
+      `0x${"ef".repeat(32)}`,
+      "web",
+      "Delivered\u0001with invalid control data"
+    )).rejects.toThrow(/plain-text characters/i);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
   });
 });

@@ -75,6 +75,7 @@ import {
 } from "./marketplaceDirectory";
 import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
 import { deliveryProofMethodConfig, deliveryProofMethods, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryProofMethod } from "./deliveryProof";
+import { SavedDeliveryDescription } from "./DeliveryDescription";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -1740,6 +1741,7 @@ export default function App() {
               {milestone.deliveryEvidence ? (
                 <>
                   <p>Evidence: {evidenceHref ? <a href={evidenceHref} target="_blank" rel="noreferrer noopener">{milestone.deliveryEvidence}</a> : <span>Stored reference is not a safe public proof link.</span>}</p>
+                  <SavedDeliveryDescription description={milestone.deliveryDescription} />
                   {milestone.deliveryContentHash ? <p>Delivered bytes SHA-256: <code>{milestone.deliveryContentHash}</code></p> : null}
                 </>
               ) : null}
@@ -1752,8 +1754,9 @@ export default function App() {
                     const form = new FormData(event.currentTarget);
                     const uri = String(form.get("uri") ?? "");
                     const contentHash = String(form.get("contentHash") ?? "");
+                    const description = String(form.get("description") ?? "").trim();
                     const submittedProofMethod = String(form.get("proofMethod") ?? "web") as DeliveryProofMethod;
-                    void act(() => submitEvidence(milestone.id, uri, contentHash, submittedProofMethod));
+                    void act(() => submitEvidence(milestone.id, uri, contentHash, submittedProofMethod, description || undefined));
                   }}
                 >
                   <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Share one public proof location and lock it to the exact delivered bytes.</span></div></div>
@@ -1768,6 +1771,10 @@ export default function App() {
                     </label>
                   </div>
                   <span className="proof-method-guidance" id={`proof-location-help-${milestone.id}`}>{proofMethodDetails.guidance} Only this one canonical location is included in the evidence commitment.</span>
+                  <label className="delivery-description-field">Delivery description (optional)
+                    <textarea name="description" maxLength={1000} rows={3} placeholder="Summarize what was delivered, where to start, or anything the requester should review first." aria-describedby={`delivery-description-help-${milestone.id}`} />
+                    <span className="form-hint" id={`delivery-description-help-${milestone.id}`}>Add concise plain-text context for the requester. Do not include secrets or another proof location. This description is saved with the evidence record but is not part of the onchain evidence commitment.</span>
+                  </label>
                   <fieldset className="delivery-digest-composer">
                     <legend>Verify the delivered bytes</legend>
                     <p>SHA-256 is a fingerprint of the actual delivered file. It lets the requester confirm the downloaded bytes are exactly the ones you submitted.</p>

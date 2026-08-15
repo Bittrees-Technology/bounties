@@ -526,6 +526,23 @@ li {
   padding: 9px 11px;
 }
 
+.delivery-description-field { min-width: 0; }
+.delivery-description-field textarea { min-height: 88px; resize: vertical; width: 100%; }
+
+.saved-delivery-description {
+  background: #f6f8f7;
+  border-left: 3px solid #8bbcaf;
+  display: grid;
+  gap: 3px;
+  margin-top: 9px;
+  max-width: 68ch;
+  overflow-wrap: anywhere;
+  padding: 9px 11px;
+}
+
+.saved-delivery-description strong { color: #425047; font-size: .76rem; text-transform: uppercase; }
+.milestone-row .saved-delivery-description p { color: #425047; margin: 0; white-space: pre-wrap; }
+
 .delivery-digest-composer {
   background: rgba(255, 255, 255, .72);
   border: 1px solid #cadbd2;

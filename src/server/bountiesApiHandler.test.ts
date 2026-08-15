@@ -191,6 +191,18 @@ describe("canonical evidence integrity", () => {
     expect(changed.evidence.evidenceHash).not.toBe(first.evidence.evidenceHash);
     expect(changed.approval.approvalHash).not.toBe(first.approval.approvalHash);
   });
+
+  it("keeps optional delivery descriptions outside the deployed evidence commitment", () => {
+    const descriptions = ["First plain-text explanation", "A different supporting explanation"];
+    const commitments = descriptions.map(() => deriveCanonicalEvidenceCommitments(
+      canonicalContext,
+      "https://example.test/evidence",
+      deliveredContentHash
+    ));
+
+    expect(commitments[0].evidence.evidenceHash).toBe(commitments[1].evidence.evidenceHash);
+    expect(commitments[0].approval.approvalHash).toBe(commitments[1].approval.approvalHash);
+  });
 });
 
 describe("delivery content digest boundary", () => {
@@ -250,6 +262,31 @@ describe("delivery content digest boundary", () => {
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual({ code: "INVALID_EVIDENCE_URI" });
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects control characters in a delivery description before milestone reconciliation", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/evidence",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          milestoneId: "30000000-0000-4000-8000-000000000021",
+          uri: "https://example.test/delivery",
+          description: "Delivered\u0001with invalid control data",
+          contentHash: `0x${"ab".repeat(32)}`
+        })
+      }
+    ), "evidence");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_EVIDENCE_DESCRIPTION" });
     expect(rpcMock).toHaveBeenCalledTimes(1);
   });
 });

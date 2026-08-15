@@ -264,6 +264,26 @@ function optionalString(body: Record<string, unknown>, field: string): string | 
   return value;
 }
 
+function hasDisallowedPlainTextControl(value: string): boolean {
+  return [...value].some((character) => {
+    const code = character.codePointAt(0) ?? 0;
+    return (code < 32 && code !== 9 && code !== 10 && code !== 13) || code === 127;
+  });
+}
+
+function deliveryDescriptionField(body: Record<string, unknown>): string | null {
+  const raw = body.description;
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== "string") throw new ApiError("INVALID_EVIDENCE_DESCRIPTION", 400);
+  const description = raw.trim();
+  if (!description) return null;
+  if (description.length > 1_000
+    || hasDisallowedPlainTextControl(description)) {
+    throw new ApiError("INVALID_EVIDENCE_DESCRIPTION", 400);
+  }
+  return description;
+}
+
 function optionalBoolean(body: Record<string, unknown>, field: string, fallback = false): boolean {
   const value = body[field];
   if (value === undefined || value === null) return fallback;
@@ -1495,6 +1515,7 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (action === "evidence" && method === "POST") {
     const milestoneId = requiredUuid(body, "milestoneId");
     const { uri } = evidenceUriField(body);
+    const description = deliveryDescriptionField(body);
     const contentHash = contentHashField(body);
     const context = await reconcileMilestone(session, milestoneId);
     const canonical = deriveCanonicalEvidenceCommitments(context, uri, contentHash);
@@ -1502,6 +1523,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_actor_id: session.account_id,
       p_milestone_id: milestoneId,
       p_uri: canonical.evidence.normalizedUri,
+      p_description: description,
       p_content_hash: canonical.evidence.contentHash,
       p_uri_hash: canonical.evidence.uriHash,
       p_evidence_salt: canonical.evidence.salt,

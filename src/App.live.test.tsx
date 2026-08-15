@@ -247,6 +247,10 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(proofComposer).getByRole("option", { name: /arweave content/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /onchain transaction/i })).toBeInTheDocument();
   expect(within(proofComposer).getByLabelText(/calculate from a local file/i)).toHaveAttribute("type", "file");
+  expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).toHaveAttribute("maxlength", "1000");
+  expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).not.toBeRequired();
+  expect(within(proofComposer).getByText(/concise plain-text context for the requester/i)).toBeInTheDocument();
+  expect(within(proofComposer).getByText(/not part of the onchain evidence commitment/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/no file bytes are uploaded/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/only this one canonical location is included/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");

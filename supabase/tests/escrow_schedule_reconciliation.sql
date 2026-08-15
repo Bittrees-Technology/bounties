@@ -1,5 +1,5 @@
 begin;
-select plan(39);
+select plan(44);
 
 insert into public.wallet_accounts(id,wallet_address) values
   ('30000000-0000-4000-8000-000000000001','0x1111111111111111111111111111111111111111'),
@@ -94,10 +94,20 @@ select throws_ok($$select public.app_submit_canonical_delivery_evidence(
   '0x4444444444444444444444444444444444444444','10','0x'||repeat('b',64),'0x'||repeat('8',64),
   '0x2222222222222222222222222222222222222222','0x1111111111111111111111111111111111111111')$$,
   '23514',null,'a zero delivered-byte digest is rejected before persistence');
+select throws_ok($$select public.app_submit_canonical_delivery_evidence(
+  '30000000-0000-4000-8000-000000000002',
+  (select id from public.milestones where bounty_id=(select id from public.bounties where title='Canonical schedule') and ordinal=0),
+  'https://example.test/current',E'Delivered\x01with invalid control data',
+  '0x'||repeat('c',64),
+  '0x'||repeat('1',64),'0x'||repeat('2',64),'0x'||repeat('a',64),'bounty-evidence-commitment.v1',
+  '0x'||repeat('3',64),'0x'||repeat('4',64),'0x'||repeat('b',64),0,84532,
+  '0x4444444444444444444444444444444444444444','10','0x'||repeat('b',64),'0x'||repeat('8',64),
+  '0x2222222222222222222222222222222222222222','0x1111111111111111111111111111111111111111')$$,
+  '22023',null,'control characters are rejected from immutable delivery context');
 select lives_ok($$select public.app_submit_canonical_delivery_evidence(
   '30000000-0000-4000-8000-000000000002',
   (select id from public.milestones where bounty_id=(select id from public.bounties where title='Canonical schedule') and ordinal=0),
-  'https://example.test/current',
+  'https://example.test/current','Includes values where x < 3 and the final source archive.',
   '0x'||repeat('c',64),
   '0x'||repeat('1',64),'0x'||repeat('2',64),'0x'||repeat('a',64),'bounty-evidence-commitment.v1',
   '0x'||repeat('3',64),'0x'||repeat('4',64),'0x'||repeat('b',64),0,84532,
@@ -110,6 +120,18 @@ select is((select content_hash from public.delivery_evidence where milestone_id=
 select is((select canonical_approval_hash from public.delivery_evidence where milestone_id=(
   select id from public.milestones where bounty_id=(select id from public.bounties where title='Canonical schedule') and ordinal=0)),
   '0x'||repeat('b',64),'canonical approval metadata is persisted for wallet and acceptance verification');
+select is((select description from public.delivery_evidence where milestone_id=(
+  select id from public.milestones where bounty_id=(select id from public.bounties where title='Canonical schedule') and ordinal=0)),
+  'Includes values where x < 3 and the final source archive.','plain-text delivery context persists with the canonical evidence revision');
+select is(public.app_bounty_json(
+  (select id from public.bounties where title='Canonical schedule'),
+  '30000000-0000-4000-8000-000000000001'
+) #>> '{milestones,0,evidence,0,description}',
+  'Includes values where x < 3 and the final source archive.','the requester projection includes delivery context');
+select throws_ok($$update public.delivery_evidence
+  set description='Changed after submission'
+  where milestone_id=(select id from public.milestones where bounty_id=(select id from public.bounties where title='Canonical schedule') and ordinal=0)$$,
+  '23514','DELIVERY_EVIDENCE_DESCRIPTION_IMMUTABLE','delivery context cannot change after submission');
 
 select lives_ok($$select public.app_record_escrow_state(
   '30000000-0000-4000-8000-000000000001',(select id from public.bounties where title='Canonical schedule'),
@@ -208,8 +230,10 @@ select throws_ok($$select public.app_accept_delivery('30000000-0000-4000-8000-00
   '40001','EVIDENCE_COMMITMENT_REQUIRED','direct-contract approval cannot bypass an absent canonical offchain evidence record');
 select ok(not has_function_privilege('service_role','public.app_submit_delivery_evidence(uuid,uuid,text,text,text,text)','execute'),
   'service role cannot use the obsolete ungated evidence RPC');
-select ok(has_function_privilege('service_role','public.app_submit_canonical_delivery_evidence(uuid,uuid,text,text,text,text,text,text,text,text,text,integer,bigint,text,text,text,text,text,text)','execute'),
-  'service role can use only the canonical evidence persistence boundary');
+select ok(not has_function_privilege('service_role','public.app_submit_canonical_delivery_evidence(uuid,uuid,text,text,text,text,text,text,text,text,text,integer,bigint,text,text,text,text,text,text)','execute'),
+  'service role cannot use the canonical boundary without the description argument');
+select ok(has_function_privilege('service_role','public.app_submit_canonical_delivery_evidence(uuid,uuid,text,text,text,text,text,text,text,text,text,text,integer,bigint,text,text,text,text,text,text)','execute'),
+  'service role can use only the canonical evidence boundary with immutable delivery context');
 
 select * from finish();
 rollback;

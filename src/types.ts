@@ -62,6 +62,7 @@ export interface Milestone {
   criteria: AcceptanceCriterion[];
   deliveryNote?: string;
   deliveryEvidence?: string;
+  deliveryDescription?: string;
   deliveryEvidenceHash?: `0x${string}`;
   deliveryContentHash?: `0x${string}`;
   deliveryApprovalHash?: `0x${string}`;
