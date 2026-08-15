@@ -2345,7 +2345,7 @@ export default function App() {
                     <legend>Evidence fingerprint</legend>
                     <label>Delivery format
                       <select name="fingerprintMode" value={fingerprintMode} onChange={(event) => setDeliveryFingerprintModeByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryFingerprintMode }))}>
-                        <option value="description">Service, live result, or other non-file work</option>
+                        <option value="description">Non-file work</option>
                         <option value="file">File or archive</option>
                       </select>
                     </label>

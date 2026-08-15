@@ -575,7 +575,7 @@ li {
 }
 
 .delivery-digest-composer label,
-.delivery-digest-composer input { min-width: 0; width: 100%; }
+.delivery-digest-composer :is(input, select) { max-width: 100%; min-width: 0; width: 100%; }
 
 .local-file-hash-control input[type="file"] {
   background: #fff;
@@ -3924,6 +3924,12 @@ textarea {
 
   .delivery-digest-composer legend {
     padding: 0 4px;
+  }
+
+  .delivery-digest-composer select {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
