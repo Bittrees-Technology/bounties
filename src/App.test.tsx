@@ -756,7 +756,7 @@ describe("App", () => {
     const detailCard = screen.getByRole("heading", { level: 2, name: /two-phase active milestone/i }).closest("article") as HTMLElement;
     expect(within(detailCard).getByText(/^marketplace$/i)).toBeInTheDocument();
     expect(within(detailCard).getByLabelText(/work evidence link/i)).toBeInTheDocument();
-    expect(within(detailCard).getByLabelText(/delivered bytes sha-256/i)).toBeInTheDocument();
+    expect(within(detailCard).getByLabelText(/sha-256 fingerprint/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /back to marketplace/i }));
     expect(window.location.pathname).toBe("/marketplace");

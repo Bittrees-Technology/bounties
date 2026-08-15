@@ -2224,9 +2224,13 @@ export default function App() {
                     event.preventDefault();
                     const form = new FormData(event.currentTarget);
                     const uri = String(form.get("uri") ?? "");
-                    const contentHash = String(form.get("contentHash") ?? "");
+                    const contentHash = String(form.get("contentHash") ?? "").trim();
                     const description = String(form.get("description") ?? "").trim();
                     const submittedProofMethod = String(form.get("proofMethod") ?? "web") as DeliveryProofMethod;
+                    if (!/^0x[a-fA-F0-9]{64}$/.test(contentHash)) {
+                      setError("Choose the delivered file or enter its SHA-256 fingerprint before submitting work.");
+                      return;
+                    }
                     void act(() => submitEvidence(milestone.id, uri, contentHash, submittedProofMethod, description || undefined));
                   }}
                 >
@@ -2247,14 +2251,15 @@ export default function App() {
                     <span className="form-hint" id={`delivery-description-help-${milestone.id}`}>Add concise plain-text context for the requester. Do not include secrets or another proof location. This description is saved with the evidence record but is not part of the onchain evidence commitment.</span>
                   </label>
                   <fieldset className="delivery-digest-composer">
-                    <legend>Verify the delivered bytes</legend>
-                    <p>SHA-256 is a fingerprint of the actual delivered file. It lets the requester confirm the downloaded bytes are exactly the ones you submitted.</p>
-                    <label className="local-file-hash-control">Calculate from a local file (optional)
+                    <legend>File fingerprint</legend>
+                    <p>Choose the delivered file. Bounties creates its fingerprint on this device; the file is never uploaded.</p>
+                    <label className="local-file-hash-control">Delivered file
                       <input type="file" aria-describedby={`local-file-hash-help-${milestone.id}`} onChange={(event) => {
                         const fileInput = event.currentTarget;
                         const file = event.currentTarget.files?.[0];
                         const digestInput = event.currentTarget.form?.elements.namedItem("contentHash");
                         if (!file) {
+                          if (digestInput instanceof HTMLInputElement) digestInput.value = "";
                           setDeliveryFileHashByMilestone((current) => {
                             const next = { ...current };
                             delete next[milestone.id];
@@ -2266,18 +2271,21 @@ export default function App() {
                         void hashLocalDeliveryFile(file).then((digest) => {
                           if (fileInput.files?.[0] !== file) return;
                           if (digestInput instanceof HTMLInputElement) digestInput.value = digest;
-                          setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "ready", message: "Digest calculated locally and added below. The file was not uploaded." } }));
+                          setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "ready", message: "Fingerprint ready. Your file was not uploaded." } }));
                         }).catch((caught) => {
                           if (fileInput.files?.[0] !== file) return;
+                          if (digestInput instanceof HTMLInputElement) digestInput.value = "";
                           setDeliveryFileHashByMilestone((current) => ({ ...current, [milestone.id]: { fileName: file.name, status: "error", message: caught instanceof Error ? caught.message : "This file could not be hashed locally." } }));
                         });
                       }} />
                     </label>
-                    <span className="form-hint" id={`local-file-hash-help-${milestone.id}`}>Your browser reads the selected file only to calculate its digest. No file bytes are uploaded. For a folder or bundle, create one canonical archive first.</span>
+                    <span className="form-hint" id={`local-file-hash-help-${milestone.id}`}>For multiple files, place them in one archive before choosing it.</span>
                     {fileHashState ? <span className={`local-file-hash-status ${fileHashState.status}`} role={fileHashState.status === "error" ? "alert" : "status"}><strong>{fileHashState.fileName}</strong>{fileHashState.message}</span> : null}
-                    <div className="proof-input-divider"><span>or enter the digest manually</span></div>
-                    <label>Delivered bytes SHA-256 digest<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x… (64 hexadecimal characters)" aria-describedby={`content-hash-help-${milestone.id}`} required /></label>
-                    <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Hash the exact delivered file or a documented canonical bundle of the delivered bytes. Do not hash the link. Prefix the 64-character SHA-256 digest with 0x.</span>
+                    <details className="manual-digest-control">
+                      <summary>Enter a fingerprint manually</summary>
+                      <label>SHA-256 fingerprint<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x followed by 64 characters" aria-describedby={`content-hash-help-${milestone.id}`} /></label>
+                      <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Use the fingerprint of the file itself, not the evidence link.</span>
+                    </details>
                   </fieldset>
                   <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit work evidence"}</button>
                 </form>

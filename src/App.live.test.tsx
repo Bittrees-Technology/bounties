@@ -331,10 +331,10 @@ it("uses the active milestone deadline rather than the overall bounty deadline f
   expect(order.getByRole("button", { name: /return missed-deadline funds to requester/i })).toBeInTheDocument();
 });
 
-it("requires the provider to enter an exact delivered-bytes digest instead of hashing the URI", async () => {
+it("requires an exact file fingerprint while keeping manual entry optional", async () => {
   configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
   const order = await renderConfiguredEscrow();
-  const digest = order.getByLabelText(/delivered bytes sha-256/i);
+  const digest = order.getByLabelText(/sha-256 fingerprint/i);
   const workGuidance = order.getByRole("complementary", { name: /work submission/i });
   const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
   const proofComposer = order.getByRole("form", { name: /delivery proof composer for phase two/i });
@@ -344,7 +344,7 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(digest).toHaveAttribute("pattern", "0x[a-fA-F0-9]{64}");
   expect(digest).toHaveAttribute("minlength", "66");
   expect(digest).toHaveAttribute("maxlength", "66");
-  expect(order.getByText(/hash the exact delivered file.*do not hash the link/i)).toBeInTheDocument();
+  expect(order.getByText(/fingerprint of the file itself.*not the evidence link/i)).toBeInTheDocument();
   expect(order.getByRole("button", { name: /submit work evidence/i })).toBeInTheDocument();
   expect(order.getByText(/submit completed work/i)).toBeInTheDocument();
   expect(within(proofComposer).getByLabelText(/proof location type/i)).toHaveValue("web");
@@ -353,12 +353,12 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(proofComposer).getByRole("option", { name: /ipfs content/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /arweave content/i })).toBeInTheDocument();
   expect(within(proofComposer).getByRole("option", { name: /onchain transaction/i })).toBeInTheDocument();
-  expect(within(proofComposer).getByLabelText(/calculate from a local file/i)).toHaveAttribute("type", "file");
+  expect(within(proofComposer).getByLabelText(/delivered file/i)).toHaveAttribute("type", "file");
   expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).toHaveAttribute("maxlength", "1000");
   expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).not.toBeRequired();
   expect(within(proofComposer).getByText(/concise plain-text context for the requester/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/not part of the onchain evidence commitment/i)).toBeInTheDocument();
-  expect(within(proofComposer).getByText(/no file bytes are uploaded/i)).toBeInTheDocument();
+  expect(within(proofComposer).getByText(/file is never uploaded/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/only this one canonical location is included/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(workGuidance).getByText(/submit work evidence for phase two/i)).toBeInTheDocument();

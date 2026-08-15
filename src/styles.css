@@ -593,6 +593,24 @@ li {
 
 .local-file-hash-status.error { background: #fff2f0; border-color: #dfb9b2; color: #7d3028; }
 
+.manual-digest-control {
+  border-top: 1px solid #d6e1db;
+  margin-top: 2px;
+  padding-top: 9px;
+}
+
+.manual-digest-control summary {
+  color: #0f6b57;
+  cursor: pointer;
+  font-size: .82rem;
+  font-weight: 800;
+  width: fit-content;
+}
+
+.manual-digest-control[open] { display: grid; gap: 8px; }
+.manual-digest-control[open] summary { margin-bottom: 2px; }
+.manual-digest-control label { margin-top: 2px; }
+
 .proof-input-divider {
   align-items: center;
   color: #69766f;
