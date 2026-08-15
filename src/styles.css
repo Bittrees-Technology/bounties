@@ -3807,6 +3807,53 @@ textarea {
   }
 }
 
+@media (max-width: 560px) {
+  .marketplace-page.panel {
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .marketplace-page .section-heading {
+    gap: 9px;
+    margin-bottom: 12px;
+  }
+
+  .marketplace-page .section-heading :is(h2, h3) {
+    font-size: 1.18rem;
+  }
+
+  .bounty-directory-filters {
+    column-gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    row-gap: 10px;
+  }
+
+  .bounty-directory-filters > label:first-child,
+  .bounty-directory-filters > label:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .bounty-directory-filters label {
+    font-size: 0.82rem;
+    gap: 5px;
+  }
+
+  .bounty-directory-filters :is(input, select) {
+    font-size: 0.86rem;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+
+  .bounty-directory-heading {
+    gap: 8px;
+    padding-top: 12px;
+  }
+
+  .bounty-directory-heading h3 {
+    font-size: 1.12rem;
+  }
+}
+
 @media (max-width: 430px) {
   .sidebar-account .account-actions {
     width: 100%;
