@@ -568,6 +568,12 @@ li {
   margin: 0;
 }
 
+.non-file-fingerprint-note {
+  background: #eef7f2;
+  border-left: 3px solid #6da897;
+  padding: 9px 10px;
+}
+
 .delivery-digest-composer label,
 .delivery-digest-composer input { min-width: 0; width: 100%; }
 
@@ -3865,6 +3871,59 @@ textarea {
     /* iOS wallet webviews zoom focused controls below 16px. Keep this
        authoritative over component-level compact typography. */
     font-size: 16px !important;
+  }
+
+  .bounty-detail-card {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .bounty-detail-card .lifecycle-panel {
+    margin-top: 2px;
+    padding-top: 10px;
+  }
+
+  .lifecycle-panel .milestone-row {
+    border-radius: 12px;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .milestone-row.active-milestone {
+    box-shadow: 0 0 0 1px rgba(15, 107, 87, 0.08);
+  }
+
+  .delivery-submission-form {
+    border-radius: 10px;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .delivery-proof-location-grid {
+    gap: 8px;
+  }
+
+  .proof-method-guidance,
+  .non-file-fingerprint-note {
+    padding: 8px 9px;
+  }
+
+  .delivery-description-field {
+    gap: 6px;
+  }
+
+  .delivery-description-field textarea {
+    min-height: 78px;
+  }
+
+  .delivery-digest-composer {
+    border-radius: 10px;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .delivery-digest-composer legend {
+    padding: 0 4px;
   }
 }
 

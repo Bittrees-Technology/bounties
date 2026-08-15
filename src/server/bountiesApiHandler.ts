@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import { AbiCoder, Contract, Interface, JsonRpcProvider, ensNormalize, getAddress, keccak256, toUtf8Bytes } from "ethers";
 import {
   buildCanonicalApprovalCommitment,
@@ -10,7 +11,7 @@ import { requestRateLimitDigest } from "./requestRateLimit.js";
 import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } from "./vercelProxy.js";
 import { requiredServerEnv, serverEnv } from "./serverEnv.js";
 import { resolveSharedModerator } from "./sharedRoleResolver.js";
-import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryProofMethod } from "../deliveryProof.js";
+import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryFingerprintMode, type DeliveryProofMethod } from "../deliveryProof.js";
 import { inspectTokenCompatibility, type PreviousTokenInspection } from "./tokenCompatibility.js";
 
 const encoder = new TextEncoder();
@@ -1750,6 +1751,17 @@ async function handle(request: Request, action: string): Promise<Response> {
     const { uri } = evidenceUriField(body);
     const description = deliveryDescriptionField(body);
     const contentHash = contentHashField(body);
+    const fingerprintMode = (body.fingerprintMode ?? "file") as DeliveryFingerprintMode;
+    if (fingerprintMode !== "file" && fingerprintMode !== "description") {
+      throw new ApiError("INVALID_EVIDENCE_FINGERPRINT_MODE", 400);
+    }
+    if (fingerprintMode === "description") {
+      if (!description) throw new ApiError("INVALID_EVIDENCE_DESCRIPTION", 400);
+      const expectedDescriptionHash = `0x${createHash("sha256").update(description, "utf8").digest("hex")}`;
+      if (expectedDescriptionHash !== contentHash) {
+        throw new ApiError("INVALID_CONTENT_HASH", 400);
+      }
+    }
     const context = await reconcileMilestone(session, milestoneId);
     const canonical = deriveCanonicalEvidenceCommitments(context, uri, contentHash);
     const data = await callRpc("app_submit_canonical_delivery_evidence", {

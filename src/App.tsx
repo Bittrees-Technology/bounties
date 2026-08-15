@@ -78,7 +78,7 @@ import {
   type BountyStatusFilter
 } from "./marketplaceDirectory";
 import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
-import { deliveryProofMethodConfig, deliveryProofMethods, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryProofMethod } from "./deliveryProof";
+import { deliveryProofMethodConfig, deliveryProofMethods, hashCanonicalDeliveryDescription, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryFingerprintMode, type DeliveryProofMethod } from "./deliveryProof";
 import { SavedDeliveryDescription } from "./DeliveryDescription";
 import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
 import "./styles.css";
@@ -651,6 +651,7 @@ export default function App() {
   const escrowReconciliationInFlight = useRef(new Set<string>());
   const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
   const [deliveryProofMethodByMilestone, setDeliveryProofMethodByMilestone] = useState<Record<string, DeliveryProofMethod>>({});
+  const [deliveryFingerprintModeByMilestone, setDeliveryFingerprintModeByMilestone] = useState<Record<string, DeliveryFingerprintMode>>({});
   const [deliveryFileHashByMilestone, setDeliveryFileHashByMilestone] = useState<Record<string, DeliveryFileHashState>>({});
   const [applicationProofMethodByOrder, setApplicationProofMethodByOrder] = useState<Record<string, DeliveryProofMethod>>({});
   const [applicationFileHashByOrder, setApplicationFileHashByOrder] = useState<Record<string, DeliveryFileHashState>>({});
@@ -1909,7 +1910,7 @@ export default function App() {
             <div>
               <span>Current step</span>
               <strong>{activeEvidenceHash ? `${revisionRequested ? "Revised work" : "Work evidence"} saved for ${activeMilestone.label}` : `${revisionRequested ? "Submit revised work" : "Submit work evidence"} for ${activeMilestone.label}`}</strong>
-              <p>{activeEvidenceHash ? "Review any validation notice below, then use the delivery action when it is available to commit this evidence onchain. Saving evidence alone does not submit it to the escrow contract." : "Use the active milestone form earlier on this page to add a public HTTPS link and the SHA-256 digest of the delivered files. Saving evidence does not move funds."}</p>
+              <p>{activeEvidenceHash ? "Review any validation notice below, then use the delivery action when it is available to commit this evidence onchain. Saving evidence alone does not submit it to the escrow contract." : "Use the active milestone form earlier on this page to add a public proof location and fingerprint either the delivered file or a canonical non-file delivery record. Saving evidence does not move funds."}</p>
             </div>
             {!activeEvidenceHash ? <a href={`#delivery-${activeMilestone.id}`}>Go to evidence form</a> : null}
           </aside>
@@ -2285,6 +2286,7 @@ export default function App() {
           const approvalMatches = serverApprovalMatches && Boolean(observation?.current_milestone_detail?.approval_hash) && milestone.deliveryApprovalHash!.toLowerCase() === observation!.current_milestone_detail!.approval_hash.toLowerCase();
           const proofMethod = deliveryProofMethodByMilestone[milestone.id] ?? "web";
           const proofMethodDetails = deliveryProofMethodConfig(proofMethod);
+          const fingerprintMode = deliveryFingerprintModeByMilestone[milestone.id] ?? "description";
           const fileHashState = deliveryFileHashByMilestone[milestone.id];
           const evidenceHref = milestone.deliveryEvidence ? safeDeliveryProofHref(milestone.deliveryEvidence) : null;
           return (
@@ -2298,7 +2300,7 @@ export default function App() {
                 <>
                   <p>Evidence: {evidenceHref ? <a href={evidenceHref} target="_blank" rel="noreferrer noopener">{milestone.deliveryEvidence}</a> : <span>Stored reference is not a safe public proof link.</span>}</p>
                   <SavedDeliveryDescription description={milestone.deliveryDescription} />
-                  {milestone.deliveryContentHash ? <p>Delivered bytes SHA-256: <code>{milestone.deliveryContentHash}</code></p> : null}
+                  {milestone.deliveryContentHash ? <p>Evidence fingerprint (SHA-256): <code>{milestone.deliveryContentHash}</code></p> : null}
                 </>
               ) : null}
             </div>
@@ -2309,17 +2311,21 @@ export default function App() {
                     event.preventDefault();
                     const form = new FormData(event.currentTarget);
                     const uri = String(form.get("uri") ?? "");
-                    const contentHash = String(form.get("contentHash") ?? "").trim();
                     const description = String(form.get("description") ?? "").trim();
                     const submittedProofMethod = String(form.get("proofMethod") ?? "web") as DeliveryProofMethod;
-                    if (!/^0x[a-fA-F0-9]{64}$/.test(contentHash)) {
-                      setError("Choose the delivered file or enter its SHA-256 fingerprint before submitting work.");
-                      return;
-                    }
-                    void act(() => submitEvidence(milestone.id, uri, contentHash, submittedProofMethod, description || undefined));
+                    const submittedFingerprintMode = String(form.get("fingerprintMode") ?? "description") as DeliveryFingerprintMode;
+                    void act(async () => {
+                      const contentHash = submittedFingerprintMode === "description"
+                        ? await hashCanonicalDeliveryDescription(description)
+                        : String(form.get("contentHash") ?? "").trim();
+                      if (!/^0x[a-fA-F0-9]{64}$/.test(contentHash)) {
+                        throw new Error("Choose the delivered file or enter its SHA-256 fingerprint before submitting work.");
+                      }
+                      return submitEvidence(milestone.id, uri, contentHash, submittedProofMethod, description || undefined, submittedFingerprintMode);
+                    });
                   }}
                 >
-                  <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Share one public proof location and lock it to the exact delivered bytes.</span></div></div>
+                  <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Share one public proof location and fingerprint the delivered file or non-file work record.</span></div></div>
                   <div className="delivery-proof-location-grid">
                     <label>Proof location type
                       <select name="proofMethod" value={proofMethod} onChange={(event) => setDeliveryProofMethodByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryProofMethod }))}>
@@ -2331,12 +2337,21 @@ export default function App() {
                     </label>
                   </div>
                   <span className="proof-method-guidance" id={`proof-location-help-${milestone.id}`}>{proofMethodDetails.guidance} Only this one canonical location is included in the evidence commitment.</span>
-                  <label className="delivery-description-field">Delivery description (optional)
-                    <textarea name="description" maxLength={1000} rows={3} placeholder="Summarize what was delivered, where to start, or anything the requester should review first." aria-describedby={`delivery-description-help-${milestone.id}`} />
-                    <span className="form-hint" id={`delivery-description-help-${milestone.id}`}>Add concise plain-text context for the requester. Do not include secrets or another proof location. This description is saved with the evidence record but is not part of the onchain evidence commitment.</span>
+                  <label className="delivery-description-field">Delivery description{fingerprintMode === "file" ? " (optional)" : ""}
+                    <textarea name="description" maxLength={1000} rows={3} required={fingerprintMode === "description"} placeholder="Summarize what was delivered, where to start, or anything the requester should review first." aria-describedby={`delivery-description-help-${milestone.id}`} />
+                    <span className="form-hint" id={`delivery-description-help-${milestone.id}`}>{fingerprintMode === "description" ? "For non-file work, this exact text becomes the canonical delivery record and is fingerprinted on this device. " : "Add concise plain-text context for the requester. "}Do not include secrets or another proof location.</span>
                   </label>
                   <fieldset className="delivery-digest-composer">
-                    <legend>File fingerprint</legend>
+                    <legend>Evidence fingerprint</legend>
+                    <label>Delivery format
+                      <select name="fingerprintMode" value={fingerprintMode} onChange={(event) => setDeliveryFingerprintModeByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryFingerprintMode }))}>
+                        <option value="description">Service, live result, or other non-file work</option>
+                        <option value="file">File or archive</option>
+                      </select>
+                    </label>
+                    {fingerprintMode === "description" ? (
+                      <p className="non-file-fingerprint-note">No file is required. Bounties fingerprints the exact delivery description above; the proof location is committed separately.</p>
+                    ) : <>
                     <p>Choose the delivered file. Bounties creates its fingerprint on this device; the file is never uploaded.</p>
                     <label className="local-file-hash-control">Delivered file
                       <input type="file" aria-describedby={`local-file-hash-help-${milestone.id}`} onChange={(event) => {
@@ -2371,6 +2386,7 @@ export default function App() {
                       <label>SHA-256 fingerprint<input name="contentHash" type="text" inputMode="text" pattern="0x[a-fA-F0-9]{64}" minLength={66} maxLength={66} spellCheck={false} placeholder="0x followed by 64 characters" aria-describedby={`content-hash-help-${milestone.id}`} /></label>
                       <span className="form-hint" id={`content-hash-help-${milestone.id}`}>Use the fingerprint of the file itself, not the evidence link.</span>
                     </details>
+                    </>}
                   </fieldset>
                   <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit work evidence"}</button>
                 </form>

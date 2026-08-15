@@ -331,16 +331,23 @@ it("uses the active milestone deadline rather than the overall bounty deadline f
   expect(order.getByRole("button", { name: /return missed-deadline funds to requester/i })).toBeInTheDocument();
 });
 
-it("requires an exact file fingerprint while keeping manual entry optional", async () => {
+it("supports a canonical non-file record and keeps exact file fingerprinting available", async () => {
   configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
+  const user = userEvent.setup();
   const order = await renderConfiguredEscrow();
-  const digest = order.getByLabelText(/sha-256 fingerprint/i);
   const workGuidance = order.getByRole("complementary", { name: /work submission/i });
   const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
   const proofComposer = order.getByRole("form", { name: /delivery proof composer for phase two/i });
   const lifecycleControls = order.getByRole("group", { name: /escrow lifecycle controls/i });
   const reviewPanel = order.getByRole("region", { name: /reviews for two-phase active milestone/i });
 
+  const deliveryFormat = within(proofComposer).getByLabelText(/delivery format/i);
+  expect(deliveryFormat).toHaveValue("description");
+  expect(within(proofComposer).getByText(/no file is required/i)).toBeInTheDocument();
+  expect(within(proofComposer).getByLabelText(/^delivery description/i)).toBeRequired();
+  expect(within(proofComposer).queryByLabelText(/delivered file/i)).not.toBeInTheDocument();
+  await user.selectOptions(deliveryFormat, "file");
+  const digest = within(proofComposer).getByLabelText(/sha-256 fingerprint/i);
   expect(digest).toHaveAttribute("pattern", "0x[a-fA-F0-9]{64}");
   expect(digest).toHaveAttribute("minlength", "66");
   expect(digest).toHaveAttribute("maxlength", "66");
@@ -357,7 +364,6 @@ it("requires an exact file fingerprint while keeping manual entry optional", asy
   expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).toHaveAttribute("maxlength", "1000");
   expect(within(proofComposer).getByLabelText(/delivery description \(optional\)/i)).not.toBeRequired();
   expect(within(proofComposer).getByText(/concise plain-text context for the requester/i)).toBeInTheDocument();
-  expect(within(proofComposer).getByText(/not part of the onchain evidence commitment/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/file is never uploaded/i)).toBeInTheDocument();
   expect(within(proofComposer).getByText(/only this one canonical location is included/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");

@@ -39,6 +39,7 @@ export const deliveryProofMethods = [
 
 export type DeliveryProofMethod = typeof deliveryProofMethods[number]["value"];
 export type DeliveryProofMethodConfig = typeof deliveryProofMethods[number];
+export type DeliveryFingerprintMode = "description" | "file";
 
 const deliveryProofMethodValues = new Set<string>(deliveryProofMethods.map((method) => method.value));
 const cidV0Pattern = /^Qm[1-9A-HJ-NP-Za-km-z]{44}$/;
@@ -113,6 +114,23 @@ function hasControlCharacters(value: string): boolean {
     const code = character.charCodeAt(0);
     return code <= 31 || code === 127;
   });
+}
+
+/**
+ * Creates the independent content fingerprint required by the escrow for work
+ * that has no delivered file. The exact trimmed description is the canonical
+ * non-file delivery record; the proof URI remains separately bound.
+ */
+export async function hashCanonicalDeliveryDescription(description: string): Promise<`0x${string}`> {
+  const canonicalDescription = description.trim();
+  if (!canonicalDescription || canonicalDescription.length > 1_000 || hasControlCharacters(canonicalDescription)) {
+    throw new DeliveryProofValidationError("Describe the completed non-file work in 1,000 plain-text characters or fewer.");
+  }
+  if (!globalThis.crypto?.subtle) {
+    throw new DeliveryProofValidationError("Evidence fingerprinting is unavailable in this browser. Choose file delivery and enter a SHA-256 fingerprint manually.");
+  }
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalDescription));
+  return `0x${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 }
 
 /**

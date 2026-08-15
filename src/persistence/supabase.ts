@@ -3,7 +3,7 @@ import { SIWE_AUTHENTICATION_METHOD, validateSiweChallenge } from "../auth/siwe"
 import { hashSourceJson } from "../chain/hashCodec";
 import type { ApplicationSupportingMaterial, MarketplaceOrder, Proposal, RequestDraft } from "../types";
 import { formatUnits, getAddress, keccak256, toHex } from "viem";
-import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryProofMethod } from "../deliveryProof";
+import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryFingerprintMode, type DeliveryProofMethod } from "../deliveryProof";
 
 type EthereumProvider = { request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> };
 declare global { interface Window { ethereum?: EthereumProvider } }
@@ -452,7 +452,7 @@ function hasDisallowedPlainTextControl(value: string): boolean {
     return (code < 32 && code !== 9 && code !== 10 && code !== 13) || code === 127;
   });
 }
-export async function submitEvidence(milestoneId: string, uri: string, contentHash: string, proofMethod: DeliveryProofMethod = "web", description?: string) {
+export async function submitEvidence(milestoneId: string, uri: string, contentHash: string, proofMethod: DeliveryProofMethod = "web", description?: string, fingerprintMode: DeliveryFingerprintMode = "file") {
   const canonicalUri = canonicalizeDeliveryProofUri(uri, proofMethod);
   const normalizedContentHash = contentHash.trim().toLowerCase();
   if (!/^0x[0-9a-f]{64}$/.test(normalizedContentHash) || /^0x0{64}$/.test(normalizedContentHash)) {
@@ -467,7 +467,7 @@ export async function submitEvidence(milestoneId: string, uri: string, contentHa
   }
   return request("/evidence", {
     method: "POST",
-    body: JSON.stringify({ milestoneId, uri: canonicalUri, proofMethod, contentHash: normalizedContentHash, description: normalizedDescription })
+    body: JSON.stringify({ milestoneId, uri: canonicalUri, proofMethod, contentHash: normalizedContentHash, description: normalizedDescription, fingerprintMode })
   });
 }
 export const acceptEvidence = (milestoneId: string) => request("/evidence/accept", { method: "POST", body: JSON.stringify({ milestoneId }) });

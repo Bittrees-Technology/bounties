@@ -333,7 +333,8 @@ describe("Supabase marketplace mapping", () => {
       milestoneId: "00000000-0000-4000-8000-000000000035",
       uri: "https://example.test/delivery",
       proofMethod: "web",
-      contentHash: `0x${"ab".repeat(32)}`
+      contentHash: `0x${"ab".repeat(32)}`,
+      fingerprintMode: "file"
     });
 
     vi.mocked(fetch).mockClear();

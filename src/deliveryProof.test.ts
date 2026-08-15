@@ -5,6 +5,7 @@ import { buildCanonicalEvidenceCommitment } from "./chain/hashCodec";
 import {
   MAX_LOCAL_HASH_FILE_BYTES,
   canonicalizeDeliveryProofUri,
+  hashCanonicalDeliveryDescription,
   hashLocalDeliveryFile,
   safeDeliveryProofHref
 } from "./deliveryProof";
@@ -64,6 +65,13 @@ describe("local delivery file hashing", () => {
     const localFile = { size: bytes.byteLength, arrayBuffer: async () => bytes.buffer } as Blob;
 
     await expect(hashLocalDeliveryFile(localFile)).resolves.toBe("0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+  });
+
+  it("fingerprints the exact canonical description for non-file work", async () => {
+    vi.stubGlobal("crypto", webcrypto);
+
+    await expect(hashCanonicalDeliveryDescription("  hello  ")).resolves.toBe("0x2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    await expect(hashCanonicalDeliveryDescription("   ")).rejects.toThrow(/describe the completed non-file work/i);
   });
 
   it("fails closed before reading a file that is too large for in-browser hashing", async () => {

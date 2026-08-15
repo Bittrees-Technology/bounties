@@ -292,6 +292,32 @@ describe("delivery content digest boundary", () => {
     await expect(response.json()).resolves.toEqual({ code: "INVALID_EVIDENCE_DESCRIPTION" });
     expect(rpcMock).toHaveBeenCalledTimes(1);
   });
+
+  it("rejects a non-file fingerprint that does not match the canonical description", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/evidence",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          milestoneId: "30000000-0000-4000-8000-000000000021",
+          uri: "https://example.test/delivery",
+          description: "hello",
+          fingerprintMode: "description",
+          contentHash: `0x${"ab".repeat(32)}`
+        })
+      }
+    ), "evidence");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_CONTENT_HASH" });
+    expect(rpcMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("application supporting-material boundary", () => {
