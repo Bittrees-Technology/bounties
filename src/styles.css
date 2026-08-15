@@ -2637,6 +2637,40 @@ li {
   margin-top: 16px;
 }
 
+.applicant-identity {
+  display: grid;
+  gap: 5px;
+  justify-items: start;
+}
+
+.applicant-profile-link {
+  color: #0f6b57;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.applicant-identity-meta {
+  align-items: center;
+  color: #5a6862;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: .8rem;
+  gap: 8px 12px;
+}
+
+.applicant-identity-meta a {
+  align-items: center;
+  color: #0f6b57;
+  display: inline-flex;
+  font-weight: 700;
+  gap: 4px;
+  text-decoration: none;
+}
+
+.applicant-identity-meta a:hover { text-decoration: underline; }
+.applicant-identity-meta code { color: inherit; }
+
 .proposal-row button {
   align-self: center;
 }

@@ -36,6 +36,7 @@ let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
 let profileVisibility: "visible" | "hidden" = "visible";
 let profileLegacySpecialty: string | null = null;
+let publicProfileIdentities = new Map<string, { displayName: string | null; ensName: string | null }>();
 type EscrowRecordOutcome = "success" | "reverted" | "pending" | "mismatch";
 let escrowRecordOutcome: EscrowRecordOutcome = "success";
 let escrowRecordOutcomeSequence: EscrowRecordOutcome[] = [];
@@ -160,6 +161,10 @@ export function configureMockOpenBountyWithApplicantForBuyer(fundOnApplicantAcce
       status: "active"
     }]
   }];
+}
+
+export function configureMockPublicProfileIdentity(walletAddress: string, displayName: string | null, ensName: string | null = null) {
+  publicProfileIdentities.set(walletAddress.toLowerCase(), { displayName, ensName });
 }
 
 export function configureMockEscrowAddress(value: string) {
@@ -410,6 +415,7 @@ beforeEach(() => {
   snapshotMyReports = [];
   profileVisibility = "visible";
   profileLegacySpecialty = null;
+  publicProfileIdentities = new Map();
   escrowRecordOutcome = "success";
   escrowRecordOutcomeSequence = [];
   escrowRefreshOnchainState = null;
@@ -666,15 +672,16 @@ beforeEach(() => {
       if (profileVisibility === "hidden" && url.toLowerCase().endsWith(testWallet.toLowerCase())) return Response.json({ code: "PROFILE_NOT_FOUND" }, { status: 404 });
       const profileWallet = decodeURIComponent(url.split("/profiles/")[1]);
       const ownProfile = profileWallet.toLowerCase() === testWallet.toLowerCase();
+      const identity = publicProfileIdentities.get(profileWallet.toLowerCase());
       return Response.json({
         account_id: ownProfile ? "00000000-0000-4000-8000-000000000111" : "00000000-0000-4000-8000-000000000222",
         wallet_address: profileWallet,
-        display_name: ownProfile ? "Test participant" : null,
+        display_name: identity?.displayName ?? (ownProfile ? "Test participant" : null),
         profile_bio: "Builds and funds verifiable work.",
         profile_url: "https://example.test/profile",
         profile_moderation_status: "visible",
         profile_updated_at: new Date().toISOString(),
-        ens_name: ownProfile ? "testparticipant.eth" : null,
+        ens_name: identity?.ensName ?? (ownProfile ? "testparticipant.eth" : null),
         member_since: new Date().toISOString(),
         roles: ["buyer", "provider"],
         activity_summary: { capital_bounties: 1, labor_bounties: 1 },

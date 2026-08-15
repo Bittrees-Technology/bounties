@@ -154,6 +154,46 @@ function walletExplorerLink(walletAddress: string) {
   return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
+function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: string; onOpenProfile: (address: string) => void }) {
+  const [profile, setProfile] = useState<PublicWalletProfile | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadPublicProfile(walletAddress)
+      .then((result) => {
+        if (!cancelled) setProfile(result);
+      })
+      .catch(() => {
+        if (!cancelled) setProfile(null);
+      });
+    return () => { cancelled = true; };
+  }, [walletAddress]);
+
+  const preferredIdentity = profile?.display_name?.trim() || profile?.ens_name?.trim() || short(walletAddress);
+  return (
+    <div className="applicant-identity">
+      <a
+        className="applicant-profile-link"
+        href={profilePath(walletAddress)}
+        aria-label={`View ${preferredIdentity} profile`}
+        onClick={(event) => {
+          if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          onOpenProfile(walletAddress);
+        }}
+      >
+        {preferredIdentity}
+      </a>
+      <div className="applicant-identity-meta">
+        {profile?.display_name?.trim() && profile.ens_name?.trim() ? <span>ENS · {profile.ens_name}</span> : null}
+        <a href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label={`View ${walletAddress} on Etherscan`}>
+          <code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" />
+        </a>
+      </div>
+    </div>
+  );
+}
+
 function ProfileAvatar({ profile }: { profile: PublicWalletProfile | null }) {
   const avatarUrl = profile?.ens_avatar_url ?? null;
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
@@ -227,6 +267,15 @@ function bountyIdFromPath(pathname: string): string | null {
 
 function bountyPath(bountyId: string): string {
   return `/bounties/${bountyId}`;
+}
+
+function profilePath(walletAddress: string): string {
+  return `/profiles/${walletAddress}`;
+}
+
+function profileAddressFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/profiles\/(0x[0-9a-f]{40})\/?$/i);
+  return match?.[1] ?? null;
 }
 
 function profileSearchSelectionFromLocation(): ProfileSearchSelection | null {
@@ -459,7 +508,7 @@ export default function App() {
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
   const [escrowCreationLocks, setEscrowCreationLocks] = useState<Record<string, EscrowCreationLock>>(readEscrowCreationLocks);
   const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
-  const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(null);
+  const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(() => profileAddressFromPath(window.location.pathname));
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileEditorOpen, setProfileEditorOpen] = useState(false);
@@ -701,6 +750,8 @@ export default function App() {
   }
 
   function openProfile(address: string) {
+    const target = profilePath(address);
+    if (window.location.pathname !== target) window.history.pushState({}, "", target);
     setSelectedProfileAddress(address);
     setPublicProfile(null);
     setProfileMessage("Loading wallet profile…");
@@ -864,6 +915,22 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (activePage !== "profile" || !selectedProfileAddress || publicProfile || profileMessage) return;
+    let cancelled = false;
+    setProfileMessage("Loading wallet profile…");
+    void loadPublicProfile(selectedProfileAddress)
+      .then((profile) => {
+        if (cancelled) return;
+        setPublicProfile(profile);
+        setProfileMessage(null);
+      })
+      .catch(() => {
+        if (!cancelled) setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below.");
+      });
+    return () => { cancelled = true; };
+  }, [activePage, profileMessage, publicProfile, selectedProfileAddress]);
+
+  useEffect(() => {
     if (!notificationsOpen) return;
 
     const isWithinNotificationControl = (target: EventTarget | null) => target instanceof Node
@@ -950,7 +1017,7 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
-      setSelectedProfileAddress(null);
+      setSelectedProfileAddress(profileAddressFromPath(window.location.pathname));
       setPublicProfile(null);
       setSelectedBountyId(bountyIdFromPath(window.location.pathname));
       setNotice(null);
@@ -1888,7 +1955,7 @@ export default function App() {
               order.proposals.map((proposal) => (
                 <div className="proposal-row" key={proposal.id}>
                   <div>
-                    <button className="wallet-link" type="button" onClick={() => openProfile(proposal.provider)}>{short(proposal.provider)}</button>
+                    <ApplicantIdentity walletAddress={proposal.provider} onOpenProfile={openProfile} />
                     <p>{proposal.note}</p>
                     <span>Application for {proposal.proposedBudget} {order.token}</span>
                     {proposal.supportingMaterials?.map((material, index) => {
