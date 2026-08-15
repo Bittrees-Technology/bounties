@@ -999,6 +999,47 @@ li {
 .token-identity-card small { color: #5a6862; line-height: 1.45; }
 .token-identity-card .token-risk-note { color: #7b5a00; }
 
+.token-compatibility-status,
+.selected-token-card .token-compatibility-status,
+.token-identity-card .token-compatibility-status {
+  background: #e2eee8;
+  border-radius: 999px;
+  color: #135b4b;
+  font-size: .78rem;
+  font-weight: 800;
+  justify-self: start;
+  letter-spacing: 0;
+  padding: 5px 9px;
+  text-transform: none;
+}
+
+.token-compatibility-status--incompatible,
+.token-compatibility-status--implementation_changed {
+  background: #fde9e5;
+  color: #8b2e23;
+}
+
+.token-compatibility-status--inconclusive { background: #fff5d7; color: #715500; }
+
+.token-compatibility-gate {
+  background: #f3f8f5;
+  border: 1px solid #cfe0d6;
+  border-radius: 12px;
+  display: grid;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 12px;
+}
+
+.token-compatibility-gate > span { color: #4f5f57; }
+.token-compatibility-gate > label,
+.token-compatibility-confirmation { align-items: flex-start; display: flex; gap: 9px; line-height: 1.4; }
+.token-compatibility-gate input,
+.token-compatibility-confirmation input { flex: 0 0 auto; height: 16px; margin: 2px 0 0; min-height: 0; width: 16px; }
+.token-compatibility-gate--incompatible,
+.token-compatibility-gate--implementation_changed { background: #fff2ef; border-color: #e8afa6; }
+.token-reinspect-button { justify-self: start; width: fit-content; }
+
 .token-accounting-note {
   align-items: flex-start;
   color: #405e54;

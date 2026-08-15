@@ -1,4 +1,4 @@
-import { decodeFunctionData, encodeFunctionResult, parseAbi } from "viem";
+import { decodeFunctionData, encodeFunctionResult, parseAbi, toFunctionSelector } from "viem";
 import { describe, expect, it } from "vitest";
 import { BOUNTY_ESCROW_ABI } from "./abi";
 import { createViemEscrowAdapter, selectEscrowProvider, type Eip1193Provider } from "./escrowAdapter";
@@ -58,6 +58,9 @@ interface RecordingOptions {
   chainId?: string;
   unknownChainOnFirstSwitch?: boolean;
   ethCallResult?: unknown;
+  exactAccountingReverts?: boolean;
+  genericPreflightReverts?: boolean;
+  malformedPreflightResult?: boolean;
   existingBountyId?: bigint;
   receipts?: unknown[];
 }
@@ -70,9 +73,11 @@ class RecordingProvider implements Eip1193Provider {
   private receiptIndex = 0;
   private switchIndex = 0;
   private activeChainId: string;
+  private allowanceValue: bigint;
 
   constructor(private readonly options: RecordingOptions = {}) {
     this.activeChainId = options.chainId ?? "0x14a34";
+    this.allowanceValue = options.allowance ?? 0n;
   }
 
   async request(args: { method: string; params?: unknown[] | Record<string, unknown> }): Promise<unknown> {
@@ -97,21 +102,51 @@ class RecordingProvider implements Eip1193Provider {
       if (this.options.ethCallResult !== undefined) return this.options.ethCallResult;
       const call = (args.params as Array<{ data?: `0x${string}` }> | undefined)?.[0];
       if (call?.data) {
+        let escrowFunction: string | undefined;
         try {
-          if (decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: call.data }).functionName === "bountyIdByRequesterAndTermsHash") {
+          escrowFunction = decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: call.data }).functionName;
+        } catch {
+          // Continue with ERC20 reads when this is not an escrow call.
+        }
+        if (escrowFunction) {
+          if (escrowFunction === "bountyIdByRequesterAndTermsHash") {
             return toAbiWord(this.options.existingBountyId ?? 0n);
           }
-        } catch {
-          // Continue with ERC20 reads.
+          if (["createBounty", "createMilestoneBounty", "fundBounty"].includes(escrowFunction)) {
+            if (this.options.exactAccountingReverts) {
+              throw { code: -32000, data: `${toFunctionSelector("FundingAmountMismatch(address,uint256,uint256)")}${"0".repeat(64)}` };
+            }
+            if (this.options.genericPreflightReverts) throw { code: -32603, message: "RPC unavailable" };
+            if (this.options.malformedPreflightResult) return "0x";
+            return escrowFunction === "fundBounty" ? "0x" : toAbiWord(1n);
+          }
         }
       }
-      if (call?.data && decodeFunctionData({ abi: erc20Abi, data: call.data }).functionName === "balanceOf") {
-        return toAbiWord(this.options.balance ?? 10_000_000n);
+      if (call?.data) {
+        try {
+          if (decodeFunctionData({ abi: erc20Abi, data: call.data }).functionName === "balanceOf") {
+            return toAbiWord(this.options.balance ?? 10_000_000n);
+          }
+        } catch {
+          // Continue with allowance reads.
+        }
       }
-      const allowances = this.options.allowanceResponses ?? [this.options.allowance ?? 0n];
+      const allowances = this.options.allowanceResponses ?? [this.allowanceValue];
       return toAbiWord(allowances[Math.min(this.allowanceIndex++, allowances.length - 1)]);
     }
-    if (args.method === "wallet_sendCalls") return this.options.sendCallsResult ?? { id: "bundle-1" };
+    if (args.method === "wallet_sendCalls") {
+      const [request] = args.params as Array<{ calls?: Array<{ data?: `0x${string}` }> }>;
+      for (const call of request.calls ?? []) {
+        if (!call.data) continue;
+        try {
+          const decoded = decodeFunctionData({ abi: erc20Abi, data: call.data });
+          if (decoded.functionName === "approve") this.allowanceValue = decoded.args[1];
+        } catch {
+          // Non-approval call.
+        }
+      }
+      return this.options.sendCallsResult ?? { id: "bundle-1" };
+    }
     if (args.method === "wallet_getCallsStatus") {
       const statuses = this.options.statuses ?? [{ status: 200, receipts: [{ status: "0x1", transactionHash: txHash }] }];
       return statuses[Math.min(this.statusIndex++, statuses.length - 1)];
@@ -194,7 +229,7 @@ describe("escrow adapter provider support", () => {
     });
   });
 
-  it("atomically approves and creates a funded bounty, then resolves the real receipt hash", async () => {
+  it("keeps smart-wallet approval and exact-accounting funding atomic", async () => {
     const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 0n });
     const adapter = createViemEscrowAdapter({
       chain,
@@ -207,8 +242,9 @@ describe("escrow adapter provider support", () => {
     const result = await adapter.createEscrow(createOrder(), funding);
 
     expect(result).toEqual({ state: "confirmed", txHash, bundleId: "bundle-1" });
-    const sendCalls = smartWalletProvider.calls.find((call) => call.method === "wallet_sendCalls");
-    expect(sendCalls?.params).toMatchObject([
+    const sendCalls = smartWalletProvider.calls.filter((call) => call.method === "wallet_sendCalls");
+    expect(sendCalls).toHaveLength(1);
+    expect(sendCalls[0]?.params).toMatchObject([
       {
         version: "2.0.0",
         from: account,
@@ -217,12 +253,12 @@ describe("escrow adapter provider support", () => {
         calls: [{ to: token, value: "0x0" }, { to: contract, value: "0x0" }]
       }
     ]);
-    const params = sendCalls?.params as Array<{ calls: Array<{ data: `0x${string}` }> }>;
-    expect(decodeFunctionData({ abi: erc20Abi, data: params[0].calls[0].data })).toMatchObject({
+    const bundleParams = sendCalls[0]?.params as Array<{ calls: Array<{ data: `0x${string}` }> }>;
+    expect(decodeFunctionData({ abi: erc20Abi, data: bundleParams[0].calls[0].data })).toMatchObject({
       functionName: "approve",
       args: [contract, 2500000n]
     });
-    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: params[0].calls[1].data })).toMatchObject({
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: bundleParams[0].calls[1].data })).toMatchObject({
       functionName: "createBounty"
     });
     expect(smartWalletProvider.calls.some((call) => call.method === "wallet_getCallsStatus")).toBe(true);
@@ -342,6 +378,7 @@ describe("escrow adapter provider support", () => {
     const approve = decodeFunctionData({ abi: erc20Abi, data: params[0].calls[1].data });
     expect(reset.args).toEqual([contract, 0n]);
     expect(approve.args).toEqual([contract, 2500000n]);
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: params[0].calls[2].data }).functionName).toBe("createBounty");
   });
 
   it("does not request approval when allowance is already sufficient", async () => {
@@ -379,8 +416,61 @@ describe("escrow adapter provider support", () => {
       "eth_sendTransaction",
       "eth_getTransactionReceipt",
       "eth_call",
+      "eth_call",
       "eth_sendTransaction"
     ]);
+  });
+
+  it("blocks a funding transaction when exact-accounting simulation reverts", async () => {
+    const eoaProvider = new RecordingProvider({ allowance: 2500000n, exactAccountingReverts: true });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "ASSET_UNSUPPORTED",
+      message: "This token did not pass the escrow's exact-accounting preflight. No escrow funding transaction was submitted."
+    });
+    expect(eoaProvider.calls.some((call) => call.method === "eth_sendTransaction")).toBe(false);
+  });
+
+  it("fails closed when the funding preflight returns malformed success data", async () => {
+    const eoaProvider = new RecordingProvider({ allowance: 2500000n, malformedPreflightResult: true });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "UNKNOWN",
+      message: "The escrow preflight returned an invalid response. No funding transaction was submitted."
+    });
+    expect(eoaProvider.calls.some((call) => call.method === "eth_sendTransaction")).toBe(false);
+  });
+
+  it("does not mislabel an RPC preflight failure as token incompatibility", async () => {
+    const eoaProvider = new RecordingProvider({ allowance: 2500000n, genericPreflightReverts: true });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "UNKNOWN",
+      message: "The escrow preflight could not be completed. No funding transaction was submitted."
+    });
+  });
+
+  it.each([
+    ["generic RPC failure", { genericPreflightReverts: true }, "The escrow preflight could not be completed. No funding transaction was submitted."],
+    ["malformed RPC success", { malformedPreflightResult: true }, "The escrow preflight returned an invalid response. No funding transaction was submitted."]
+  ])("discloses a separately completed approval after %s", async (_label, failure, message) => {
+    const eoaProvider = new RecordingProvider({ allowanceResponses: [0n, 2500000n], ...failure });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      eoaProvider,
+      preferSmartWallet: false,
+      integrationEnabled: true,
+      statusPollIntervalMs: 0
+    });
+
+    await expect(adapter.createEscrow(createOrder(), funding)).rejects.toMatchObject({
+      code: "UNKNOWN",
+      message: `${message} The token approval completed separately and may remain until you change or revoke it in your wallet.`
+    });
+    expect(eoaProvider.calls.filter((call) => call.method === "eth_sendTransaction")).toHaveLength(1);
   });
 
   it("keeps a timed-out bundle id separate from a transaction hash", async () => {

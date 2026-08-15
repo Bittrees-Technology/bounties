@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff } from "./test/setup";
+import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -400,7 +400,23 @@ describe("App", () => {
     await user.click(addButton);
 
     expect(await screen.findByText(/added as a payment candidate, not certified as safe or transfer-compatible/i)).toBeInTheDocument();
-    expect(screen.getByText(/exact accounting is enforced when escrow funding and payouts execute/i)).toBeInTheDocument();
+    expect(screen.getByText(/escrow contract rejects funding or payouts whose balance changes do not reconcile exactly/i)).toBeInTheDocument();
+  });
+
+  it("lets a requester reinspect a changed token before accepting an applicant", async () => {
+    configureMockOpenBountyWithApplicantForBuyer(false);
+    configureMockTokenCompatibility("BIT", "implementation_changed");
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^view bounty$/i }));
+
+    expect(screen.getAllByText(/contract changed.*reinspection required/i).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /^accept applicant$/i })).toBeDisabled();
+    await user.click(screen.getAllByRole("button", { name: /^reinspect token$/i })[0]);
+
+    expect(await screen.findByText(/token inspection refreshed/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^accept applicant$/i })).toBeEnabled();
   });
 
   it("adds a standard payment token directly from the payment dropdown", async () => {

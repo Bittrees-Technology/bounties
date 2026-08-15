@@ -1,4 +1,4 @@
-import { decodeFunctionResult, encodeFunctionData, formatUnits, parseAbi } from "viem";
+import { decodeFunctionResult, encodeFunctionData, formatUnits, parseAbi, toFunctionSelector } from "viem";
 import { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 import { EscrowClientError } from "./errors";
 import { assertIntegrationEnabled } from "./guardrails";
@@ -73,6 +73,15 @@ type EscrowFunctionName =
   | "cancelSettlementProposal"
   | "cancelBounty"
   | "refundBounty";
+
+type FundingFunctionName = "createBounty" | "createMilestoneBounty" | "fundBounty";
+
+function requiredFundingFunctionName(functionName: EscrowFunctionName): FundingFunctionName {
+  if (functionName === "createBounty" || functionName === "createMilestoneBounty" || functionName === "fundBounty") {
+    return functionName;
+  }
+  throw new EscrowClientError("CONTRACT_REVERTED", "The selected escrow action cannot include token funding.");
+}
 
 interface WalletCall {
   to: ChecksumAddress;
@@ -333,12 +342,20 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       value: "0x0"
     };
     let approvalCalls: WalletCall[] = [];
+    const fundingFunctionName = funding ? requiredFundingFunctionName(functionName) : null;
     if (funding) {
       await assertSufficientBalance(provider, account, chainId, funding);
       approvalCalls = await buildApprovalCalls(provider, account, contractAddress, chainId, funding);
     }
 
     if (mode === "smart-wallet") {
+      // Preserve smart-wallet atomicity. When approval is required, the token
+      // approval and escrow call are one bundle, so a failed exact-accounting
+      // check cannot leave a standalone allowance behind. The escrow contract's
+      // _pullExact checks are the deterministic guard in that bundle.
+      if (funding && approvalCalls.length === 0) {
+        await assertExactAccountingPreflight(provider, account, contractCall, fundingFunctionName!, false);
+      }
       return sendSmartWalletCalls(
         provider,
         account,
@@ -373,6 +390,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
         throw new EscrowClientError("INSUFFICIENT_ALLOWANCE", "The confirmed ERC20 approval did not provide enough allowance.");
       }
     }
+    if (funding) await assertExactAccountingPreflight(provider, account, contractCall, fundingFunctionName!, approvalCalls.length > 0);
     const txHash = await sendEoaTransaction(provider, account, chainId, contractCall);
     if (creationTermsHash) options.onSubmission?.({ txHash });
     if (confirmEoa && !(creationTermsHash && options.awaitCreationConfirmation === false)) {
@@ -636,6 +654,65 @@ async function assertSufficientBalance(
     "INSUFFICIENT_BALANCE",
     `Your wallet has ${formatUnits(balance, decimals)} ${symbol}, but this escrow requires ${formatUnits(amount, decimals)} ${symbol}. Add the tokens to this wallet before funding.`
   );
+}
+
+async function assertExactAccountingPreflight(
+  provider: Eip1193Provider,
+  account: ChecksumAddress,
+  contractCall: WalletCall,
+  functionName: "createBounty" | "createMilestoneBounty" | "fundBounty",
+  approvalWasSubmitted: boolean
+): Promise<void> {
+  const approvalNotice = approvalWasSubmitted
+    ? " The token approval completed separately and may remain until you change or revoke it in your wallet."
+    : "";
+  let result: unknown;
+  try {
+    result = await provider.request({
+      method: "eth_call",
+      params: [{ from: account, to: contractCall.to, data: contractCall.data, value: contractCall.value }, "latest"]
+    });
+  } catch (error) {
+    if (isExactAccountingRevert(error)) {
+      throw new EscrowClientError(
+        "ASSET_UNSUPPORTED",
+        `This token did not pass the escrow's exact-accounting preflight. No escrow funding transaction was submitted.${approvalNotice}`
+      );
+    }
+    throw mapProviderError(error, "UNKNOWN", `The escrow preflight could not be completed. No funding transaction was submitted.${approvalNotice}`);
+  }
+
+  if (typeof result !== "string" || !/^0x(?:[0-9a-fA-F]{2})*$/.test(result)) {
+    throw new EscrowClientError("UNKNOWN", `The escrow preflight returned an invalid response. No funding transaction was submitted.${approvalNotice}`);
+  }
+  try {
+    const decoded = decodeFunctionResult({
+      abi: BOUNTY_ESCROW_ABI,
+      functionName,
+      data: result as `0x${string}`
+    });
+    if (functionName !== "fundBounty" && (typeof decoded !== "bigint" || decoded === 0n)) {
+      throw new Error("Invalid bounty identifier");
+    }
+  } catch {
+    throw new EscrowClientError("UNKNOWN", `The escrow preflight returned an invalid response. No funding transaction was submitted.${approvalNotice}`);
+  }
+}
+
+const EXACT_ACCOUNTING_ERROR_SELECTORS = new Set([
+  toFunctionSelector("FundingAmountMismatch(address,uint256,uint256)"),
+  toFunctionSelector("FundingDebitMismatch(address,uint256,uint256)"),
+  toFunctionSelector("InsolventToken(address,uint256,uint256)")
+]);
+
+function isExactAccountingRevert(error: unknown, seen = new Set<object>()): boolean {
+  if (typeof error === "string") {
+    const match = error.match(/0x[0-9a-fA-F]{8}/);
+    return Boolean(match && EXACT_ACCOUNTING_ERROR_SELECTORS.has(match[0].toLowerCase() as `0x${string}`));
+  }
+  if (!error || typeof error !== "object" || seen.has(error)) return false;
+  seen.add(error);
+  return Object.values(error as Record<string, unknown>).some((value) => isExactAccountingRevert(value, seen));
 }
 
 async function readAllowance(

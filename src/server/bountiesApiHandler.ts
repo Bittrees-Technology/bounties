@@ -11,6 +11,7 @@ import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } fr
 import { requiredServerEnv, serverEnv } from "./serverEnv.js";
 import { resolveSharedModerator } from "./sharedRoleResolver.js";
 import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryProofMethod } from "../deliveryProof.js";
+import { inspectTokenCompatibility, type PreviousTokenInspection } from "./tokenCompatibility.js";
 
 const encoder = new TextEncoder();
 const erc20Abi = [
@@ -777,6 +778,21 @@ async function inspectToken(session: Session, body: Record<string, unknown>) {
   if (decimalsValue === null || decimalsValue < 0 || decimalsValue > 255) throw new ApiError("TOKEN_DECIMALS_UNAVAILABLE", 400);
   if (totalSupply === null) throw new ApiError("TOKEN_TOTAL_SUPPLY_UNAVAILABLE", 400);
 
+  const { data: previousToken, error: previousTokenError } = await rpcClient()
+    .from("tokens")
+    .select("compatibility_status,compatibility_fingerprint")
+    .eq("chain_id", chainId)
+    .eq("contract_address", checksumAddress.toLowerCase())
+    .maybeSingle();
+  if (previousTokenError) throw new ApiError("TOKEN_INSPECTION_HISTORY_UNAVAILABLE", 503);
+  const compatibility = await withTimeout(inspectTokenCompatibility({
+    provider,
+    chainId,
+    address: checksumAddress,
+    runtimeBytecode: bytecode,
+    previous: previousToken as PreviousTokenInspection | null
+  }), "TOKEN_INSPECTION_TIMEOUT", 20_000);
+
   const { data: existing } = await rpcClient()
     .from("tokens")
     .select("id,symbol,chain_id,contract_address")
@@ -786,10 +802,11 @@ async function inspectToken(session: Session, body: Record<string, unknown>) {
   const riskFlags = [
     ...(existing?.length ? ["symbol_collision"] : []),
     ...(name === null || symbol === null ? ["metadata_call_failed"] : []),
-    ...(decimalsValue > 36 ? ["unusual_decimals"] : [])
+    ...(decimalsValue > 36 ? ["unusual_decimals"] : []),
+    ...compatibility.reasonCodes
   ];
 
-  return callRpc("app_upsert_inspected_token", {
+  return callRpc("app_upsert_inspected_token_v2", {
     p_actor_id: session.account_id,
     p_chain_id: chainId,
     p_contract_address: checksumAddress,
@@ -800,10 +817,19 @@ async function inspectToken(session: Session, body: Record<string, unknown>) {
     p_total_supply: totalSupply,
     p_bytecode_present: true,
     p_bytecode_hash: keccak256(bytecode),
-    p_proxy_status: "unknown",
-    p_source_verification_status: "unavailable",
+    p_proxy_status: compatibility.proxyStatus,
+    p_proxy_kind: compatibility.proxyKind,
+    p_implementation_address: compatibility.implementationAddress,
+    p_implementation_bytecode_hash: compatibility.implementationBytecodeHash,
+    p_source_verification_status: compatibility.sourceVerificationStatus,
     p_explorer_url: explorerUrl(chainId, checksumAddress),
-    p_risk_flags: riskFlags
+    p_risk_flags: [...new Set(riskFlags)],
+    p_compatibility_status: compatibility.compatibilityStatus,
+    p_compatibility_reason_codes: compatibility.reasonCodes,
+    p_compatibility_checked_block: compatibility.checkedBlock,
+    p_compatibility_checked_block_hash: compatibility.checkedBlockHash,
+    p_compatibility_fingerprint: compatibility.fingerprint,
+    p_inspection_version: "erc20-compatibility.v1"
   });
 }
 

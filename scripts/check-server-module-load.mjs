@@ -15,6 +15,7 @@ const productionServerSources = [
   "src/server/serverEnv.ts",
   "src/server/requestRateLimit.ts",
   "src/server/sharedRoleResolver.ts",
+  "src/server/tokenCompatibility.ts",
   "src/server/bountiesApiHandler.ts",
   "src/server/walletAuthHandler.ts"
 ];

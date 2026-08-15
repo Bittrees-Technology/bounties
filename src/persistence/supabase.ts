@@ -173,10 +173,16 @@ export async function signOut(): Promise<void> {
 }
 
 export type Role = "buyer" | "provider";
+export type TokenCompatibilityStatus = "compatible" | "incompatible" | "inconclusive" | "implementation_changed";
 export type TokenRecord = {
   id: string; chain_id: number; contract_address: string; checksum_address: string; name: string | null;
   symbol: string | null; decimals: number; total_supply: string | null; explorer_url: string;
   proxy_status: string; source_verification_status: string; risk_flags: string[]; inspected_at: string;
+  compatibility_status?: TokenCompatibilityStatus; compatibility_reason_codes?: string[];
+  compatibility_checked_at?: string | null; compatibility_checked_block?: string | null;
+  compatibility_checked_block_hash?: string | null; compatibility_fingerprint?: string | null;
+  inspection_version?: string; proxy_kind?: string; implementation_address?: string | null;
+  implementation_bytecode_hash?: string | null; transfer_validation_status?: "not_run" | "preflight_passed" | "funding_verified";
   moderation_status?: "visible" | "hidden"; moderation_reason?: string | null;
 };
 export type Notification = {

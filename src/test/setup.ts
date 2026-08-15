@@ -223,6 +223,14 @@ export function configureMockHiddenStandardToken() {
   }];
 }
 
+export function configureMockTokenCompatibility(symbol: string, status: TokenRecord["compatibility_status"]) {
+  tokens = tokens.map((token) => token.symbol === symbol ? { ...token, compatibility_status: status } : token);
+  bounties = bounties.map((bounty) => {
+    const token = bounty.token as TokenRecord | undefined;
+    return token?.symbol === symbol ? { ...bounty, token: { ...token, compatibility_status: status } } : bounty;
+  });
+}
+
 export function configureMockMilestoneEscrow(
   onchainState: "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved",
   activeState: "Pending" | "Submitted" | "Approved",
@@ -747,15 +755,16 @@ beforeEach(() => {
     if (url.endsWith("/api/bounties/tokens/inspect")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { chainId: number; contractAddress: string };
       const normalizedAddress = body.contractAddress.toLowerCase();
-      const symbol = normalizedAddress === "0x036cbd53842c5426634e7929541ec2318f3dcf7c" ? "USDC" : "WETH";
+      const previousToken = tokens.find((candidate) => candidate.chain_id === body.chainId && candidate.contract_address.toLowerCase() === normalizedAddress);
+      const symbol = previousToken?.symbol ?? (normalizedAddress === "0x036cbd53842c5426634e7929541ec2318f3dcf7c" ? "USDC" : "WETH");
       const token = {
-        id: "00000000-0000-4000-8000-000000000099",
+        id: previousToken?.id ?? "00000000-0000-4000-8000-000000000099",
         symbol,
         decimals: symbol === "USDC" ? 6 : 18,
         chain_id: body.chainId,
         contract_address: normalizedAddress,
         checksum_address: body.contractAddress,
-        name: symbol === "USDC" ? "USD Coin" : "Wrapped Ether",
+        name: previousToken?.name ?? (symbol === "USDC" ? "USD Coin" : "Wrapped Ether"),
         total_supply: "1000000000",
         explorer_url: `https://sepolia.basescan.org/address/${body.contractAddress}`,
         proxy_status: "unknown",
@@ -764,6 +773,7 @@ beforeEach(() => {
         inspected_at: new Date().toISOString()
       };
       tokens = [...tokens.filter((candidate) => !(candidate.chain_id === body.chainId && candidate.contract_address.toLowerCase() === normalizedAddress)), token];
+      bounties = bounties.map((bounty) => (bounty.token as TokenRecord | undefined)?.id === token.id ? { ...bounty, token } : bounty);
       return Response.json(token);
     }
     if (url.endsWith("/api/bounties/bounties")) {

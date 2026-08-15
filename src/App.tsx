@@ -61,6 +61,7 @@ import {
   type EscrowObservation,
   PersistenceError,
   type PublicWalletProfile,
+  type TokenCompatibilityStatus,
   type TokenRecord
 } from "./persistence/supabase";
 import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
@@ -481,20 +482,51 @@ function tokenIdentityLabel(token: Pick<TokenRecord, "name" | "symbol">, detail 
   return name || symbol || "Unnamed ERC20";
 }
 
-function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id" | "checksum_address">) {
+function tokenCompatibilityStatus(token: Pick<TokenRecord, "compatibility_status">): TokenCompatibilityStatus {
+  return token.compatibility_status ?? "inconclusive";
+}
+
+function tokenCompatibilityLabel(token: Pick<TokenRecord, "compatibility_status">): string {
+  const status = tokenCompatibilityStatus(token);
+  if (status === "compatible") return "Compatible under inspection";
+  if (status === "incompatible") return "Incompatible";
+  if (status === "implementation_changed") return "Contract changed · reinspection required";
+  return "Compatibility inconclusive";
+}
+
+function tokenCompatibilityBlocksFunding(token: Pick<TokenRecord, "compatibility_status">): boolean {
+  return ["incompatible", "implementation_changed"].includes(tokenCompatibilityStatus(token));
+}
+
+function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id" | "checksum_address"> & Partial<Pick<TokenRecord, "compatibility_status">>) {
   const network = chains[token.chain_id as SupportedChainId]?.name ?? "Supported network";
   const symbol = token.symbol?.trim() ?? "";
   const name = token.name?.trim() ?? "";
   const identity = symbol && name && symbol.toLocaleLowerCase() === name.toLocaleLowerCase()
     ? symbol
     : [symbol, name].filter(Boolean).join(" · ") || "Unnamed ERC20";
-  return `${identity} · ${network} · ${short(token.checksum_address)}`;
+  const compatibility = token.compatibility_status ? ` · ${tokenCompatibilityLabel(token)}` : "";
+  return `${identity} · ${network} · ${short(token.checksum_address)}${compatibility}`;
 }
 
 const tokenRiskLabels: Record<string, string> = {
   metadata_call_failed: "Some token metadata could not be read",
   symbol_collision: "Another token on this network uses the same symbol",
-  unusual_decimals: "This token uses an unusual number of decimals"
+  unusual_decimals: "This token uses an unusual number of decimals",
+  rebase_logic_detected: "Verified source contains rebasing logic",
+  transfer_fee_logic_detected: "Verified source contains transfer-fee or tax logic",
+  transfer_restriction_logic_detected: "Verified source contains transfer restrictions",
+  pausable_transfer_logic_detected: "Verified source contains pausable transfer logic",
+  source_unverified: "Verified source code was not found",
+  source_lookup_unavailable: "Source lookup was unavailable",
+  proxy_inspection_unavailable: "Proxy inspection was unavailable",
+  proxy_resolution_failed: "The proxy implementation could not be resolved",
+  proxy_implementation_missing: "The proxy implementation has no deployed code",
+  proxy_implementation_unavailable: "The proxy implementation could not be read",
+  token_code_unavailable_at_snapshot: "Token bytecode could not be read at the inspection block",
+  inspection_block_unavailable: "A canonical inspection block was unavailable",
+  inspection_block_changed: "The inspection block changed before checks completed",
+  implementation_changed: "The contract implementation changed since the previous inspection"
 };
 
 function meaningfulTokenRisks(token: Pick<TokenRecord, "risk_flags">): string[] {
@@ -507,6 +539,14 @@ function tokenVerificationCopy(token: Pick<TokenRecord, "source_verification_sta
   return token.source_verification_status === "verified"
     ? "Explorer source code verified"
     : "Source verification was not available during inspection. Review the contract on the block explorer before using it.";
+}
+
+function tokenCompatibilityCopy(token: TokenRecord): string {
+  const status = tokenCompatibilityStatus(token);
+  if (status === "compatible") return "Automated checks found no known exact-accounting conflict. The escrow still verifies exact balances during funding.";
+  if (status === "incompatible") return "This token cannot be used for a new bounty or funding attempt.";
+  if (status === "implementation_changed") return "The contract fingerprint changed. Inspect it again before using it.";
+  return "Automated checks could not prove exact transfer behavior. The escrow's exact-balance checks remain the final enforcement.";
 }
 
 function averageRating(reviews: MarketplaceOrder["reviews"]): string {
@@ -692,6 +732,7 @@ export default function App() {
       symbol: token?.symbol?.trim() || preset.symbol,
       name: token?.name?.trim() || preset.name,
       address: token?.checksum_address || preset.contractAddress,
+      blocked: token ? tokenCompatibilityBlocksFunding(token) : false,
       label: tokenOptionLabel(token ?? {
         symbol: preset.symbol,
         name: preset.name,
@@ -704,6 +745,7 @@ export default function App() {
       symbol: token.symbol?.trim() || token.name?.trim() || token.checksum_address,
       name: token.name?.trim() || token.symbol?.trim() || "",
       address: token.checksum_address,
+      blocked: tokenCompatibilityBlocksFunding(token),
       label: tokenOptionLabel(token)
     }))
   ].sort((left, right) => left.symbol.localeCompare(right.symbol, undefined, { sensitivity: "base" })
@@ -1241,7 +1283,8 @@ export default function App() {
     };
     if (!isDraftValid(scheduledDraft) || !scheduleValid) return setError("Complete each deliverable and make sure its amounts total the budget and its deadlines move forward.");
     await act(async () => {
-      const created = await createBounty(scheduledDraft, selectedToken);
+      const refreshedToken = await recheckToken(selectedToken);
+      const created = await createBounty(scheduledDraft, refreshedToken);
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
@@ -1288,6 +1331,33 @@ export default function App() {
     setInspectAddress(token.checksum_address);
     setTokenPolicyConfirmed(false);
     setDraft((current) => ({ ...current, token: token.id }));
+  }
+
+  function rememberTokenInspection(token: TokenRecord) {
+    setInspected(token);
+    setSession((current) => current ? {
+      ...current,
+      tokens: current.tokens.some((candidate) => candidate.id === token.id)
+        ? current.tokens.map((candidate) => candidate.id === token.id ? token : candidate)
+        : [...current.tokens, token],
+      orders: current.orders.map((order) => order.tokenRecord?.id === token.id ? { ...order, tokenRecord: token } : order)
+    } : current);
+  }
+
+  async function recheckToken(token: TokenRecord): Promise<TokenRecord> {
+    const refreshed = await inspectToken(token.chain_id, token.checksum_address);
+    rememberTokenInspection(refreshed);
+    if (refreshed.moderation_status === "hidden") throw new Error("This token has been hidden after moderation review. Choose another payment token.");
+    if (tokenCompatibilityBlocksFunding(refreshed)) throw new Error(tokenCompatibilityCopy(refreshed));
+    return refreshed;
+  }
+
+  async function reinspectTokenRecord(token: TokenRecord) {
+    await act(async () => {
+      const refreshed = await inspectToken(token.chain_id, token.checksum_address);
+      rememberTokenInspection(refreshed);
+      if (refreshed.moderation_status === "hidden") throw new Error("This token has been hidden after moderation review. Choose another payment token.");
+    }, "Token inspection refreshed.");
   }
 
   async function inspect(event: FormEvent) {
@@ -1696,7 +1766,10 @@ export default function App() {
 
   async function acceptApplicantAndFund(order: MarketplaceOrder, proposalId: string) {
     await act(async () => {
+      if (!order.tokenRecord) throw new Error("The payment token record is unavailable.");
+      const refreshedToken = await recheckToken(order.tokenRecord);
       const accepted = await acceptProposal(order.id, proposalId);
+      accepted.tokenRecord = refreshedToken;
       // Acceptance is durable even when the following wallet request is cancelled
       // or cannot complete. Reflect it immediately so a stale open-bounty view does
       // not invite a second acceptance request.
@@ -1709,11 +1782,11 @@ export default function App() {
         await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
           amountBaseUnits: accepted.budgetBaseUnits!,
           token: {
-            chainId: accepted.tokenRecord!.chain_id as SupportedChainId,
-            contractAddress: accepted.tokenRecord!.checksum_address as `0x${string}`,
-            symbol: accepted.tokenRecord!.symbol ?? undefined,
-            decimals: accepted.tokenRecord!.decimals,
-            explorerUrl: accepted.tokenRecord!.explorer_url
+            chainId: refreshedToken.chain_id as SupportedChainId,
+            contractAddress: refreshedToken.checksum_address as `0x${string}`,
+            symbol: refreshedToken.symbol ?? undefined,
+            decimals: refreshedToken.decimals,
+            explorerUrl: refreshedToken.explorer_url
           }
         }), true);
       } catch (caught) {
@@ -1856,10 +1929,16 @@ export default function App() {
           <section className="escrow-funding-ready" aria-label="Escrow ready to fund">
             <strong>Applicant selected · escrow not funded</strong>
             <p>{order.fundOnApplicantAcceptance === false ? "You selected manual funding, so your wallet has not been asked to transact yet." : "The automatic wallet flow did not finish, so funding is still available here."} Creating escrow may require an ERC20 approval followed by the escrow funding transaction.</p>
-            <button disabled={loading} onClick={() => void submitEscrowTransaction(order, (client, ref) => client.createEscrow(ref, {
-              amountBaseUnits: order.budgetBaseUnits!,
-              token: { chainId: chain.chainId, contractAddress: token.checksum_address as `0x${string}`, symbol: token.symbol ?? undefined, decimals: token.decimals, explorerUrl: token.explorer_url }
-            }), true)}>Create and fund escrow</button>
+            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(token)}`}>{tokenCompatibilityLabel(token)}</span>
+            <p>{tokenCompatibilityCopy(token)}</p>
+            {tokenCompatibilityBlocksFunding(token) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(token)}>Reinspect token</button> : null}
+            <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+              const refreshedToken = await recheckToken(token);
+              return client.createEscrow(ref, {
+                amountBaseUnits: order.budgetBaseUnits!,
+                token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url }
+              });
+            }, true)}>Create and fund escrow</button>
           </section>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
@@ -2136,9 +2215,15 @@ export default function App() {
 
   function lifecycle(order: MarketplaceOrder) {
     if (order.status === "open") {
+      const compatibility = order.tokenRecord ? tokenCompatibilityStatus(order.tokenRecord) : "inconclusive";
       return (
         <section className="lifecycle-panel">
           {!isBuyer(order) ? proposalForm(order) : null}
+          {isBuyer(order) && order.tokenRecord ? <aside className={`token-compatibility-gate token-compatibility-gate--${compatibility}`}>
+            <strong>{tokenCompatibilityLabel(order.tokenRecord)}</strong>
+            <span>{tokenCompatibilityCopy(order.tokenRecord)}</span>
+            {tokenCompatibilityBlocksFunding(order.tokenRecord) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
+          </aside> : null}
           <div className="proposal-list">
             <h5>Applicants</h5>
             {order.proposals?.length ? (
@@ -2158,7 +2243,7 @@ export default function App() {
                       </aside>;
                     })}
                   </div>
-                  {isBuyer(order) ? <button onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
+                  {isBuyer(order) ? <button disabled={Boolean(order.tokenRecord && tokenCompatibilityBlocksFunding(order.tokenRecord))} onClick={() => void acceptApplicantAndFund(order, proposal.id)}>{order.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED ? "Accept applicant" : "Accept applicant and fund"}</button> : null}
                 </div>
               ))
             ) : (
@@ -2400,7 +2485,7 @@ export default function App() {
             {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} knownIdentity={session?.account.display_name} onOpenProfile={openProfile} /></span> : null}
             {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} knownIdentity={order.providerAddress.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
           </div>
-          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
+          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span><small>{tokenCompatibilityCopy(order.tokenRecord)}</small>{tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}<code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
           {providerNextAction(order)}
@@ -2795,12 +2880,12 @@ export default function App() {
                       <select aria-label="Payment token" value={draft.token} onChange={(event) => void choosePaymentToken(event.target.value)} disabled={!wallet || loading} required>
                         <option value="">{wallet ? "Choose a payment token" : "Connect wallet to choose"}</option>
                         {paymentTokenOptions.length
-                          ? paymentTokenOptions.map((token) => <option key={token.value} value={token.value}>{token.label}</option>)
+                          ? paymentTokenOptions.map((token) => <option key={token.value} value={token.value} disabled={token.blocked}>{token.label}</option>)
                           : <option disabled>No verified payment tokens on this network</option>}
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -2823,7 +2908,7 @@ export default function App() {
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
-                    disabled={wallet ? !isDraftValid({ ...draft, deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline }) || !selectedToken || !scheduleValid : false}
+                    disabled={wallet ? !isDraftValid({ ...draft, deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline }) || !selectedToken || tokenCompatibilityBlocksFunding(selectedToken) || !scheduleValid : false}
                   >
                     {wallet ? "Publish bounty listing" : "Connect wallet to publish"}
                   </button>
@@ -2839,7 +2924,7 @@ export default function App() {
                     <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                     <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>
                   </form>
-                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>{tokenVerificationCopy(inspected)}</p>{meaningfulTokenRisks(inspected).length ? <p>Review before use: {meaningfulTokenRisks(inspected).join("; ")}.</p> : <p>No automated contract warnings were found.</p>}<a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Exact accounting is enforced when escrow funding and payouts execute.</p></article> : null}
+                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(inspected)}`}>{tokenCompatibilityLabel(inspected)}</span><p>{tokenCompatibilityCopy(inspected)}</p><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>{tokenVerificationCopy(inspected)}</p>{meaningfulTokenRisks(inspected).length ? <p>Review before use: {meaningfulTokenRisks(inspected).join("; ")}.</p> : <p>No automated contract warnings were found.</p>}<a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Bounties reinspects before funding, and the escrow contract rejects funding or payouts whose balance changes do not reconcile exactly.</p></article> : null}
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
