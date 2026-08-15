@@ -76,6 +76,7 @@ import {
 import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
 import { deliveryProofMethodConfig, deliveryProofMethods, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryProofMethod } from "./deliveryProof";
 import { SavedDeliveryDescription } from "./DeliveryDescription";
+import { calculateSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -399,6 +400,23 @@ function averageRating(reviews: MarketplaceOrder["reviews"]): string {
   return `${average.toFixed(1)} / 5`;
 }
 
+function SettlementSplitPreview({ split, symbol }: { split: ValidSettlementSplit; symbol: string }) {
+  return (
+    <div className="settlement-split-grid" role="group" aria-label="Exact settlement split">
+      <article className="settlement-party-card capital-provider-split" aria-label="Capital provider settlement share">
+        <span>Capital provider</span>
+        <strong>{split.capitalDisplay} / {split.totalDisplay} {symbol}</strong>
+        <small>Returned from remaining escrow</small>
+      </article>
+      <article className="settlement-party-card labor-provider-split" aria-label="Labor provider settlement share">
+        <span>Labor provider</span>
+        <strong>{split.laborDisplay} / {split.totalDisplay} {symbol}</strong>
+        <small>Paid from remaining escrow</small>
+      </article>
+    </div>
+  );
+}
+
 function displayedOrderStatus(order: MarketplaceOrder): string {
   const onchain = order.escrowObservation?.onchain_state;
   if (onchain === "Released") return "Paid onchain";
@@ -410,10 +428,6 @@ function displayedOrderStatus(order: MarketplaceOrder): string {
   if (onchain === "ProviderAccepted") return "Provider accepted onchain";
   if (onchain === "Funded" || onchain === "Created") return `Escrow ${onchain.toLowerCase()}`;
   return orderStatusLabel(order.status);
-}
-
-function settlementBaseUnits(value: string, decimals: number): string {
-  return value === "0" ? "0" : toBase(value, decimals);
 }
 
 export default function App() {
@@ -474,6 +488,7 @@ export default function App() {
   const [escrowReconciliationChecking, setEscrowReconciliationChecking] = useState<Record<string, boolean>>({});
   const [deliveryProofMethodByMilestone, setDeliveryProofMethodByMilestone] = useState<Record<string, DeliveryProofMethod>>({});
   const [deliveryFileHashByMilestone, setDeliveryFileHashByMilestone] = useState<Record<string, DeliveryFileHashState>>({});
+  const [settlementDraftByOrder, setSettlementDraftByOrder] = useState<Record<string, string>>({});
   const initialProfileSearchHydrated = useRef(false);
 
   const resetProfileEditorDraft = useCallback(() => {
@@ -1448,6 +1463,11 @@ export default function App() {
     const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered" || state === "BuyerApproved";
     const settlementProposer = order.escrowObservation?.settlement_proposer;
     const proposedPayout = order.escrowObservation?.proposed_provider_payout_base_units;
+    const remainingEscrowBaseUnits = order.escrowObservation?.remaining_base_units;
+    const settlementDraft = settlementDraftByOrder[order.id] ?? "";
+    const settlementSplit = calculateSettlementSplit(settlementDraft, remainingEscrowBaseUnits, token.decimals);
+    const proposedSettlementSplit = settlementSplitFromBaseUnits(proposedPayout, remainingEscrowBaseUnits, token.decimals);
+    const settlementSymbol = token.symbol ?? "token";
     const settlementExpiry = deadlineTimestamp(order.escrowObservation?.settlement_proposal_expiry);
     const hasSettlementProposal = Boolean(settlementProposer && !/^0x0{40}$/i.test(settlementProposer));
     const settlementProposalActive = hasSettlementProposal && settlementExpiry !== null && settlementExpiry > Date.now();
@@ -1456,7 +1476,8 @@ export default function App() {
       && settlementProposer
       && settlementProposer.toLowerCase() !== wallet?.toLowerCase()
       && proposedPayout !== null
-      && proposedPayout !== undefined;
+      && proposedPayout !== undefined
+      && proposedSettlementSplit.status === "valid";
     const canCancelSettlement = isParticipant(order)
       && hasSettlementProposal
       && settlementProposer?.toLowerCase() === wallet?.toLowerCase();
@@ -1535,21 +1556,49 @@ export default function App() {
               <span>Optional</span>
               <div>
                 <strong>Settle by mutual agreement</strong>
-                <p>Use this only when both parties want to end the escrow with a different payout split. A proposal moves no funds until the other party accepts it.</p>
+                <p>Choose the exact split of the remaining escrow between the capital provider and labor provider. A proposal moves no funds until the other party accepts it.</p>
               </div>
             </header>
             <form className="escrow-settlement-form" onSubmit={(event) => {
               event.preventDefault();
-              const value = String(new FormData(event.currentTarget).get("providerPayout") ?? "");
-              void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementBaseUnits(value, token.decimals) }));
+              if (settlementSplit.status !== "valid") return;
+              void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementSplit.laborBaseUnits }));
             }}>
-              <label>Provider receives ({token.symbol ?? "token"})<input name="providerPayout" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" aria-describedby={`settlement-help-${order.id}`} required /></label>
-              <span className="form-hint" id={`settlement-help-${order.id}`}>Enter the token amount for the provider. The remaining escrow returns to the requester only if the counterparty accepts this exact split.</span>
-              <button type="submit">Propose exact bilateral split</button>
+              <div className="settlement-split-grid settlement-split-editor" role="group" aria-label="Exact settlement split">
+                <article className="settlement-party-card capital-provider-split" aria-label="Capital provider settlement share">
+                  <span>Capital provider</span>
+                  {settlementSplit.status === "valid" ? <strong>{settlementSplit.capitalDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong> : <small>Calculated after a valid labor amount is entered</small>}
+                  {settlementSplit.status === "valid" ? <small>Returned from remaining escrow</small> : null}
+                </article>
+                <article className="settlement-party-card labor-provider-split" aria-label="Labor provider settlement share">
+                  <label>Labor provider amount ({settlementSymbol})
+                    <input
+                      name="providerPayout"
+                      inputMode="decimal"
+                      value={settlementDraft}
+                      onChange={(event) => setSettlementDraftByOrder((current) => ({ ...current, [order.id]: event.target.value }))}
+                      pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?"
+                      aria-describedby={`settlement-help-${order.id} settlement-validation-${order.id}`}
+                      aria-invalid={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable"}
+                      required
+                    />
+                  </label>
+                  {settlementSplit.status === "valid" ? <strong>{settlementSplit.laborDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong> : <small>Editable amount sent to the escrow contract</small>}
+                </article>
+              </div>
+              <span className="form-hint" id={`settlement-help-${order.id}`}>The total is the canonical remaining escrow after any released milestones. The capital return is calculated exactly from the labor amount.</span>
+              <p className={`settlement-validation ${settlementSplit.status}`} id={`settlement-validation-${order.id}`} role={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable" ? "alert" : undefined} aria-live="polite">{settlementSplit.status === "valid" ? "Exact split ready for the counterparty to review." : settlementSplit.message}</p>
+              <button type="submit" disabled={settlementSplit.status !== "valid"}>Propose settlement split</button>
             </form>
-            {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedPayout! }))}>Accept current exact split</button> : null}
+            {hasSettlementProposal ? (
+              <aside className="current-settlement-proposal" aria-label="Current settlement proposal">
+                <strong>Current proposed split</strong>
+                {proposedSettlementSplit.status === "valid" ? <SettlementSplitPreview split={proposedSettlementSplit} symbol={settlementSymbol} /> : <p className="settlement-validation invalid" role="alert">{proposedSettlementSplit.message} Refresh canonical escrow state before acting.</p>}
+                <p className="form-hint">{settlementProposalActive ? <>Only the counterparty can accept this exact split before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p>
+              </aside>
+            ) : null}
+            {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedSettlementSplit.status === "valid" ? proposedSettlementSplit.laborBaseUnits : proposedPayout! }))}>Accept current exact split</button> : null}
             {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
-            {hasSettlementProposal ? <p className="form-hint">Current proposal pays the provider {proposedPayout ?? "0"} base units. {settlementProposalActive ? <>Only the counterparty can accept it before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p> : null}
           </section>
         ) : null}
         {escrowTxHashes[order.id] ? <p className="escrow-transaction-link">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}

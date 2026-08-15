@@ -259,8 +259,28 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(workGuidance).getByRole("link", { name: /go to evidence form/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(settlement).getByText(/settle by mutual agreement/i)).toBeInTheDocument();
   expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
-  expect(within(settlement).getByLabelText(/provider receives \(USDC\)/i)).toHaveAttribute("name", "providerPayout");
-  expect(within(settlement).getByRole("button", { name: /propose exact bilateral split/i })).toBeInTheDocument();
+  const settlementInput = within(settlement).getByLabelText(/labor provider amount \(USDC\)/i);
+  const settlementButton = within(settlement).getByRole("button", { name: /propose settlement split/i });
+  const splitEditor = within(settlement).getByRole("group", { name: /exact settlement split/i });
+  const capitalShare = within(splitEditor).getByRole("article", { name: /capital provider settlement share/i });
+  const laborShare = within(splitEditor).getByRole("article", { name: /labor provider settlement share/i });
+  expect(settlementInput).toHaveAttribute("name", "providerPayout");
+  expect(settlementButton).toBeDisabled();
+  expect(within(splitEditor).getAllByRole("article")[0]).toBe(capitalShare);
+  expect(capitalShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
+  expect(laborShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
+  const settlementUser = userEvent.setup();
+  await settlementUser.type(settlementInput, "75.123456");
+  expect(capitalShare).toHaveTextContent("74.876544 / 150 USDC");
+  expect(laborShare).toHaveTextContent("75.123456 / 150 USDC");
+  expect(capitalShare).not.toHaveTextContent("250 USDC");
+  expect(settlementButton).toBeEnabled();
+  await settlementUser.clear(settlementInput);
+  await settlementUser.type(settlementInput, "150.000001");
+  expect(within(settlement).getByRole("alert")).toHaveTextContent(/cannot exceed the remaining escrow/i);
+  expect(capitalShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
+  expect(laborShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
+  expect(settlementButton).toBeDisabled();
   expect(order.getByLabelText(/funded escrow/i)).toHaveTextContent(/250 USDC/i);
   expect(order.getByRole("link", { name: /funded.*view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
   expect(within(order.getByLabelText(/funded escrow/i)).getByRole("link", { name: /^view funding transaction/i })).toHaveAttribute("href", expect.stringContaining(`/tx/0x${"77".repeat(32)}`));
@@ -348,7 +368,14 @@ it("lets the current proposer cancel and never offers acceptance to that propose
   const order = await renderConfiguredEscrow();
   expect(order.getByRole("button", { name: /cancel my settlement proposal/i })).toBeInTheDocument();
   expect(order.queryByRole("button", { name: /accept current exact split/i })).not.toBeInTheDocument();
-  expect(order.getByText(/only the counterparty can accept it before/i)).toBeInTheDocument();
+  expect(order.getByText(/only the counterparty can accept this exact split before/i)).toBeInTheDocument();
+  const currentProposal = order.getByRole("complementary", { name: /current settlement proposal/i });
+  const proposalShares = within(currentProposal).getAllByRole("article");
+  expect(proposalShares[0]).toHaveAccessibleName(/capital provider settlement share/i);
+  expect(proposalShares[0]).toHaveTextContent("75 / 150 USDC");
+  expect(proposalShares[1]).toHaveAccessibleName(/labor provider settlement share/i);
+  expect(proposalShares[1]).toHaveTextContent("75 / 150 USDC");
+  expect(currentProposal).not.toHaveTextContent(/base units/i);
 });
 
 it("does not offer acceptance for an expired counterparty proposal", async () => {

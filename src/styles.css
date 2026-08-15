@@ -3159,6 +3159,67 @@ textarea {
 .escrow-settlement-form button,
 .escrow-settlement-panel > button { justify-self: start; max-width: 100%; white-space: normal; }
 
+.settlement-split-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+  width: 100%;
+}
+
+.settlement-party-card {
+  background: #f6f8f7;
+  border: 1px solid #d7dfdb;
+  border-radius: 11px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.settlement-party-card > span {
+  color: #4f5f57;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.settlement-party-card strong {
+  color: #24342d;
+  font-size: 1rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.settlement-party-card small { color: #69766f; line-height: 1.4; }
+.settlement-party-card label { max-width: none; }
+.settlement-split-editor .labor-provider-split { background: #eef7f2; border-color: #9dc8b9; }
+
+.settlement-validation {
+  color: #425047;
+  font-size: .82rem;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.settlement-validation.empty { color: #69766f; }
+.settlement-validation.invalid,
+.settlement-validation.unavailable { color: #8a3128; }
+.settlement-validation.valid { color: #0f6b57; font-weight: 700; }
+
+.current-settlement-proposal {
+  border-top: 1px solid #d7dfdb;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.current-settlement-proposal > strong { color: #24342d; }
+.current-settlement-proposal > .form-hint { margin: 0; }
+
 .secondary-button {
   background: #e7f3ef;
   border: 1px solid #8bbcaf;
@@ -3324,6 +3385,7 @@ textarea {
   .escrow-work-guidance a { grid-column: 1 / -1; justify-content: center; text-align: center; white-space: normal; width: 100%; }
   .escrow-settlement-form button,
   .escrow-settlement-panel > button { width: 100%; }
+  .settlement-split-grid { grid-template-columns: minmax(0, 1fr); }
   .delivery-submission-form { padding: 13px; }
   .milestone-actions { width: 100%; }
   .delivery-digest-composer { padding: 11px; }
