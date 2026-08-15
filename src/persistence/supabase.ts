@@ -113,10 +113,12 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   return "Bounties could not complete that request. Please check the details and try again.";
 }
 
-function authenticationErrorMessage(status: number): string {
+function authenticationErrorMessage(status: number, serverCode?: string): string {
   if (status >= 500) {
     return "Sign-in is temporarily unavailable. Please try again shortly.";
   }
+  if (serverCode === "INVALID_CHAIN") return "Choose an EVM network in your wallet and try connecting again.";
+  if (serverCode === "NONCE_RATE_LIMITED" || serverCode === "AUTH_VERIFY_RATE_LIMITED") return "Too many sign-in attempts. Please wait a moment and try again.";
   if (status === 429) return "Too many sign-in attempts. Please wait a moment and try again.";
   return "Wallet sign-in could not be completed. Please try again.";
 }
@@ -139,7 +141,7 @@ async function auth(body: Record<string, unknown>) {
   try { response = await fetch(AUTH, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
   catch { throw new PersistenceError("Could not reach wallet authentication.", "network"); }
   const payload = await response.json().catch(() => null) as Record<string, string> | null;
-  if (!response.ok) throw new PersistenceError(authenticationErrorMessage(response.status));
+  if (!response.ok) throw new PersistenceError(authenticationErrorMessage(response.status, payload?.code));
   return payload ?? {};
 }
 

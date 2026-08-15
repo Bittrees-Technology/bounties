@@ -12,7 +12,6 @@ const EIP1271_MAGIC_VALUE = "0x1626ba7e";
 const SIWE_AUTHENTICATION_METHOD = "siwe-eip4361";
 const SIWE_STATEMENT = "Sign in to Bounties. This proves wallet ownership and does not authorize a transaction or token spend.";
 const jsonBodyLimitBytes = 64 * 1024;
-const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
 
 class AuthError extends Error {
   status: number;
@@ -50,7 +49,10 @@ function address(value: string) {
 
 function chainId(value: unknown) {
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || !supportedChainIds.has(parsed)) throw new AuthError("INVALID_CHAIN", 400);
+  // SIWE proves control of an address; it does not move funds and therefore
+  // does not need to be restricted to Bounties' escrow-deployment networks.
+  // Contract-wallet verification still requires an RPC for its actual chain.
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new AuthError("INVALID_CHAIN", 400);
   return parsed;
 }
 
@@ -276,6 +278,7 @@ export async function handleWalletAuth(request: Request): Promise<Response> {
     const internalStatus = expected ? error.status : 503;
     const status = internalStatus >= 500 ? 503 : internalStatus;
     const code = internalStatus >= 500 ? "SERVICE_UNAVAILABLE" : expected ? error.message : "SERVICE_UNAVAILABLE";
+    console.warn("Wallet authentication rejected", { code, status });
     const origin = safeApplicationOrigin(request);
     return Response.json({ code }, {
       status,

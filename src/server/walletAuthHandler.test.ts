@@ -76,7 +76,7 @@ describe("wallet authentication abuse resistance", () => {
       return Promise.resolve({ data: null, error: null });
     });
     const nonceResponse = await handleWalletAuth(authRequest({
-      action: "nonce", walletAddress: wallet.address, chainId: 84532
+      action: "nonce", walletAddress: wallet.address, chainId: 137
     }));
     const challenge = await nonceResponse.json() as Record<string, string>;
     const signature = await wallet.signMessage(challenge.message);
@@ -84,7 +84,7 @@ describe("wallet authentication abuse resistance", () => {
     const response = await handleWalletAuth(authRequest({
       action: "verify",
       walletAddress: wallet.address,
-      chainId: 84532,
+      chainId: 137,
       ...challenge,
       signature
     }));
