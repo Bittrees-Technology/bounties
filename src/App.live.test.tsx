@@ -104,6 +104,28 @@ it("uses a saved ENS name when an applicant has no preferred profile name", asyn
   expect(screen.getByRole("link", { name: /view 0x2222222222222222222222222222222222222222 on etherscan/i })).toBeInTheDocument();
 });
 
+it("shows saved profile identities for both bounty participants", async () => {
+  configureMockAcceptedUnfundedBuyer();
+  configureMockPublicProfileIdentity("0x3333333333333333333333333333333333333333", "Delivery specialist", "delivery.eth");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  const detail = (await screen.findByRole("heading", { level: 2, name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
+  const participants = detail.querySelector(".participant-links") as HTMLElement;
+
+  await waitFor(() => expect(participants).toHaveTextContent("Capital provider: Test participant"));
+  await waitFor(() => expect(participants).toHaveTextContent("Labor provider: Delivery specialist"));
+  expect(within(participants).getByRole("link", { name: /view test participant profile/i })).toHaveAttribute("href", "/profiles/0x1111111111111111111111111111111111111111");
+  expect(within(participants).getByRole("link", { name: /view delivery specialist profile/i })).toHaveAttribute("href", "/profiles/0x3333333333333333333333333333333333333333");
+  expect(participants).not.toHaveTextContent(/0x1111|0x3333/i);
+});
+
 it("makes manual escrow funding explicit after applicant acceptance", async () => {
   configureMockOpenBountyWithApplicantForBuyer(false);
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");

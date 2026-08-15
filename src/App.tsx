@@ -155,12 +155,13 @@ function walletExplorerLink(walletAddress: string) {
   return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
-function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: string; onOpenProfile: (address: string) => void }) {
+function useIdentityProfile(walletAddress: string, currentWallet?: string | null) {
   const [profile, setProfile] = useState<PublicWalletProfile | null>(null);
+  const isOwnProfile = currentWallet?.toLowerCase() === walletAddress.toLowerCase();
 
   useEffect(() => {
     let cancelled = false;
-    void loadPublicProfile(walletAddress)
+    void (isOwnProfile ? loadMyProfile() : loadPublicProfile(walletAddress))
       .then((result) => {
         if (!cancelled) setProfile(result);
       })
@@ -168,9 +169,40 @@ function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: st
         if (!cancelled) setProfile(null);
       });
     return () => { cancelled = true; };
-  }, [walletAddress]);
+  }, [isOwnProfile, walletAddress]);
 
-  const preferredIdentity = profile?.display_name?.trim() || profile?.ens_name?.trim() || short(walletAddress);
+  return profile;
+}
+
+function preferredProfileIdentity(profile: PublicWalletProfile | null, walletAddress: string) {
+  return profile?.display_name?.trim() || profile?.ens_name?.trim() || short(walletAddress);
+}
+
+function ProfileIdentityLink({ walletAddress, currentWallet, onOpenProfile }: { walletAddress: string; currentWallet?: string | null; onOpenProfile: (address: string) => void }) {
+  const profile = useIdentityProfile(walletAddress, currentWallet);
+  const preferredIdentity = preferredProfileIdentity(profile, walletAddress);
+
+  return (
+    <a
+      className="participant-profile-link"
+      href={profilePath(walletAddress)}
+      title={walletAddress}
+      aria-label={`View ${preferredIdentity} profile`}
+      onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        onOpenProfile(walletAddress);
+      }}
+    >
+      {preferredIdentity}
+    </a>
+  );
+}
+
+function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: string; onOpenProfile: (address: string) => void }) {
+  const profile = useIdentityProfile(walletAddress);
+
+  const preferredIdentity = preferredProfileIdentity(profile, walletAddress);
   return (
     <div className="applicant-identity">
       <a
@@ -2218,7 +2250,10 @@ export default function App() {
           </div>
           <p className="bounty-description">{linkedDescription(order.project)}</p>
           <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
-          <div className="participant-links">{isBuyer(order) && wallet ? <button className="wallet-link" type="button" onClick={() => openProfile(wallet)}>Capital provider: {short(wallet)}</button> : null}{order.providerAddress ? <button className="wallet-link" type="button" onClick={() => openProfile(order.providerAddress!)}>Labor provider: {short(order.providerAddress)}</button> : null}</div>
+          <div className="participant-links">
+            {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} onOpenProfile={openProfile} /></span> : null}
+            {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} onOpenProfile={openProfile} /></span> : null}
+          </div>
           {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>

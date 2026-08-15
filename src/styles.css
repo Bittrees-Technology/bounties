@@ -1223,6 +1223,8 @@ li {
 .bounty-funding-summary span { align-items: center; color: #0f6b57; display: inline-flex; font-size: .78rem; font-weight: 800; gap: 4px; }
 .bounty-funding-summary span { color: #725b12; }
 .participant-links { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.participant-links > span { align-items: baseline; display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.participant-profile-link { color: #0f6b57; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
 
 .marketplace-access-state {
   align-items: center;
