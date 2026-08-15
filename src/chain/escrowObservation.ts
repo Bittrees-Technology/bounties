@@ -4,7 +4,7 @@ export type Bytes32Hex = `0x${string}`;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 export interface SettlementProposalObservation {
-  state: "Created" | "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled";
+  state: "Created" | "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled" | "AwaitingFunding" | "PartiallyCompleted";
   requesterAddress: HexAddress;
   providerAddress: HexAddress;
   amountBaseUnits: string;

@@ -23,7 +23,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
-import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, PRE_ACCEPTANCE_CANCELLATION_ENABLED, resolveEscrowAddress, supportedChainIds } from "./chain/config";
+import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, PRE_ACCEPTANCE_CANCELLATION_ENABLED, resolveEscrowAddress, STAGED_MILESTONE_FUNDING_ENABLED, supportedChainIds } from "./chain/config";
 import { createViemEscrowAdapter, prepareEscrowWrite, resolveEscrowBundle } from "./chain/escrowAdapter";
 import { EscrowClientError } from "./chain/errors";
 import { formatUnits, keccak256, toHex } from "viem";
@@ -108,7 +108,8 @@ const emptyDraft: RequestDraft = {
   milestones: "Delivery",
   support: "",
   criteria: "",
-  fundOnApplicantAcceptance: true
+  fundOnApplicantAcceptance: true,
+  milestoneFundingMode: "full"
 };
 const categories: Array<{ value: ServiceCategory; label: string }> = [
   { value: "Software Engineering", label: "Software engineering" },
@@ -270,8 +271,7 @@ type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowM
 type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
 const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
-const ESCROW_STATE_ORDER: EscrowOnchainState[] = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"];
-const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled"]);
+const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled", "AwaitingFunding", "PartiallyCompleted"]);
 
 function canonicalTimestamp(seconds: bigint): string | null {
   return seconds === 0n ? null : new Date(Number(seconds) * 1_000).toISOString();
@@ -385,6 +385,33 @@ function formatDeadline(value?: string | null): string {
     timeStyle: "short",
     timeZone: browserTimeZone
   }).format(timestamp)} (${browserTimeZone})`;
+}
+
+function initialEscrowFundingBaseUnits(order: MarketplaceOrder): string {
+  if (STAGED_MILESTONE_FUNDING_ENABLED && order.milestoneFundingMode === "staged" && (order.milestones?.length ?? 0) > 1) {
+    return order.milestones?.[0]?.amountBaseUnits ?? order.budgetBaseUnits ?? "0";
+  }
+  return order.budgetBaseUnits ?? "0";
+}
+
+function milestoneFundingProgress(order: MarketplaceOrder) {
+  const milestones = order.milestones ?? [];
+  const observation = order.escrowObservation;
+  try {
+    const released = BigInt(observation?.released_amount_base_units ?? "0");
+    const escrowed = BigInt(observation?.remaining_base_units ?? observation?.received_base_units ?? "0");
+    const everFunded = released + escrowed;
+    let prefix = 0n;
+    let fundedCount = 0;
+    for (const milestone of milestones) {
+      prefix += BigInt(milestone.amountBaseUnits ?? "0");
+      if (prefix <= everFunded) fundedCount += 1;
+    }
+    const allocated = BigInt(observation?.allocated_amount_base_units ?? order.budgetBaseUnits ?? "0");
+    return { allocated, released, escrowed, everFunded, fundedCount, unfunded: allocated > everFunded ? allocated - everFunded : 0n };
+  } catch {
+    return { allocated: 0n, released: 0n, escrowed: 0n, everFunded: 0n, fundedCount: 0, unfunded: 0n };
+  }
 }
 
 function deadlineInputMinimum(value: string, days = 0): string {
@@ -805,8 +832,8 @@ export default function App() {
     && Boolean(order.acceptedProposalId)
     && ((selectedProfileAccountId && order.providerId === selectedProfileAccountId)
       || (selectedProfileAddress && order.providerAddress?.toLowerCase() === selectedProfileAddress.toLowerCase())));
-  const profileCompletedLaborOrders = profileLaborOrders.filter((order) => order.escrowObservation?.onchain_state === "Released"
-    || order.escrowObservation?.onchain_state === "Settled");
+  const profileCompletedLaborOrders = profileLaborOrders.filter((order) => ["Released", "Settled", "PartiallyCompleted"]
+    .includes(order.escrowObservation?.onchain_state ?? ""));
 
   const scheduleAmountsValid = Boolean(selectedToken) && milestoneSchedule.every((milestone) => {
     try { return BigInt(toBase(milestone.amount, selectedToken!.decimals)) > 0n; } catch { return false; }
@@ -1396,7 +1423,7 @@ export default function App() {
   const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
   const isProvider = (order: MarketplaceOrder) => order.providerId === session?.account.id;
   const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
-  const mayReview = (order: MarketplaceOrder) => isParticipant(order) && ["Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "");
+  const mayReview = (order: MarketplaceOrder) => isParticipant(order) && ["Released", "Settled", "PartiallyCompleted"].includes(order.escrowObservation?.onchain_state ?? "");
 
   async function readCanonicalEscrow(client: EscrowClient, ref: EscrowOrderRef): Promise<CanonicalEscrowFallback> {
     const escrow = await client.readEscrow(ref);
@@ -1416,13 +1443,11 @@ export default function App() {
       const canonical = canonicalEscrowFallbacks.current.get(order.id);
       const observation = order.escrowObservation;
       if (!canonical || !observation) return order;
-      const observedRank = ESCROW_STATE_ORDER.indexOf(observation.onchain_state as EscrowOnchainState);
-      const canonicalRank = ESCROW_STATE_ORDER.indexOf(canonical.escrow.state);
       const canonicalMilestoneState = canonical.milestone?.state;
       const observationHasCanonicalState = observation.onchain_state === canonical.escrow.state
         && observation.current_milestone === canonical.escrow.currentMilestone
         && (!canonicalMilestoneState || observation.current_milestone_detail?.state === canonicalMilestoneState);
-      if (observationHasCanonicalState || observedRank > canonicalRank) {
+      if (observationHasCanonicalState) {
         canonicalEscrowFallbacks.current.delete(order.id);
         return order;
       }
@@ -1781,7 +1806,7 @@ export default function App() {
       if (accepted.fundOnApplicantAcceptance === false || !ESCROW_CREATION_ENABLED || accepted.escrowObservation) return;
       try {
         await executeEscrowTransaction(accepted, (client, ref) => client.createEscrow(ref, {
-          amountBaseUnits: accepted.budgetBaseUnits!,
+          amountBaseUnits: initialEscrowFundingBaseUnits(accepted),
           token: {
             chainId: refreshedToken.chain_id as SupportedChainId,
             contractAddress: refreshedToken.checksum_address as `0x${string}`,
@@ -1813,6 +1838,12 @@ export default function App() {
     const currentMilestone = Number.isInteger(observation?.current_milestone) ? observation!.current_milestone! : null;
     const milestoneCount = Number.isInteger(observation?.milestone_count) ? observation!.milestone_count! : order.milestones?.length ?? null;
     const activeMilestone = currentMilestone !== null && currentMilestone >= 0 ? order.milestones?.[currentMilestone] : undefined;
+    const fundingProgress = milestoneFundingProgress(order);
+    const stagedFundingActive = STAGED_MILESTONE_FUNDING_ENABLED && order.milestoneFundingMode === "staged" && (order.milestones?.length ?? 0) > 1;
+    const nextFundingTarget = fundingProgress.fundedCount;
+    const lastFundingTarget = Math.max(0, (order.milestones?.length ?? 1) - 1);
+    const fundingAmountThrough = (target: number) => (order.milestones ?? []).slice(fundingProgress.fundedCount, target + 1)
+      .reduce((total, milestone) => total + BigInt(milestone.amountBaseUnits ?? "0"), 0n);
     const activeMilestoneState = observation?.current_milestone_detail?.state ?? observation?.current_milestone_state;
     const revisionRequested = observation?.current_milestone_detail?.revision_requested === true;
     const revisionReasonHash = observation?.current_milestone_detail?.revision_reason_hash;
@@ -1878,6 +1909,18 @@ export default function App() {
       ? `${formatUnits(BigInt(observation.remaining_base_units), token.decimals)} ${settlementSymbol}`
       : "Unavailable";
 
+    if (state === "PartiallyCompleted") {
+      return (
+        <section id={`escrow-actions-${order.id}`} className="escrow-actions escrow-actions-terminal" aria-label={`Wallet escrow actions for ${order.title}`}>
+          <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
+          <section className="settlement-completed-record" aria-label="Bounty partially completed">
+            <header className="settlement-completed-heading"><ShieldCheck size={24} aria-hidden="true" /><div><span>Canonical terminal record</span><h5>Bounty partially completed</h5><p>{fundingProgress.fundedCount} of {milestoneCount ?? order.milestones?.length ?? 0} milestones were funded. Released work remains final; no later milestone was funded before its deadline.</p></div></header>
+            <dl className="settlement-terminal-meta"><div><dt>Network</dt><dd>{chain.name}</dd></div><div><dt>Final onchain status</dt><dd><span className="terminal-status-badge">Partially completed</span></dd></div><div><dt>Final escrow balance</dt><dd>{finalEscrowBalance}</dd></div></dl>
+          </section>
+        </section>
+      );
+    }
+
     if (state === "Settled") {
       return (
         <section id={`escrow-actions-${order.id}`} className="escrow-actions escrow-actions-terminal" aria-label={`Wallet escrow actions for ${order.title}`}>
@@ -1936,13 +1979,35 @@ export default function App() {
             <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
               const refreshedToken = await recheckToken(token);
               return client.createEscrow(ref, {
-                amountBaseUnits: order.budgetBaseUnits!,
+                amountBaseUnits: initialEscrowFundingBaseUnits(order),
                 token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url }
               });
             }, true)}>Create and fund escrow</button>
           </section>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus === "requires_recreation" ? <p className="form-hint">This pre-milestone bounty must be recreated with a structured deliverable schedule before escrow can be funded.</p> : null}
+        {state === "AwaitingFunding" && stagedFundingActive ? (
+          <section className="staged-funding-panel" aria-label="Fund the next milestone">
+            <div><strong>Next milestone is ready to fund</strong><p>The prior milestone was released. Work on {activeMilestone?.label ?? "the next milestone"} begins only after its exact allocation is deposited.</p></div>
+            <dl>
+              <div><dt>Released</dt><dd>{formatUnits(fundingProgress.released, token.decimals)} {settlementSymbol}</dd></div>
+              <div><dt>Remaining unfunded</dt><dd>{formatUnits(fundingProgress.unfunded, token.decimals)} {settlementSymbol}</dd></div>
+            </dl>
+            {isBuyer(order) && nextFundingTarget <= lastFundingTarget ? <div className="staged-funding-actions">
+              <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+                const refreshedToken = await recheckToken(token);
+                const amount = fundingAmountThrough(nextFundingTarget);
+                return client.fundMilestones(ref, nextFundingTarget, { amountBaseUnits: amount.toString(), token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url } });
+              })}>Fund next milestone</button>
+              {nextFundingTarget < lastFundingTarget ? <button className="secondary-button" disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+                const refreshedToken = await recheckToken(token);
+                const amount = fundingAmountThrough(lastFundingTarget);
+                return client.fundMilestones(ref, lastFundingTarget, { amountBaseUnits: amount.toString(), token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url } });
+              })}>Fund all remaining milestones</button> : null}
+            </div> : <p className="form-hint">Waiting for the capital provider to fund the next committed milestone.</p>}
+            {activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now() && isParticipant(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.closeUnfundedBounty(ref))}>Close unfunded remaining work</button> : null}
+          </section>
+        ) : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
         {state === "ProviderAccepted" && revisionRequested && activeEvidenceHash && previousEvidenceHash && activeEvidenceHash.toLowerCase() === previousEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">Revised work must use a new evidence commitment. Submit the revised location and exact delivered-bytes digest before committing it onchain.</p> : null}
@@ -1969,7 +2034,7 @@ export default function App() {
         {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>{releaseLabel}</button> : null}
         {state === "Funded" && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel and refund before provider accepts terms</button> : null}
         {timeoutReady ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
-        {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
+        {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled", "PartiallyCompleted"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
         {activeMilestone && milestoneCount ? <p className="form-hint">Active milestone {currentMilestone! + 1} of {milestoneCount}: {activeMilestone.label}</p> : null}
         {revisionRequested ? <p className="revision-status">{state === "ProviderAccepted" ? <>One revision was requested for this milestone. Revised work is due {activeDeliveryDeadline ? new Date(activeDeliveryDeadline).toLocaleString() : "at the recorded onchain deadline"}.</> : <>The revised work was submitted. A second revision cannot be requested.</>} {activeMilestone?.revisionReason && activeMilestone.revisionReasonHash?.toLowerCase() === revisionReasonHash?.toLowerCase() ? <>Requested changes: {activeMilestone.revisionReason}</> : revisionReasonHash ? <>Reason commitment: <code>{short(revisionReasonHash)}</code>.</> : null}</p> : null}
         {state === "BuyerApproved" && activeMilestoneState === "Approved" && activeMilestone && isBuyer(order) && (!evidenceCommitmentMatches || !approvalCommitmentMatches) ? <p className="commitment-warning" role="alert">The accepted work commitments do not match the current onchain milestone. Refresh canonical escrow state before recording acceptance.</p> : null}
@@ -2126,7 +2191,7 @@ export default function App() {
           </form>
         ) : null}
         {isParticipant(order) && order.escrowObservation && !mayReview(order) ? (
-          <p className="form-hint">Reviews unlock only after the API re-verifies a Released or Settled onchain escrow state.</p>
+          <p className="form-hint">Reviews unlock only after the API re-verifies a Released, Settled, or Partially completed onchain escrow state.</p>
         ) : null}
       </section>
     );
@@ -2259,7 +2324,7 @@ export default function App() {
     const observation = order.escrowObservation as ReconciledMilestoneObservation | undefined;
     const currentMilestone = Number.isInteger(observation?.current_milestone) ? observation!.current_milestone! : null;
     const escrowedAmount = observation
-      ? formatUnits(BigInt(observation.received_base_units), order.tokenRecord?.decimals ?? 18)
+      ? formatUnits(BigInt(order.milestoneFundingMode === "staged" && observation.onchain_state !== "Settled" ? observation.remaining_base_units ?? observation.received_base_units : observation.received_base_units), order.tokenRecord?.decimals ?? 18)
       : null;
     const escrowTransactionUrl = observation && order.tokenRecord
       ? `${chains[order.tokenRecord.chain_id as SupportedChainId].blockExplorer}/tx/${observation.transaction_hash}`
@@ -2270,7 +2335,7 @@ export default function App() {
           <aside className="funded-escrow-summary" aria-label={observation.onchain_state === "Settled" ? "Original funded escrow" : "Funded escrow"}>
             <ShieldCheck size={24} aria-hidden="true" />
             <div>
-              <span>{observation.onchain_state === "Settled" ? "Original escrow funded" : "Funds escrowed"}</span>
+              <span>{observation.onchain_state === "Settled" ? "Original escrow funded" : observation.onchain_state === "AwaitingFunding" ? "Current escrow balance" : "Funds escrowed"}</span>
               <strong>{escrowedAmount} {order.tokenRecord?.symbol || "ERC20"}</strong>
               <small>{observation.onchain_state === "Settled" ? "Settlement completed" : "Confirmed"} on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {observation.onchain_state ?? observation.status}</small>
             </div>
@@ -2400,7 +2465,7 @@ export default function App() {
 
         {escrowControls(order)}
 
-        {order.escrowObservation && order.escrowObservation.onchain_state !== "Settled" ? (
+        {order.escrowObservation && !["Settled", "PartiallyCompleted"].includes(order.escrowObservation.onchain_state ?? "") ? (
           <div className="escrow-lifecycle-controls" role="group" aria-label="Escrow lifecycle controls">
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}
@@ -2412,7 +2477,7 @@ export default function App() {
 
   function lifecycleStage(order: MarketplaceOrder) {
     const onchain = order.escrowObservation?.onchain_state;
-    if (["BuyerApproved", "Released", "Settled"].includes(onchain ?? "") || order.status === "accepted" || order.status === "paid") return 5;
+    if (["BuyerApproved", "Released", "Settled", "PartiallyCompleted"].includes(onchain ?? "") || order.status === "accepted" || order.status === "paid") return 5;
     if (onchain === "Delivered" || order.milestones?.some((milestone) => milestone.status === "delivered")) return 4;
     if (order.status !== "open" || order.acceptedProposalId) return 3;
     if (order.proposals?.length) return 2;
@@ -2433,6 +2498,9 @@ export default function App() {
     if (state === "ProviderAccepted" && milestone) {
       return <a className="submit-work-shortcut" href={`#delivery-${milestone.id}`}><FileCheck2 size={16} />Submit proof of completed work</a>;
     }
+    if (state === "AwaitingFunding") {
+      return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><WalletCards size={16} />Waiting for next milestone funding</a>;
+    }
     return null;
   }
 
@@ -2452,14 +2520,19 @@ export default function App() {
     const token = order.tokenRecord;
     const chain = token ? chains[token.chain_id as SupportedChainId] : null;
     const transactionUrl = observation && chain ? `${chain.blockExplorer}/tx/${observation.transaction_hash}` : null;
-    const funded = Boolean(observation && BigInt(observation.received_base_units || "0") >= BigInt(observation.requested_base_units || "0"));
+    const progress = milestoneFundingProgress(order);
+    const funded = Boolean(observation && progress.everFunded > 0n);
+    const stagedIncomplete = order.milestoneFundingMode === "staged" && progress.everFunded < progress.allocated;
+    const fundingLabel = observation?.onchain_state === "AwaitingFunding"
+      ? "Next milestone unfunded"
+      : stagedIncomplete ? "Partially funded" : "Funded";
     const fundingPending = Boolean(!observation && escrowCreationLocks[order.id]);
 
     return (
       <div className="bounty-funding-summary">
         <strong>{order.budgetDisplay ?? order.budget} {token?.symbol || "ERC20"}</strong>
         {funded && transactionUrl ? (
-          <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label="Funded — view funding transaction">Funded <ExternalLink size={12} /></a>
+          <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label={`${fundingLabel} — view funding transaction`}>{fundingLabel} <ExternalLink size={12} /></a>
         ) : fundingPending ? (
           <a href={`#escrow-actions-${order.id}`} aria-label="Funding confirmation pending — view funding status">Confirmation pending</a>
         ) : (
@@ -2471,7 +2544,7 @@ export default function App() {
 
   function cardProgress(order: MarketplaceOrder) {
     const current = lifecycleStage(order);
-    const labels = ["Created", "Applications", "Applicant accepted", "Work submitted", order.escrowObservation?.onchain_state === "Settled" ? "Settlement completed" : "Work accepted"];
+    const labels = ["Created", "Applications", "Applicant accepted", "Work submitted", order.escrowObservation?.onchain_state === "Settled" ? "Settlement completed" : order.escrowObservation?.onchain_state === "PartiallyCompleted" ? "Partially completed" : "Work accepted"];
     return (
       <ol className="card-progress" aria-label={`Bounty progress: step ${current} of 5`}>
         {labels.map((label, index) => (
@@ -2919,6 +2992,13 @@ export default function App() {
                     {selectedToken && !scheduleTotalsBudget ? <p className="schedule-error">Deliverable amounts must total exactly {draft.budget || "0"} {selectedToken.symbol || "tokens"}.</p> : null}
                     {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be in the future and at least 22 days after the previous deliverable.</p> : null}
                   </fieldset>
+                  {STAGED_MILESTONE_FUNDING_ENABLED && milestoneSchedule.length > 1 ? (
+                    <fieldset className="milestone-funding-choice">
+                      <legend>Milestone funding</legend>
+                      <label><input type="radio" name="milestoneFundingMode" value="full" checked={draft.milestoneFundingMode !== "staged"} onChange={() => setDraft({ ...draft, milestoneFundingMode: "full" })} /><span><strong>Fund the full bounty upfront</strong><small>One escrow deposit covers every milestone.</small></span></label>
+                      <label><input type="radio" name="milestoneFundingMode" value="staged" checked={draft.milestoneFundingMode === "staged"} onChange={() => setDraft({ ...draft, milestoneFundingMode: "staged" })} /><span><strong>Fund one milestone at a time</strong><small>The first deposit starts work. Each later milestone requires another wallet transaction and cannot begin until funded.</small></span></label>
+                    </fieldset>
+                  ) : null}
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
                   <button

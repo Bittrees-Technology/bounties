@@ -28,7 +28,8 @@ export interface EscrowAbiParameter {
     | "token-address"
     | "provider-address"
     | "requester-address"
-    | "party-address";
+    | "party-address"
+    | "milestone-index";
 }
 
 export interface EscrowAbiFunction {
@@ -42,7 +43,7 @@ export interface EscrowAbiEvent {
 }
 
 export interface EscrowBoundaryAbi {
-  readonly interfaceVersion: "escrow-adapter.v1";
+  readonly interfaceVersion: "escrow-adapter.v2";
   readonly artifactHash: `sha256:${string}`;
   readonly functions: readonly EscrowAbiFunction[];
   readonly events: readonly EscrowAbiEvent[];
@@ -67,17 +68,19 @@ const acceptorAddress: EscrowAbiParameter = { name: "acceptorAddress", kind: "pa
 const providerPayoutBaseUnits: EscrowAbiParameter = { name: "providerPayoutBaseUnits", kind: "amount-base-units" };
 const requesterRefundBaseUnits: EscrowAbiParameter = { name: "requesterRefundBaseUnits", kind: "amount-base-units" };
 const evidenceHash: EscrowAbiParameter = { name: "evidenceHash", kind: "evidence-hash" };
+const throughMilestone: EscrowAbiParameter = { name: "throughMilestone", kind: "milestone-index" };
 
 /**
  * Stable, typed operation/event surface shared by the UI and the disabled provider adapter.
  * It keeps application persistence independent from undeployed contract addresses.
  */
 export const ESCROW_BOUNDARY_ABI = {
-  interfaceVersion: "escrow-adapter.v1",
+  interfaceVersion: "escrow-adapter.v2",
   artifactHash: canonicalAbi.artifactHash as `sha256:${string}`,
   functions: [
     { name: "createEscrow", inputs: [orderId, tokenAddress, amountBaseUnits, deliveryDeadline, scopeHash, providerAddress, proposalHash] },
     { name: "fundEscrow", inputs: [orderId, onchainId, tokenAddress, amountBaseUnits] },
+    { name: "fundMilestones", inputs: [orderId, onchainId, tokenAddress, amountBaseUnits, throughMilestone] },
     { name: "acceptBounty", inputs: [orderId, onchainId, termsHash] },
     { name: "submitDelivery", inputs: [orderId, onchainId, evidenceHash] },
     { name: "requestRevision", inputs: [orderId, onchainId, revisionReasonHash] },
@@ -87,7 +90,8 @@ export const ESCROW_BOUNDARY_ABI = {
     { name: "acceptSettlement", inputs: [orderId, onchainId, providerPayoutBaseUnits] },
     { name: "cancelSettlementProposal", inputs: [orderId, onchainId] },
     { name: "cancelEscrow", inputs: [orderId, onchainId] },
-    { name: "claimTimeoutRefund", inputs: [orderId, onchainId] }
+    { name: "claimTimeoutRefund", inputs: [orderId, onchainId] },
+    { name: "closeUnfundedBounty", inputs: [orderId, onchainId] }
   ],
   events: [
     { name: "EscrowCreated", inputs: [orderId, onchainId, scopeHash, tokenAddress, providerAddress, proposalHash, termsHash, amountBaseUnits] },

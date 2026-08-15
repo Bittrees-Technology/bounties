@@ -63,7 +63,7 @@ describe("Supabase marketplace mapping", () => {
     ["ESCROW_TOKEN_MISMATCH", "payment token"],
     ["ESCROW_SCOPE_MISMATCH", "scope commitment"],
     ["ESCROW_PROPOSAL_MISMATCH", "accepted-proposal commitment"],
-    ["ESCROW_AMOUNT_MISMATCH", "created or funded amount"],
+    ["ESCROW_AMOUNT_MISMATCH", "full budget or an exact sequential milestone tranche"],
     ["ESCROW_MILESTONE_AMOUNT_MISMATCH", "milestone amount"],
     ["ESCROW_MILESTONE_DEADLINE_MISMATCH", "milestone deadline"],
     ["ESCROW_SCHEDULE_HASH_MISMATCH", "milestone-schedule commitment"],

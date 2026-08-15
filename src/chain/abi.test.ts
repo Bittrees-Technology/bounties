@@ -3,11 +3,12 @@ import { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 
 describe("escrow boundary ABI descriptor", () => {
   it("defines every UI action without deployment or provider configuration", () => {
-    expect(ESCROW_BOUNDARY_ABI.interfaceVersion).toBe("escrow-adapter.v1");
+    expect(ESCROW_BOUNDARY_ABI.interfaceVersion).toBe("escrow-adapter.v2");
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toMatch(/^sha256:/);
     expect(ESCROW_BOUNDARY_ABI.functions.map((entry) => entry.name)).toEqual([
       "createEscrow",
       "fundEscrow",
+      "fundMilestones",
       "acceptBounty",
       "submitDelivery",
       "requestRevision",
@@ -17,18 +18,20 @@ describe("escrow boundary ABI descriptor", () => {
       "acceptSettlement",
       "cancelSettlementProposal",
       "cancelEscrow",
-      "claimTimeoutRefund"
+      "claimTimeoutRefund",
+      "closeUnfundedBounty"
     ]);
   });
 
   it("is pinned to the current compiler artifact and exposes its state-changing methods", () => {
     expect(ESCROW_BOUNDARY_ABI.artifactHash).toBe(
-      "sha256:915fbb69750901fd5655202a3bb460a5115163afd482b4b4c3e68dc742de0674"
+      "sha256:6b4bf5794a37ace2330ab26773a8d337086c568c810ccd157b21a9f7d9cb8136"
     );
     expect(BOUNTY_ESCROW_ABI.map((entry) => ("name" in entry ? entry.name : undefined))).toEqual([
       "createBounty",
       "createMilestoneBounty",
       "fundBounty",
+      "fundMilestones",
       "acceptBounty",
       "submitDelivery",
       "requestRevision",
@@ -39,6 +42,8 @@ describe("escrow boundary ABI descriptor", () => {
       "cancelSettlementProposal",
       "cancelBounty",
       "refundBounty",
+      "closeUnfundedBounty",
+      "fundedMilestoneCount",
       "bountyIdByRequesterAndTermsHash",
       "DuplicateBounty",
       "REVIEW_PERIOD",

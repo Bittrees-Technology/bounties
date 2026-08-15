@@ -36,6 +36,7 @@ describe("marketplace directory", () => {
     expect(bountyStatusGroup(bounty({ id: "3", title: "Review", status: "delivered" }))).toBe("review");
     expect(bountyStatusGroup(bounty({ id: "4", title: "Complete", status: "paid" }))).toBe("completed");
     expect(bountyStatusGroup(bounty({ id: "5", title: "Closed", escrowObservation: { onchain_state: "Refunded" } as MarketplaceOrder["escrowObservation"] }))).toBe("closed");
+    expect(bountyStatusGroup(bounty({ id: "6", title: "Partial", escrowObservation: { onchain_state: "PartiallyCompleted" } as MarketplaceOrder["escrowObservation"] }))).toBe("completed");
   });
 
   it("orders by deadline, title, and budget while excluding moderated listings", () => {

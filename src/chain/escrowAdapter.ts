@@ -63,6 +63,7 @@ type EscrowFunctionName =
   | "createBounty"
   | "createMilestoneBounty"
   | "fundBounty"
+  | "fundMilestones"
   | "acceptBounty"
   | "submitDelivery"
   | "requestRevision"
@@ -72,12 +73,16 @@ type EscrowFunctionName =
   | "acceptSettlement"
   | "cancelSettlementProposal"
   | "cancelBounty"
-  | "refundBounty";
+  | "refundBounty"
+  | "closeUnfundedBounty";
 
-type FundingFunctionName = "createBounty" | "createMilestoneBounty" | "fundBounty";
+type FundingFunctionName = "createBounty" | "createMilestoneBounty" | "fundBounty" | "fundMilestones";
 
 function requiredFundingFunctionName(functionName: EscrowFunctionName): FundingFunctionName {
-  if (functionName === "createBounty" || functionName === "createMilestoneBounty" || functionName === "fundBounty") {
+  if (
+    functionName === "createBounty" || functionName === "createMilestoneBounty" || functionName === "fundBounty"
+    || functionName === "fundMilestones"
+  ) {
     return functionName;
   }
   throw new EscrowClientError("CONTRACT_REVERTED", "The selected escrow action cannot include token funding.");
@@ -146,7 +151,9 @@ const ONCHAIN_STATES = [
   "Released",
   "Cancelled",
   "Refunded",
-  "Settled"
+  "Settled",
+  "AwaitingFunding",
+  "PartiallyCompleted"
 ] as const;
 const MILESTONE_STATES = ["Pending", "Submitted", "Approved", "Released"] as const;
 const MAX_MILESTONES = 32;
@@ -234,6 +241,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     }
     const state = ONCHAIN_STATES[Number(bounty.state)];
     if (!state) throw new EscrowClientError("CONTRACT_REVERTED", "The escrow contract returned an unknown state.");
+    const fundedCount = await readFundedMilestoneCount(provider, contractAddress, onchainId, state === "Created" ? 0 : bounty.milestoneCount);
     return {
       onchainId: onchainId.toString(),
       requester: requiredAddress(bounty.requester, "requester", "CONTRACT_REVERTED"),
@@ -255,6 +263,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       allocatedAmountBaseUnits: bounty.allocatedAmount.toString(),
       releasedAmountBaseUnits: bounty.releasedAmount.toString(),
       milestoneCount: bounty.milestoneCount,
+      fundedMilestoneCount: fundedCount,
       currentMilestone: bounty.currentMilestone,
       scheduleHash: readBytes32(bounty.scheduleHash, "scheduleHash")
     };
@@ -443,6 +452,12 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
       const amount = requiredFunding(chainId, funding);
       return send("fundBounty", [requiredOnchainId(order), amount], funding);
     },
+    fundMilestones: async (order, throughMilestone, funding) => {
+      if (!Number.isSafeInteger(throughMilestone) || throughMilestone < 0 || throughMilestone >= MAX_MILESTONES) {
+        throw new EscrowClientError("AMOUNT_INVALID", "The milestone funding target is invalid.");
+      }
+      return send("fundMilestones", [requiredOnchainId(order), throughMilestone], funding);
+    },
     acceptBounty: async (order) =>
       send("acceptBounty", [requiredOnchainId(order), requiredAcceptedTermsHash(order, BigInt(chainId), contractAddress)], undefined, true),
     submitDelivery: async (order, delivery) => send("submitDelivery", [requiredOnchainId(order), requiredDeliveryHash(delivery)]),
@@ -458,6 +473,7 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     cancelSettlementProposal: async (order) => send("cancelSettlementProposal", [requiredOnchainId(order)]),
     cancelEscrow: async (order) => send("cancelBounty", [requiredOnchainId(order)]),
     claimTimeoutRefund: async (order) => send("refundBounty", [requiredOnchainId(order)]),
+    closeUnfundedBounty: async (order) => send("closeUnfundedBounty", [requiredOnchainId(order)]),
     readEscrow,
     readMilestone,
     onEvent: (listener) => {
@@ -479,6 +495,7 @@ export function createDisabledLiveEscrowAdapter(chainId: SupportedChainId): Escr
     mode: "live",
     createEscrow: fail,
     fundEscrow: fail,
+    fundMilestones: fail,
     acceptBounty: fail,
     submitDelivery: fail,
     requestRevision: fail,
@@ -489,6 +506,7 @@ export function createDisabledLiveEscrowAdapter(chainId: SupportedChainId): Escr
     cancelSettlementProposal: fail,
     cancelEscrow: fail,
     claimTimeoutRefund: fail,
+    closeUnfundedBounty: fail,
     readEscrow: fail,
     readMilestone: fail,
     onEvent: () => () => undefined
@@ -533,6 +551,29 @@ function decodeMilestoneRecord(data: `0x${string}`): DecodedMilestoneRecord {
   return decoded as unknown as DecodedMilestoneRecord;
 }
 
+async function readFundedMilestoneCount(
+  provider: Eip1193Provider,
+  contractAddress: ChecksumAddress,
+  bountyId: bigint,
+  legacyFallback: number
+): Promise<number> {
+  const data = encodeFunctionData({ abi: BOUNTY_ESCROW_ABI, functionName: "fundedMilestoneCount", args: [bountyId] });
+  try {
+    const raw = await provider.request({ method: "eth_call", params: [{ to: contractAddress, data }, "latest"] });
+    if (typeof raw !== "string" || !/^0x[0-9a-fA-F]+$/.test(raw)) return legacyFallback;
+    const count = decodeFunctionResult({
+      abi: BOUNTY_ESCROW_ABI,
+      functionName: "fundedMilestoneCount",
+      data: raw as `0x${string}`
+    });
+    return typeof count === "number" ? count : legacyFallback;
+  } catch {
+    // Older immutable escrow addresses predate staged funding. Their funded
+    // records always hold the complete schedule, so the derived value is safe.
+    return legacyFallback;
+  }
+}
+
 function optionalMilestoneSchedule(order: EscrowOrderRef, fundingAmount?: bigint) {
   if (order.milestones === undefined) return undefined;
   if (order.milestones.length === 0 || order.milestones.length > MAX_MILESTONES) {
@@ -558,8 +599,23 @@ function optionalMilestoneSchedule(order: EscrowOrderRef, fundingAmount?: bigint
     total += amount;
     if (total > UINT256_MAX) throw new EscrowClientError("AMOUNT_INVALID", "Milestone allocations exceed uint256.");
   }
-  if (fundingAmount !== undefined && total !== fundingAmount) {
-    throw new EscrowClientError("AMOUNT_INVALID", "Milestone allocations must exactly equal escrow funding.");
+  if (fundingAmount !== undefined) {
+    let prefix = 0n;
+    let prefixMatches = false;
+    for (const amount of amounts) {
+      prefix += amount;
+      if (prefix === fundingAmount) {
+        prefixMatches = true;
+        break;
+      }
+      if (prefix > fundingAmount) break;
+    }
+    if (!prefixMatches) {
+      throw new EscrowClientError(
+        "AMOUNT_INVALID",
+        "Initial milestone funding must exactly equal one or more sequential milestone allocations."
+      );
+    }
   }
   return { amounts, deadlines };
 }
@@ -660,7 +716,7 @@ async function assertExactAccountingPreflight(
   provider: Eip1193Provider,
   account: ChecksumAddress,
   contractCall: WalletCall,
-  functionName: "createBounty" | "createMilestoneBounty" | "fundBounty",
+  functionName: "createBounty" | "createMilestoneBounty" | "fundBounty" | "fundMilestones",
   approvalWasSubmitted: boolean
 ): Promise<void> {
   const approvalNotice = approvalWasSubmitted
@@ -691,7 +747,7 @@ async function assertExactAccountingPreflight(
       functionName,
       data: result as `0x${string}`
     });
-    if (functionName !== "fundBounty" && (typeof decoded !== "bigint" || decoded === 0n)) {
+    if (functionName !== "fundBounty" && functionName !== "fundMilestones" && (typeof decoded !== "bigint" || decoded === 0n)) {
       throw new Error("Invalid bounty identifier");
     }
   } catch {

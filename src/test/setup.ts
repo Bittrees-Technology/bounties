@@ -45,7 +45,7 @@ let escrowRefreshOnchainState: "ProviderAccepted" | "Settled" | null = null;
 let escrowStateRefreshRejected = false;
 let snapshotExpiresAfterEscrowRecord = false;
 let escrowRecordPersisted = false;
-type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled";
+type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled" | "AwaitingFunding" | "PartiallyCompleted";
 let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
 let activeWalletEscrowState: MockWalletEscrowState | null = null;
 let walletChainId = "0x14a34";
@@ -497,7 +497,7 @@ beforeEach(() => {
           if (decoded.functionName === "getBounty") {
             activeWalletEscrowState = walletEscrowStateReads.shift() ?? activeWalletEscrowState;
             if (!activeWalletEscrowState) return null;
-            const states: MockWalletEscrowState[] = ["Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"];
+            const states: MockWalletEscrowState[] = ["Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled", "AwaitingFunding", "PartiallyCompleted"];
             return encodeFunctionResult({
               abi: BOUNTY_ESCROW_ABI,
               functionName: "getBounty",

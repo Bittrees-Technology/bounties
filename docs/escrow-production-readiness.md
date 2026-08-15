@@ -1,15 +1,19 @@
 # Escrow production readiness
 
 Status: **the current source restores funded cancellation before provider
-acceptance and therefore differs from the verified testnet-v2 bytecode. Three
-revised testnet deployments and verification are required; production remains
-NO-GO**.
+acceptance and adds opt-in sequential milestone funding. It therefore differs
+from the verified testnet-v2 bytecode. Three testnet-v3 deployments and
+verification are required; production remains NO-GO**.
 
 The repository includes an original Foundry escrow implementation, deterministic and stateful invariant tests, a fail-closed wallet adapter, wallet-only persistence, and server-verified escrow observations. None of this constitutes an audit, legal approval, deployment authorization, or custody approval.
 
 ## Proposed v1 boundary
 
-- One ERC20 deposit per bounty; ETH is represented by WETH. Fee-on-transfer, false-return, and rebasing behavior fail closed.
+- Full upfront ERC20 funding remains the default. A multi-milestone bounty may
+  instead fund an exact sequential milestone prefix and add exact later tranches.
+  Arbitrary partial amounts, overlaps, and double funding revert. ETH is
+  represented by WETH. Fee-on-transfer, false-return, sender-taxed, and rebasing
+  behavior fail closed on every tranche.
 - A requester/terms commitment may create exactly one onchain bounty. Replays
   revert before token movement, and replacements require a fresh scope salt.
 - Lifecycle: create with mandatory delivery deadlines, fund, provider accept,
@@ -26,6 +30,12 @@ The repository includes an original Foundry escrow implementation, deterministic
   pays the provider and refunds the full remainder to the requester.
 - The requester may cancel in `Created` or `Funded`; funded principal is returned
   exactly. Cancellation is unavailable after the provider accepts onchain.
+- After a nonfinal release, a staged bounty pauses in `AwaitingFunding` if the
+  next milestone was not prefunded. Work cannot be submitted until the requester
+  deposits the next exact allocation. If that committed milestone deadline
+  passes unfunded, anyone may close the record as `PartiallyCompleted`; released
+  payments remain final, no unfunded amount is charged, and the terminal record
+  counts as completed participant activity for directional reviews.
 - The selected provider controls acceptance and delivery; only the requester can approve delivery.
 - No arbiter, pause role, allowlist, marketplace administrator, or dispute path exists in Bounties.
 - WETH, BTREE, BIT, WBTC, USDC, and USDT are curated labels, but identity is always chain ID plus inspected contract address. Any ERC20 may be added through the same inspection boundary.
@@ -38,14 +48,17 @@ The repository includes an original Foundry escrow implementation, deterministic
 3. **Independent audit** — commission an external auditor after the specification freeze; publish the report and fixes; rerun the full suite against the audited commit.
 4. **Deployment authority** — use the operations-controlled deployment process, verify source and bytecode, document the deployer, and confirm the deployer receives no runtime authority over user records or escrow outcomes.
 5. **Legal/compliance approval** — publish escrow terms covering custody characterization, buyer/provider IP, refunds, sanctions/AML posture, tax/reporting, contributor classification, jurisdiction, and privacy.
-6. **Three-testnet replacement and soak** — the replacement `BountyEscrow`
+6. **Three-testnet-v3 replacement and soak** — the replacement `BountyEscrow`
    artifact with the one-time creation-key invariant is deployed and
    source-verified on Ethereum Sepolia, Base Sepolia, and Robinhood Chain
    Testnet. Before setting `VITE_ESCROW_CREATION_ENABLED=true` or
    `VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED=true`, exercise
    every lifecycle branch, reconcile events against token balances, and run
    monitoring for at least one complete original-delivery and revised-delivery
-   cycle on each network. Include both revision resubmission and missed-revision refund.
+   cycle on each network. Include both revision resubmission, missed-revision
+   refund, staged next-milestone funding, duplicate-tranche rejection, and
+   unfunded partial closure. Set `VITE_ESCROW_STAGED_MILESTONE_FUNDING_ENABLED=true`
+   only after the configured address is verified as this staged-funding artifact.
 7. **Operations readiness** — alert on unexpected balances, failed transactions, receipt-reconciliation failures, and application rollback conditions; rehearse incident response and frontend rollback.
 8. **Production canary** — operator-approved deployment with clearly published risk limits and a documented observation period before widening use.
 

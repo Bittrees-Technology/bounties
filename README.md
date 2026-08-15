@@ -15,6 +15,8 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
 - Allocate each deliverable a positive token amount and absolute delivery date;
   allocations must equal the exact ERC20 budget and consecutive dates must be
   more than 21 days apart to preserve all review and revision windows.
+- Keep full upfront funding as the default, with an opt-in multi-milestone mode
+  that deposits exact sequential allocations as each stage becomes ready.
 - Capture exact ERC20 budget units, buyer/reviewer context, support, and acceptance criteria in Postgres.
 - Allow any wallet to create bounties or proposals without an allowlist or administrator approval.
 - Inspect tokens by chain and contract address, including metadata, bytecode presence, collision risks, and a direct explorer link.
@@ -31,7 +33,7 @@ See the [architecture decision](docs/adr/0001-production-application-architectur
   escrow, and recipient balance changes so transfer-fee, sender-taxed, and
   rebasing behavior is rejected or fails closed.
 - Let each participant publish one directional rating and review after the API
-  freshly verifies a Released or Settled escrow state.
+  freshly verifies a Released, Settled, or PartiallyCompleted escrow state.
 - Provide wallet profiles with owner-managed public details and separate reputation
   summaries for capital-provider payment experience and labor-provider service work.
 - Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported

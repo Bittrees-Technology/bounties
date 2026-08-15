@@ -10,11 +10,12 @@ same committed terms reverts with `DuplicateBounty` before any ERC20 transfer.
 The reservation remains after cancellation or settlement, so an intentional
 replacement must use a freshly salted scope commitment.
 
-The deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain Testnet
-deployments, Safe authority, transaction receipts, bytecode hashes, and source
-verification records are published in [`deployments/testnet-v2.json`](deployments/testnet-v2.json).
-These replacement testnet deployments include the one-time creation-key
-invariant and do not authorize a mainnet deployment. The predecessor deployment
+The preceding deterministic Ethereum Sepolia, Base Sepolia, and Robinhood Chain
+Testnet deployments, Safe authority, transaction receipts, bytecode hashes, and
+source verification records are published in [`deployments/testnet-v2.json`](deployments/testnet-v2.json).
+Those immutable addresses predate staged milestone funding and differ from this
+source. A verified testnet-v3 release is required before the staged-funding
+feature flag can be enabled. The predecessor deployment
 is retired with zero BIT balance and liability. It remains recorded in
 [`deployments/testnet.json`](deployments/testnet.json) as incident evidence and
 is not a configured application target.
@@ -31,6 +32,9 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
                |              +-- Revision (once, seven days to resubmit)
                +-------------> Refunded (missed active delivery/revision deadline)
                \__________________________________-> Settled (bilateral exact split)
+                                                |
+                    nonfinal release -> AwaitingFunding -> ProviderAccepted
+                                                \-> PartiallyCompleted (deadline passed unfunded)
 ```
 
 ## Milestone schedule
@@ -38,8 +42,9 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
 - A creator may use the single-deliverable `createBounty` compatibility path or
   `createMilestoneBounty` with 1–32 ordered deliverables.
 - Every milestone allocation is a positive token base-unit amount. Their exact
-  sum is stored as `allocatedAmount`, and funding must equal that sum. Partial
-  funding and unallocated principal are rejected.
+  sum is stored as `allocatedAmount`. Creation may fund the complete schedule or
+  an exact sequential prefix. `fundMilestones` can extend that prefix only;
+  arbitrary partial amounts, overlaps, and duplicate tranches are rejected.
 - Each milestone carries a required, positive, absolute `uint64` Unix delivery
   deadline. Consecutive deadlines must be more than 21 days apart so a full
   original review, revision period, and revised review cannot consume the next
@@ -47,7 +52,11 @@ Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
 - Only `currentMilestone` can be submitted. Its evidence opens its own seven-day
   review. Buyer approval or review expiry lets anyone release exactly that
   milestone allocation to the provider. A nonfinal release advances the active
-  index and active `Bounty.deliveryDeadline`; the final release terminates the bounty.
+  index and active `Bounty.deliveryDeadline`; the final release terminates the
+  bounty. If the next allocation is not funded, the record pauses in
+  `AwaitingFunding`. The next work cannot be submitted until its exact allocation
+  is deposited. If its absolute deadline passes first, anyone may call
+  `closeUnfundedBounty` and terminally record `PartiallyCompleted`.
 - During that review, the requester may record one nonzero revision-reason hash
   for the active milestone. This returns it to pending and gives the provider a
   fixed seven days to resubmit. A second revision is impossible. Missing the
@@ -87,7 +96,9 @@ decimals are display metadata; persisted and contract amounts are integer base u
 The client reads `getBounty` for allocation totals, released totals, and active
 index, then `getMilestone(bountyId, index)` for each deliverable's amount,
 delivery/review deadlines, state, evidence, and approval commitments. Legacy
-top-level evidence/deadline fields mirror the active milestone.
+top-level evidence/deadline fields mirror the active milestone. New deployments
+also expose `fundedMilestoneCount` so the application can present funded,
+released, escrowed, and still-unfunded amounts without inference.
 
 - Anyone can create a record.
 - The requester alone funds it, approves delivery, and cancels before provider

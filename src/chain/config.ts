@@ -49,6 +49,14 @@ export const PRE_ACCEPTANCE_CANCELLATION_ENABLED =
   globallyEnabled && import.meta.env.VITE_ESCROW_PRE_ACCEPTANCE_CANCELLATION_ENABLED === "true";
 
 /**
+ * Staged milestone deposits require the replacement v3 contract lifecycle with
+ * AwaitingFunding and PartiallyCompleted states. Keep this false for every
+ * older immutable address.
+ */
+export const STAGED_MILESTONE_FUNDING_ENABLED =
+  globallyEnabled && import.meta.env.VITE_ESCROW_STAGED_MILESTONE_FUNDING_ENABLED === "true";
+
+/**
  * Operations must set both the enable flag and a valid public deployment address. Missing or
  * malformed configuration remains fail-closed in every build.
  */

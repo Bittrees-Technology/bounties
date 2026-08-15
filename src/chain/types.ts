@@ -82,6 +82,7 @@ export type EscrowContractName = "BountyEscrow";
 export type EscrowAction =
   | "createEscrow"
   | "fundEscrow"
+  | "fundMilestones"
   | "acceptBounty"
   | "submitDelivery"
   | "requestRevision"
@@ -91,7 +92,8 @@ export type EscrowAction =
   | "acceptSettlement"
   | "cancelSettlementProposal"
   | "cancelEscrow"
-  | "claimTimeoutRefund";
+  | "claimTimeoutRefund"
+  | "closeUnfundedBounty";
 
 export type EscrowTxState = "idle" | "pending" | "submitted" | "confirmed" | "failed";
 
@@ -104,7 +106,7 @@ export interface EscrowOrderRef {
   approvalHash?: `0x${string}`;
   providerAddress?: ChecksumAddress;
   deliveryDeadline?: bigint;
-  /** Ordered deliverables. When present, funding must equal the exact allocation sum. */
+  /** Ordered deliverables. Funding must equal an exact sequential allocation prefix. */
   milestones?: readonly EscrowMilestoneInput[];
 }
 
@@ -125,7 +127,9 @@ export type EscrowOnchainState =
   | "Released"
   | "Cancelled"
   | "Refunded"
-  | "Settled";
+  | "Settled"
+  | "AwaitingFunding"
+  | "PartiallyCompleted";
 
 export interface EscrowOnchainRecord {
   onchainId: string;
@@ -148,6 +152,7 @@ export interface EscrowOnchainRecord {
   allocatedAmountBaseUnits: string;
   releasedAmountBaseUnits: string;
   milestoneCount: number;
+  fundedMilestoneCount?: number;
   currentMilestone: number;
   scheduleHash: `0x${string}`;
 }
@@ -224,6 +229,8 @@ export interface EscrowClient {
   readonly mode: "mock" | "live";
   createEscrow(order: EscrowOrderRef, funding: EscrowFundingInput): Promise<EscrowTxResult>;
   fundEscrow(order: EscrowOrderRef, funding: EscrowFundingInput): Promise<EscrowTxResult>;
+  /** Funds the exact immutable allocations through a zero-based milestone index. */
+  fundMilestones(order: EscrowOrderRef, throughMilestone: number, funding: EscrowFundingInput): Promise<EscrowTxResult>;
   acceptBounty(order: EscrowOrderRef): Promise<EscrowTxResult>;
   submitDelivery(order: EscrowOrderRef, delivery: EscrowDeliveryInput): Promise<EscrowTxResult>;
   requestRevision(order: EscrowOrderRef, revision: EscrowRevisionInput): Promise<EscrowTxResult>;
@@ -234,6 +241,7 @@ export interface EscrowClient {
   cancelSettlementProposal(order: EscrowOrderRef): Promise<EscrowTxResult>;
   cancelEscrow(order: EscrowOrderRef): Promise<EscrowTxResult>;
   claimTimeoutRefund(order: EscrowOrderRef): Promise<EscrowTxResult>;
+  closeUnfundedBounty(order: EscrowOrderRef): Promise<EscrowTxResult>;
   readEscrow(order: EscrowOrderRef): Promise<EscrowOnchainRecord>;
   readMilestone(order: EscrowOrderRef, milestoneIndex: number): Promise<EscrowMilestoneRecord>;
   onEvent(listener: (event: EscrowEvent) => void): () => void;

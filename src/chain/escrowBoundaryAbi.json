@@ -1,12 +1,13 @@
 {
-  "interfaceVersion": "escrow-adapter.v1",
-  "artifactHash": "sha256:915fbb69750901fd5655202a3bb460a5115163afd482b4b4c3e68dc742de0674",
+  "interfaceVersion": "escrow-adapter.v2",
+  "artifactHash": "sha256:6b4bf5794a37ace2330ab26773a8d337086c568c810ccd157b21a9f7d9cb8136",
   "artifactHashAlgorithm": "sha256 of contracts/out/BountyEscrow.sol/BountyEscrow.json deployedBytecode.object bytes with the Solidity CBOR metadata trailer removed",
-  "status": "pre-acceptance-cancellation-one-time-creation-bounded-settlement-revision-milestone-escrow-v1",
+  "status": "staged-milestone-funding-pre-acceptance-cancellation-bounded-settlement-revision-escrow-v3",
   "compilerAbi": [
     "function createBounty(address token, uint256 requestedAmount, uint64 deliveryDeadline, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",
     "function createMilestoneBounty(address token, uint256 requestedAmount, uint256[] milestoneAmounts, uint64[] milestoneDeadlines, bytes32 scopeHash, address provider, bytes32 proposalHash) returns (uint256 bountyId)",
     "function fundBounty(uint256 bountyId, uint256 amount)",
+    "function fundMilestones(uint256 bountyId, uint32 throughMilestone)",
     "function acceptBounty(uint256 bountyId, bytes32 acceptedTermsHash)",
     "function submitDelivery(uint256 bountyId, bytes32 evidenceHash)",
     "function requestRevision(uint256 bountyId, bytes32 reasonHash)",
@@ -17,6 +18,8 @@
     "function cancelSettlementProposal(uint256 bountyId)",
     "function cancelBounty(uint256 bountyId)",
     "function refundBounty(uint256 bountyId)",
+    "function closeUnfundedBounty(uint256 bountyId)",
+    "function fundedMilestoneCount(uint256 bountyId) view returns (uint32 count)",
     "function bountyIdByRequesterAndTermsHash(address requester, bytes32 termsHash) view returns (uint256 bountyId)",
     "error DuplicateBounty(address requester, bytes32 termsHash, uint256 existingBountyId)",
     "function REVIEW_PERIOD() view returns (uint64)",
@@ -33,6 +36,7 @@
   "commands": [
     "createEscrow",
     "fundEscrow",
+    "fundMilestones",
     "acceptBounty",
     "submitDelivery",
     "requestRevision",
@@ -42,7 +46,8 @@
     "acceptSettlement",
     "cancelSettlementProposal",
     "cancelEscrow",
-    "claimTimeoutRefund"
+    "claimTimeoutRefund",
+    "closeUnfundedBounty"
   ],
   "events": [
     "EscrowCreated",
@@ -58,7 +63,7 @@
     "TimeoutRefundClaimed"
   ],
   "reviewPolicy": "submitDelivery stores reviewDeadline = block.timestamp + 7 days; during that window the requester may request one revision per milestone with a nonzero reason hash and fixed seven-day resubmission deadline; after any submission, release is permissionless at the review boundary or immediate after buyer approval",
-  "milestonePolicy": "createMilestoneBounty accepts 1-32 positive ordered allocations whose sum exactly equals funding. Every Unix deadline is mandatory and consecutive deadlines must be more than 21 days apart so one review, revision, and revised review cannot consume the next deadline. Only the active milestone can be submitted, revised once, approved, or released. Revised evidence must differ from the preserved original evidence commitment. Each release pays one allocation and advances the active index; the final release terminates the bounty.",
+  "milestonePolicy": "createMilestoneBounty accepts 1-32 positive ordered allocations. Initial funding may be zero, the full allocation, or the exact sum of a sequential milestone prefix. Later fundMilestones calls can only extend that prefix and exact ERC20 accounting is checked for every tranche. Every Unix deadline is mandatory and consecutive deadlines must be more than 21 days apart so one review, revision, and revised review cannot consume a later deadline. Only the funded active milestone can be submitted, revised once, approved, or released. After a release, an unfunded next milestone enters AwaitingFunding and may be closed as PartiallyCompleted if its committed deadline passes. Revised evidence must differ from the preserved original evidence commitment.",
   "bilateralSettlement": "requester or provider proposes an exact provider payout in a funded, provider-accepted, delivered, or buyer-approved bounty; each offer lasts at most seven days and never crosses the active delivery or review deadline; the current proposer may cancel; only the counterparty can accept the unexpired exact amount; acceptance atomically pays the provider and refunds the remaining principal to the requester",
   "excludedOutOfScope": ["admin", "arbiter", "pause", "token allowlist", "dispute", "claims.bittrees.org"],
   "hashInputs": {

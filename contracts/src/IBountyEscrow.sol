@@ -24,7 +24,9 @@ interface IBountyEscrow {
         Released,
         Cancelled,
         Refunded,
-        Settled
+        Settled,
+        AwaitingFunding,
+        PartiallyCompleted
     }
 
     struct Bounty {
@@ -100,6 +102,11 @@ interface IBountyEscrow {
     error InvalidMilestoneAmount(uint256 index, uint256 amount);
     error InvalidMilestoneDeadline(uint256 index, uint64 previousDeadline, uint64 suppliedDeadline);
     error MilestoneFundingMismatch(uint256 expected, uint256 supplied);
+    error InvalidMilestoneFundingTarget(uint256 bountyId, uint256 fundedCount, uint256 throughMilestone);
+    error MilestoneFundingUnavailable(uint256 bountyId, State current);
+    error UnfundedMilestoneActive(uint256 bountyId, uint256 milestoneIndex);
+    error UnfundedMilestonePeriodActive(uint256 bountyId, uint64 deliveryDeadline);
+    error UnexpectedEscrowPrincipal(uint256 bountyId, uint256 principal);
     error MilestoneNotFound(uint256 bountyId, uint256 milestoneIndex);
     error SettlementAmountMismatch(
         address token,
@@ -123,6 +130,15 @@ interface IBountyEscrow {
         uint64 deliveryDeadline
     );
     event BountyFunded(uint256 indexed bountyId, address indexed requester, address indexed token, uint256 amount);
+    event MilestonesFunded(
+        uint256 indexed bountyId,
+        address indexed requester,
+        address indexed token,
+        uint32 firstMilestone,
+        uint32 throughMilestone,
+        uint256 amount,
+        uint32 fundedMilestoneCount
+    );
     event ProviderAccepted(uint256 indexed bountyId, address indexed provider, bytes32 acceptedTermsHash);
     event DeliverySubmitted(
         uint256 indexed bountyId, address indexed provider, bytes32 evidenceHash, uint64 reviewDeadline
@@ -182,9 +198,17 @@ interface IBountyEscrow {
         uint256 providerPayout,
         uint256 requesterRefund
     );
+    event BountyPartiallyCompleted(
+        uint256 indexed bountyId,
+        address indexed requester,
+        address indexed provider,
+        uint256 releasedAmount,
+        uint32 completedMilestoneCount
+    );
 
     function nextBountyId() external view returns (uint256);
     function totalLiability(address token) external view returns (uint256);
+    function fundedMilestoneCount(uint256 bountyId) external view returns (uint32);
     function bountyIdByRequesterAndTermsHash(address requester, bytes32 termsHash) external view returns (uint256);
     function SCOPE_DOMAIN() external view returns (bytes32);
     function TERMS_DOMAIN() external view returns (bytes32);
@@ -218,6 +242,9 @@ interface IBountyEscrow {
     ) external returns (uint256 bountyId);
 
     function fundBounty(uint256 bountyId, uint256 amount) external;
+    /// @notice Funds every not-yet-funded milestone through the supplied zero-based index.
+    /// @dev Funding must remain a contiguous prefix of the immutable milestone schedule.
+    function fundMilestones(uint256 bountyId, uint32 throughMilestone) external;
     function acceptBounty(uint256 bountyId, bytes32 acceptedTermsHash) external;
     /// @notice Commits canonical evidence whose offchain preimage independently binds the
     /// exact delivered-byte SHA-256 digest and URI hash. Direct callers derive this hash.
@@ -232,6 +259,8 @@ interface IBountyEscrow {
     function cancelBounty(uint256 bountyId) external;
     /// @notice Returns missed-deadline funds from `Funded` or `ProviderAccepted` to the requester.
     function refundBounty(uint256 bountyId) external;
+    /// @notice Closes a partially completed bounty when the requester does not fund the next milestone by its deadline.
+    function closeUnfundedBounty(uint256 bountyId) external;
     function getBounty(uint256 bountyId) external view returns (Bounty memory);
     function getMilestone(uint256 bountyId, uint256 milestoneIndex) external view returns (Milestone memory);
 }

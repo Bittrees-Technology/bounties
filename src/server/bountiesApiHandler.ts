@@ -24,6 +24,7 @@ const erc20Abi = [
 const bountyEscrowInterface = new Interface([
   "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout,uint64 settlementProposalExpiry,uint256 allocatedAmount,uint256 releasedAmount,uint32 milestoneCount,uint32 currentMilestone,bytes32 scheduleHash) bounty)",
   "function getMilestone(uint256 bountyId,uint256 milestoneIndex) view returns ((uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint64 revisionDeadline,uint8 state,bytes32 evidenceHash,bytes32 previousEvidenceHash,bytes32 approvalHash,bytes32 revisionReasonHash,bool revisionRequested) milestone)",
+  "function fundedMilestoneCount(uint256 bountyId) view returns (uint32)",
   "event BountyCreated(uint256 indexed bountyId,address indexed requester,address indexed token,address provider,uint256 requestedAmount,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,uint64 deliveryDeadline)",
   "event BountyFunded(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 amount)",
   "event BountySettled(uint256 indexed bountyId,address indexed provider,address indexed requester,address token,address proposer,address acceptor,uint256 providerPayout,uint256 requesterRefund)",
@@ -52,6 +53,7 @@ type ExpectedEscrow = {
   proposal_hash: string | null;
   provider_wallet: string;
   escrow_schedule_status: "structured" | "requires_recreation";
+  milestone_funding_mode: "full" | "staged";
   milestones: Array<{ ordinal: number; amount_base_units: string; delivery_deadline: string | null }>;
 };
 type EscrowStateSource = {
@@ -860,7 +862,7 @@ function expectedBaseUnitText(value: unknown, code: string, status = 409): strin
 async function expectedEscrow(session: Session, bountyId: string): Promise<ExpectedEscrow> {
   const { data, error } = await rpcClient()
     .from("bounties")
-    .select("id,chain_id,budget_base_units,scope_hash,escrow_schedule_status,milestones(ordinal,amount_base_units,delivery_deadline),creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
+    .select("id,chain_id,budget_base_units,scope_hash,scope_source,escrow_schedule_status,milestones(ordinal,amount_base_units,delivery_deadline),creator:wallet_accounts!bounties_creator_id_fkey(wallet_address),token:tokens(contract_address),proposal:proposals!bounties_accepted_proposal_fk(id,proposal_hash,provider:wallet_accounts!proposals_provider_id_fkey(wallet_address))")
     .eq("id", bountyId)
     .eq("creator_id", session.account_id)
     .single();
@@ -870,6 +872,7 @@ async function expectedEscrow(session: Session, bountyId: string): Promise<Expec
     chain_id: number;
     budget_base_units: unknown;
     scope_hash: string;
+    scope_source: Record<string, unknown> | null;
     escrow_schedule_status: "structured" | "requires_recreation";
     milestones: Array<{ ordinal: number; amount_base_units: unknown; delivery_deadline: string | null }>;
     creator: { wallet_address: string } | null;
@@ -899,6 +902,7 @@ async function expectedEscrow(session: Session, bountyId: string): Promise<Expec
     proposal_hash: row.proposal.proposal_hash,
     provider_wallet: getAddress(row.proposal.provider.wallet_address),
     escrow_schedule_status: row.escrow_schedule_status,
+    milestone_funding_mode: row.scope_source?.milestoneFundingMode === "staged" && milestones.length > 1 ? "staged" : "full",
     milestones
   };
 }
@@ -1025,7 +1029,7 @@ async function canonicalReceiptSchedule(
     if (index === currentMilestone) currentDetail = milestoneDetail(observed, index);
   }
   if (!currentDetail) throw new ApiError("ESCROW_CURRENT_MILESTONE_INVALID", 400);
-  const states = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"] as const;
+  const states = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled", "AwaitingFunding", "PartiallyCompleted"] as const;
   const onchainState = states[Number(record.state)];
   if (!onchainState) throw new ApiError("ESCROW_STATE_INVALID", 400);
   return {
@@ -1105,7 +1109,16 @@ async function verifyEscrowReceipt(session: Session, body: Record<string, unknow
   requireSameAddress(create.provider, expected.provider_wallet, "ESCROW_PROVIDER_MISMATCH");
   if (String(create.scopeHash).toLowerCase() !== expected.scope_hash.toLowerCase()) throw new ApiError("ESCROW_SCOPE_MISMATCH", 400);
   if (String(create.proposalHash).toLowerCase() !== proposalHash(expected).toLowerCase()) throw new ApiError("ESCROW_PROPOSAL_MISMATCH", 400);
-  if (create.requestedAmount.toString() !== expected.budget_base_units || fund.amount.toString() !== expected.budget_base_units) {
+  const initialAmount = create.requestedAmount.toString();
+  const exactPrefixes = expected.milestones.reduce<string[]>((prefixes, milestone) => {
+    const prior = prefixes.length ? BigInt(prefixes[prefixes.length - 1]) : 0n;
+    prefixes.push((prior + BigInt(milestone.amount_base_units)).toString());
+    return prefixes;
+  }, []);
+  const amountAllowed = expected.milestone_funding_mode === "staged"
+    ? exactPrefixes.includes(initialAmount)
+    : initialAmount === expected.budget_base_units;
+  if (!amountAllowed || fund.amount.toString() !== initialAmount) {
     throw new ApiError("ESCROW_AMOUNT_MISMATCH", 400);
   }
   const canonical = await canonicalReceiptSchedule(
@@ -1115,6 +1128,7 @@ async function verifyEscrowReceipt(session: Session, body: Record<string, unknow
     create.bountyId.toString(),
     receipt.blockNumber
   );
+  if (canonical.remainingBaseUnits !== initialAmount) throw new ApiError("ESCROW_AMOUNT_MISMATCH", 400);
 
   const { data: existing } = await rpcClient()
     .from("escrow_records")
@@ -1419,7 +1433,7 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
     if (error instanceof ApiError) throw error;
     throw new ApiError("ESCROW_STATE_UNAVAILABLE", 503);
   }
-  const states = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled"] as const;
+  const states = ["Created", "Funded", "ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Cancelled", "Refunded", "Settled", "AwaitingFunding", "PartiallyCompleted"] as const;
   const stateIndex = Number(record.state);
   const onchainState = states[stateIndex];
   if (!onchainState) throw new ApiError("ESCROW_STATE_INVALID", 400);
@@ -1806,7 +1820,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_actor_id: session.account_id,
       p_bounty_id: verified.expected.bounty_id,
       p_contract_address: verified.contractAddress,
-      p_interface_version: "escrow-adapter.v1",
+      p_interface_version: "escrow-adapter.v2",
       p_onchain_bounty_id: verified.onchainBountyId,
       p_requested_base_units: verified.requestedBaseUnits,
       p_received_base_units: verified.receivedBaseUnits,
@@ -1829,7 +1843,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       transaction_hash: verified.txHash,
       block_hash: verified.blockHash,
       contract_address: verified.contractAddress,
-      interface_version: "escrow-adapter.v1",
+      interface_version: "escrow-adapter.v2",
       onchain_bounty_id: verified.onchainBountyId,
       requested_base_units: verified.requestedBaseUnits,
       received_base_units: verified.receivedBaseUnits,
@@ -1892,7 +1906,7 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (action === "reviews" && method === "POST") {
     const bountyId = requiredUuid(body, "bountyId");
     const observed = await persistCanonicalEscrowState(session, bountyId);
-    if (observed.onchain_state !== "Released" && observed.onchain_state !== "Settled") {
+    if (!["Released", "Settled", "PartiallyCompleted"].includes(observed.onchain_state)) {
       throw new ApiError("TERMINAL_ESCROW_VERIFICATION_REQUIRED", 409);
     }
     const data = await callRpc("app_create_participant_review", {

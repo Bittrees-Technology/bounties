@@ -112,13 +112,13 @@ class RecordingProvider implements Eip1193Provider {
           if (escrowFunction === "bountyIdByRequesterAndTermsHash") {
             return toAbiWord(this.options.existingBountyId ?? 0n);
           }
-          if (["createBounty", "createMilestoneBounty", "fundBounty"].includes(escrowFunction)) {
+          if (["createBounty", "createMilestoneBounty", "fundBounty", "fundMilestones"].includes(escrowFunction)) {
             if (this.options.exactAccountingReverts) {
               throw { code: -32000, data: `${toFunctionSelector("FundingAmountMismatch(address,uint256,uint256)")}${"0".repeat(64)}` };
             }
             if (this.options.genericPreflightReverts) throw { code: -32603, message: "RPC unavailable" };
             if (this.options.malformedPreflightResult) return "0x";
-            return escrowFunction === "fundBounty" ? "0x" : toAbiWord(1n);
+            return escrowFunction === "fundBounty" || escrowFunction === "fundMilestones" ? "0x" : toAbiWord(1n);
           }
         }
       }
@@ -298,6 +298,49 @@ describe("escrow adapter provider support", () => {
       functionName: "createMilestoneBounty",
       args: [token, 2500000n, [1000000n, 1500000n], [1786465600n, 1789057600n], hash, providerAddress, hash]
     });
+  });
+
+  it("creates a staged milestone bounty with an exact first-milestone prefix", async () => {
+    const firstMilestoneFunding = { ...funding, amountBaseUnits: "1000000" };
+    const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 1000000n });
+    const adapter = createViemEscrowAdapter({ chain, smartWalletProvider, integrationEnabled: true, statusPollIntervalMs: 0 });
+
+    await adapter.createEscrow(createMilestoneOrder(), firstMilestoneFunding);
+
+    const sendCalls = smartWalletProvider.calls.find((call) => call.method === "wallet_sendCalls");
+    const params = sendCalls?.params as Array<{ calls: Array<{ data: `0x${string}` }> }>;
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: params[0].calls[0].data })).toMatchObject({
+      functionName: "createMilestoneBounty",
+      args: [token, 1000000n, [1000000n, 1500000n], [1786465600n, 1789057600n], hash, providerAddress, hash]
+    });
+  });
+
+  it("funds the next exact milestone tranche through its immutable index", async () => {
+    const nextMilestoneFunding = { ...funding, amountBaseUnits: "1500000" };
+    const eoaProvider = new RecordingProvider({ allowance: 1500000n });
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.fundMilestones(createMilestoneOrder(), 1, nextMilestoneFunding)).resolves.toEqual({
+      state: "submitted",
+      txHash
+    });
+
+    const send = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
+    const transaction = (send?.params as Array<{ data: `0x${string}` }>)[0];
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
+      functionName: "fundMilestones",
+      args: [7n, 1]
+    });
+  });
+
+  it("rejects an invalid milestone funding target before wallet access", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+
+    await expect(adapter.fundMilestones(createMilestoneOrder(), 32, funding)).rejects.toMatchObject({
+      code: "AMOUNT_INVALID"
+    });
+    expect(eoaProvider.calls).toHaveLength(0);
   });
 
   it("derives the identical milestone terms hash for provider acceptance", async () => {
@@ -690,10 +733,11 @@ describe("escrow adapter provider support", () => {
       allocatedAmountBaseUnits: "2500000",
       releasedAmountBaseUnits: "0",
       milestoneCount: 2,
+      fundedMilestoneCount: 2,
       currentMilestone: 0,
       scheduleHash: hash
     });
-    expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_chainId", "eth_call"]);
+    expect(eoaProvider.calls.map((call) => call.method)).toEqual(["eth_chainId", "eth_call", "eth_call"]);
   });
 
   it("reads a milestone record by its ordered index", async () => {

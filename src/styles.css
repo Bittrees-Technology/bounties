@@ -1091,6 +1091,21 @@ li {
   padding: 0 7px;
 }
 
+.milestone-funding-choice {
+  border: 1px solid #cfe0d6;
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 13px;
+}
+
+.milestone-funding-choice legend { color: #253d35; font-weight: 750; padding: 0 7px; }
+.milestone-funding-choice label { align-items: flex-start; border: 1px solid #dce5df; border-radius: 12px; display: flex; gap: 10px; padding: 11px; }
+.milestone-funding-choice input { flex: 0 0 auto; margin-top: 4px; width: auto; }
+.milestone-funding-choice span { display: grid; gap: 2px; }
+.milestone-funding-choice small { color: #5a6862; font-weight: 500; }
+
 .milestone-input-row {
   align-items: end;
   background: #f8faf8;
@@ -3341,6 +3356,21 @@ textarea {
 .escrow-funding-ready p { color: #4f5f57; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
 .escrow-funding-ready > button { justify-self: start; max-width: 100%; white-space: normal; }
 
+.staged-funding-panel {
+  background: #fffdf5;
+  border: 1px solid #d7c982;
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+}
+.staged-funding-panel p { color: #4f5f57; margin: 3px 0 0; }
+.staged-funding-panel dl { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+.staged-funding-panel dl div { background: #fff; border: 1px solid #e5ddbc; border-radius: 10px; display: grid; gap: 3px; padding: 10px; }
+.staged-funding-panel dt { color: #5a6862; font-size: .78rem; font-weight: 800; text-transform: uppercase; }
+.staged-funding-panel dd { font-weight: 800; margin: 0; overflow-wrap: anywhere; }
+.staged-funding-actions { display: flex; flex-wrap: wrap; gap: 9px; }
+
 .escrow-actions form {
   align-items: end;
   display: grid;
@@ -3727,6 +3757,8 @@ textarea {
   .settlement-terminal-meta { grid-template-columns: minmax(0, 1fr); }
   .settlement-completed-heading { grid-template-columns: minmax(0, 1fr); }
   .settlement-receipt-link { justify-content: center; width: 100%; }
+  .staged-funding-panel dl { grid-template-columns: minmax(0, 1fr); }
+  .staged-funding-actions button { width: 100%; }
   .delivery-submission-form { padding: 13px; }
   .milestone-actions { width: 100%; }
   .delivery-digest-composer { padding: 11px; }
