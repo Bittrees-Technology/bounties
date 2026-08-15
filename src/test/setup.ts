@@ -34,6 +34,7 @@ let snapshotRoles: Array<"buyer" | "provider"> = ["buyer", "provider"];
 let snapshotStaffRole: "moderator" | "admin" | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
+let snapshotNotifications: Array<Record<string, unknown>> = [];
 let profileVisibility: "visible" | "hidden" = "visible";
 let profileLegacySpecialty: string | null = null;
 let publicProfileIdentities = new Map<string, { displayName: string | null; ensName: string | null }>();
@@ -79,6 +80,10 @@ export function configureMockWalletChain(chainId: `0x${string}`) {
 
 export function configureMockRoles(roles: Array<"buyer" | "provider">) {
   snapshotRoles = roles;
+}
+
+export function configureMockNotifications(notifications: Array<Record<string, unknown>>) {
+  snapshotNotifications = notifications;
 }
 
 export function configureMockOpenBountyForAnotherWallet() {
@@ -419,6 +424,7 @@ beforeEach(() => {
   snapshotStaffRole = null;
   snapshotModerationReports = [];
   snapshotMyReports = [];
+  snapshotNotifications = [];
   profileVisibility = "visible";
   profileLegacySpecialty = null;
   publicProfileIdentities = new Map();
@@ -570,7 +576,7 @@ beforeEach(() => {
       staffRole: snapshotStaffRole,
       tokens,
       bounties,
-      notifications: [],
+      notifications: snapshotNotifications,
       myReports: snapshotMyReports,
       moderationReports: snapshotModerationReports
     });
@@ -869,6 +875,12 @@ beforeEach(() => {
       };
       snapshotMyReports = [report];
       return Response.json(report);
+    }
+    if (url.endsWith("/api/bounties/notifications/read")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { notificationId: string };
+      const notification = snapshotNotifications.find((candidate) => candidate.id === body.notificationId);
+      if (notification) notification.read_at = new Date().toISOString();
+      return Response.json({ ok: true });
     }
     if (url.endsWith("/api/bounties/proposals")) return Response.json({ ok: true });
     if (url.endsWith("/api/bounties/roles")) return Response.json({ ok: true });

@@ -57,6 +57,7 @@ import {
   updateMyProfile,
   type MarketplaceSnapshot,
   type ModerationDecision,
+  type Notification,
   type EscrowObservation,
   PersistenceError,
   type PublicWalletProfile,
@@ -328,6 +329,13 @@ function bountyPath(bountyId: string): string {
 
 function profilePath(walletAddress: string): string {
   return `/profiles/${walletAddress}`;
+}
+
+function notificationTimestamp(createdAt?: string): string | null {
+  if (!createdAt) return null;
+  const timestamp = new Date(createdAt);
+  if (Number.isNaN(timestamp.getTime())) return null;
+  return timestamp.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function profileAddressFromPath(pathname: string): string | null {
@@ -824,9 +832,7 @@ export default function App() {
       .catch(() => setProfileMessage("Profile details could not be loaded. Return to profiles and try again."));
   }
 
-  function openBountyFromProfile(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
-    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
+  function viewBounty(bountyId: string) {
     const target = bountyPath(bountyId);
     if (window.location.pathname !== target) window.history.pushState({}, "", target);
     setProfileEditorOpen(false);
@@ -836,8 +842,104 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function openBountyFromProfile(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    viewBounty(bountyId);
+  }
+
   function openBounty(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
     openBountyFromProfile(event, bountyId);
+  }
+
+  function notificationBounty(notification: Notification): MarketplaceOrder | null {
+    if (notification.entity_type === "bounty") {
+      return session?.orders.find((order) => order.id === notification.entity_id) ?? null;
+    }
+    if (notification.entity_type === "milestone") {
+      return session?.orders.find((order) => order.milestones?.some((milestone) => milestone.id === notification.entity_id)) ?? null;
+    }
+    if (notification.entity_type === "review") {
+      return session?.orders.find((order) => order.reviews?.some((review) => review.id === notification.entity_id)) ?? null;
+    }
+    return null;
+  }
+
+  function notificationPresentation(notification: Notification): { context: string; action: string } {
+    const order = notificationBounty(notification);
+    if (order) {
+      if (notification.entity_type === "milestone") {
+        const milestone = order.milestones?.find((candidate) => candidate.id === notification.entity_id);
+        return { context: milestone ? `${order.title} · ${milestone.label}` : order.title, action: "View bounty" };
+      }
+      return { context: order.title, action: notification.entity_type === "review" ? "View review" : "View bounty" };
+    }
+    if (notification.entity_type === "report") {
+      const report = session?.myReports.find((candidate) => candidate.id === notification.entity_id);
+      return { context: report ? `${reportEntityLabel(report.entity_type)} report · ${report.status === "open" ? "Under review" : "Reviewed"}` : "Your content report", action: "View report" };
+    }
+    if (notification.entity_type === "profile") return { context: "Your public profile", action: "View profile" };
+    if (notification.entity_type === "token") {
+      const token = session?.tokens.find((candidate) => candidate.id === notification.entity_id);
+      return { context: token ? `${token.symbol} · ${chains[token.chain_id as SupportedChainId]?.name ?? `Chain ${token.chain_id}`}` : "Payment token", action: "Review token" };
+    }
+    return { context: "Bounties activity", action: "Open marketplace" };
+  }
+
+  function navigateFromNotification(notification: Notification) {
+    const order = notificationBounty(notification);
+    if (order) {
+      viewBounty(order.id);
+      if (notification.entity_type === "review") {
+        window.setTimeout(() => document.getElementById(`review-${notification.entity_id}`)?.scrollIntoView({ block: "center" }), 0);
+      }
+      return;
+    }
+    if (notification.entity_type === "report") {
+      navigateToPage("marketplace");
+      window.setTimeout(() => document.getElementById("my-reports")?.scrollIntoView({ block: "start" }), 0);
+      return;
+    }
+    if (notification.entity_type === "profile" || notification.entity_type === "review") {
+      if (wallet) openProfile(wallet);
+      else navigateToPage("profile");
+      return;
+    }
+    if (notification.entity_type === "token") {
+      navigateToPage("create");
+      const token = session?.tokens.find((candidate) => candidate.id === notification.entity_id);
+      if (token) {
+        setInspectChain(String(token.chain_id));
+        setInspectAddress(token.checksum_address);
+      }
+      window.setTimeout(() => {
+        const inspector = document.getElementById("custom-token-inspector") as HTMLDetailsElement | null;
+        if (inspector) {
+          inspector.open = true;
+          inspector.scrollIntoView({ block: "start" });
+        }
+      }, 0);
+      return;
+    }
+    navigateToPage("marketplace");
+  }
+
+  function activateNotification(notification: Notification) {
+    setNotificationsOpen(false);
+    navigateFromNotification(notification);
+    if (notification.read_at) return;
+    const readAt = new Date().toISOString();
+    setSession((current) => current ? {
+      ...current,
+      notifications: current.notifications.map((candidate) => candidate.id === notification.id ? { ...candidate, read_at: readAt } : candidate)
+    } : current);
+    void markNotificationRead(notification.id).catch(() => {
+      setSession((current) => current ? {
+        ...current,
+        notifications: current.notifications.map((candidate) => candidate.id === notification.id ? { ...candidate, read_at: null } : candidate)
+      } : current);
+      setError("This notification opened, but it could not be marked as read. Please try again.");
+    });
   }
 
   function closeBountyDetail() {
@@ -2498,16 +2600,25 @@ export default function App() {
                       <span>{session?.notifications.filter((notification) => !notification.read_at).length ?? 0} unread</span>
                     </div>
                     {session?.notifications.length
-                      ? session.notifications.map((notification) => (
-                          <button
-                            className="notification-item"
-                            key={notification.id}
-                            disabled={Boolean(notification.read_at)}
-                            onClick={() => void act(() => markNotificationRead(notification.id))}
-                          >
-                            {notification.body}{notification.read_at ? " · Read" : " · Mark read"}
-                          </button>
-                        ))
+                      ? session.notifications.map((notification) => {
+                          const presentation = notificationPresentation(notification);
+                          const timestamp = notificationTimestamp(notification.created_at);
+                          return (
+                            <button
+                              className={`notification-item notification-item--${notification.read_at ? "read" : "unread"}`}
+                              key={notification.id}
+                              aria-label={`${notification.body}. ${presentation.context}. ${presentation.action}`}
+                              onClick={() => activateNotification(notification)}
+                            >
+                              <span className="notification-item-copy">
+                                <strong>{notification.body}</strong>
+                                <span>{presentation.context}</span>
+                                <small>{notification.read_at ? "Read" : "New"}{timestamp ? ` · ${timestamp}` : ""}</small>
+                              </span>
+                              <span className="notification-item-action">{presentation.action}<ChevronRight size={15} aria-hidden="true" /></span>
+                            </button>
+                          );
+                        })
                       : <div className="notification-empty" role="status"><Bell size={20} aria-hidden="true" /><strong>You’re all caught up.</strong><span>New activity will appear here.</span></div>}
                   </div>
                 ) : null}

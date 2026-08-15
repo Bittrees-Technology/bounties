@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockOpenBountyForAnotherWallet, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff } from "./test/setup";
+import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -219,6 +219,44 @@ describe("App", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("region", { name: /^notifications$/i })).not.toBeInTheDocument();
     expect(notificationButton).toHaveFocus();
+  });
+
+  it("shows notification context and opens its originating bounty after marking it read", async () => {
+    const user = userEvent.setup();
+    configureMockOpenBountyWithApplicantForBuyer();
+    configureMockNotifications([{
+      id: "00000000-0000-4000-8000-000000000799",
+      type: "proposal",
+      entity_type: "bounty",
+      entity_id: "00000000-0000-4000-8000-000000000711",
+      body: "Proposal received",
+      read_at: null,
+      created_at: "2026-08-15T20:15:00.000Z"
+    }]);
+    render(<App />);
+    await connectWallet(user);
+
+    const notificationButton = screen.getByRole("button", { name: /^notifications$/i });
+    expect(within(notificationButton).getByText("1")).toBeInTheDocument();
+    await user.click(notificationButton);
+
+    const notificationRegion = screen.getByRole("region", { name: /^notifications$/i });
+    expect(within(notificationRegion).getByText("Proposal received")).toBeInTheDocument();
+    expect(within(notificationRegion).getByText("Mobile applicant acceptance")).toBeInTheDocument();
+    const notification = within(notificationRegion).getByRole("button", { name: /proposal received.*mobile applicant acceptance.*view bounty/i });
+    expect(notification).toBeEnabled();
+    await user.click(notification);
+
+    expect(screen.queryByRole("region", { name: /^notifications$/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: /^bounty details$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Mobile applicant acceptance" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/bounties/00000000-0000-4000-8000-000000000711");
+    expect(within(notificationButton).getByText("0")).toBeInTheDocument();
+
+    await user.click(notificationButton);
+    const readNotification = within(screen.getByRole("region", { name: /^notifications$/i })).getByRole("button", { name: /proposal received.*view bounty/i });
+    expect(readNotification).toBeEnabled();
+    expect(within(readNotification).getByText("Read", { exact: false })).toBeInTheDocument();
   });
 
   it("publishes user-defined work types and categories instead of an Other placeholder", async () => {

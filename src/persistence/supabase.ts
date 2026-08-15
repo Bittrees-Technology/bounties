@@ -179,7 +179,15 @@ export type TokenRecord = {
   proxy_status: string; source_verification_status: string; risk_flags: string[]; inspected_at: string;
   moderation_status?: "visible" | "hidden"; moderation_reason?: string | null;
 };
-export type Notification = { id: string; body: string; read_at: string | null; created_at?: string };
+export type Notification = {
+  id: string;
+  type: string;
+  entity_type: "bounty" | "milestone" | "review" | "report" | "profile" | "token";
+  entity_id: string;
+  body: string;
+  read_at: string | null;
+  created_at?: string;
+};
 export type EscrowObservation = {
   status: string; transaction_hash: string; block_hash: string; contract_address: string; interface_version: string;
   onchain_bounty_id: string; received_base_units: string; requested_base_units: string; remaining_base_units?: string | null;
