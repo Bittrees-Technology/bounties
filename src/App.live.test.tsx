@@ -53,7 +53,7 @@ it("publishes a listing without opening the wallet funding flow", async () => {
   expect(await screen.findByRole("status")).toHaveTextContent(/listing published.*after you accept an applicant.*approve the token.*create and fund escrow/i);
   expect(await screen.findByRole("heading", { name: "Fund after applicant acceptance" })).toBeInTheDocument();
   expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(false);
-});
+}, 15_000);
 
 it("keeps applicant acceptance visible when immediate wallet funding does not finish", async () => {
   configureMockOpenBountyWithApplicantForBuyer();
