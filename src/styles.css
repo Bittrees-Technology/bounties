@@ -1126,7 +1126,7 @@ li {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 1.35fr) repeat(5, minmax(0, 1fr));
+  grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(135px, 1fr)) minmax(188px, 1.15fr);
 }
 
 .bounty-directory-filters label { min-width: 0; }
