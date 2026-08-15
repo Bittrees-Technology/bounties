@@ -194,6 +194,56 @@ describe("escrow adapter provider support", () => {
     });
   });
 
+  it("prepares only the exact token allowance without creating escrow", async () => {
+    const eoaProvider = new RecordingProvider({
+      allowanceResponses: [0n, 2500000n],
+      transactionHashes: [approvalTxHash]
+    });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      eoaProvider,
+      preferSmartWallet: false,
+      integrationEnabled: true,
+      statusPollIntervalMs: 0
+    });
+
+    await expect(adapter.prepareFunding(funding)).resolves.toEqual({ state: "confirmed", txHash: approvalTxHash });
+
+    const submission = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
+    const transaction = (submission?.params as Array<{ to: string; data: `0x${string}` }>)[0];
+    expect(transaction.to).toBe(token);
+    expect(decodeFunctionData({ abi: erc20Abi, data: transaction.data })).toEqual({
+      functionName: "approve",
+      args: [contract, 2500000n]
+    });
+    expect(eoaProvider.calls.some((call) => call.method === "wallet_sendCalls")).toBe(false);
+  });
+
+  it("replaces an excessive existing allowance with the exact bounty amount", async () => {
+    const eoaProvider = new RecordingProvider({
+      allowanceResponses: [5000000n, 2500000n],
+      transactionHashes: [approvalHash, approvalTxHash]
+    });
+    const adapter = createViemEscrowAdapter({
+      chain,
+      eoaProvider,
+      preferSmartWallet: false,
+      integrationEnabled: true,
+      statusPollIntervalMs: 0
+    });
+
+    await expect(adapter.prepareFunding(funding)).resolves.toEqual({ state: "confirmed", txHash: approvalTxHash });
+
+    const submissions = eoaProvider.calls
+      .filter((call) => call.method === "eth_sendTransaction")
+      .map((call) => (call.params as Array<{ data: `0x${string}` }>)[0])
+      .map((transaction) => decodeFunctionData({ abi: erc20Abi, data: transaction.data }));
+    expect(submissions).toEqual([
+      { functionName: "approve", args: [contract, 0n] },
+      { functionName: "approve", args: [contract, 2500000n] }
+    ]);
+  });
+
   it("atomically approves and creates a funded bounty, then resolves the real receipt hash", async () => {
     const smartWalletProvider = new RecordingProvider({ smart: true, allowance: 0n });
     const adapter = createViemEscrowAdapter({

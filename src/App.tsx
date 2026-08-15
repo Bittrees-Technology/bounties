@@ -107,7 +107,8 @@ const emptyDraft: RequestDraft = {
   milestones: "Delivery",
   support: "",
   criteria: "",
-  fundOnApplicantAcceptance: true
+  fundOnApplicantAcceptance: true,
+  prepareFundingOnPublish: false
 };
 const categories: Array<{ value: ServiceCategory; label: string }> = [
   { value: "Software Engineering", label: "Software engineering" },
@@ -1240,8 +1241,11 @@ export default function App() {
       deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline
     };
     if (!isDraftValid(scheduledDraft) || !scheduleValid) return setError("Complete each deliverable and make sure its amounts total the budget and its deadlines move forward.");
+    let createdListing = false;
+    let fundingPreparationError: string | null = null;
     await act(async () => {
       const created = await createBounty(scheduledDraft, selectedToken);
+      createdListing = true;
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
@@ -1249,9 +1253,22 @@ export default function App() {
       if (window.location.pathname !== bountyPath(created.id)) window.history.pushState({}, "", bountyPath(created.id));
       setActivePage("marketplace");
       window.scrollTo({ top: 0, behavior: "smooth" });
-    }, scheduledDraft.fundOnApplicantAcceptance !== false
-      ? "Bounty listing published. No tokens moved. After you select an applicant, Bounties will open your wallet to create and fund escrow."
-      : "Bounty listing published. No tokens moved. After you select an applicant, use the manual funding action on the bounty page to create and fund escrow.");
+      if (scheduledDraft.prepareFundingOnPublish === true) {
+        try {
+          await prepareListingFunding(created);
+        } catch (caught) {
+          fundingPreparationError = caught instanceof Error ? caught.message : "The wallet approval did not finish.";
+        }
+      }
+    });
+    if (!createdListing) return;
+    if (fundingPreparationError) {
+      setError(`Bounty listing published, but funding approval did not finish: ${fundingPreparationError} Funding will still open automatically after you accept an applicant.`);
+      return;
+    }
+    setNotice(scheduledDraft.prepareFundingOnPublish === true
+      ? "Bounty listing published and token funding approved. No tokens moved yet; the escrow will be created and funded after you accept an applicant."
+      : "Bounty listing published. After you accept an applicant, Bounties will open your wallet to approve the token if needed, then create and fund escrow.");
   }
 
   function updateMilestone(index: number, field: "title" | "amount" | "deliveryDeadline", value: string) {
@@ -1392,9 +1409,9 @@ export default function App() {
     return changed ? { ...snapshot, orders } : snapshot;
   }
 
-  function escrowBoundary(order: MarketplaceOrder): { client: EscrowClient; ref: EscrowOrderRef } {
-    if (!window.ethereum || !order.tokenRecord || !order.providerAddress || !order.scopeHash || !order.proposalHash) {
-      throw new Error("This bounty is missing the wallet, token, scope, or accepted-provider commitment required for escrow.");
+  function escrowClientFor(order: MarketplaceOrder): EscrowClient {
+    if (!window.ethereum || !order.tokenRecord) {
+      throw new Error("This bounty is missing the wallet or token required to prepare escrow funding.");
     }
     const configuredChain = chains[order.tokenRecord.chain_id as SupportedChainId];
     const escrowAddress = configuredChain
@@ -1404,6 +1421,42 @@ export default function App() {
       throw new Error(`Escrow transactions are not enabled for ${configuredChain?.name ?? "the selected network"}.`);
     }
     const chain = { ...configuredChain, escrowContractAddress: escrowAddress };
+    return createViemEscrowAdapter({
+      chain,
+      eoaProvider: window.ethereum,
+      awaitCreationConfirmation: false,
+      onSubmission: (submission) => updateEscrowCreationLock(order.id, {
+        ...submission,
+        createdAt: new Date().toISOString()
+      })
+    });
+  }
+
+  async function prepareListingFunding(order: MarketplaceOrder) {
+    if (!order.tokenRecord || !order.budgetBaseUnits) {
+      throw new Error("The published listing is missing its exact token funding amount.");
+    }
+    const client = escrowClientFor(order);
+    await client.prepareFunding({
+      amountBaseUnits: order.budgetBaseUnits,
+      token: {
+        chainId: order.tokenRecord.chain_id as SupportedChainId,
+        contractAddress: order.tokenRecord.checksum_address as `0x${string}`,
+        symbol: order.tokenRecord.symbol ?? undefined,
+        decimals: order.tokenRecord.decimals,
+        explorerUrl: order.tokenRecord.explorer_url
+      }
+    });
+  }
+
+  function escrowBoundary(order: MarketplaceOrder): { client: EscrowClient; ref: EscrowOrderRef } {
+    if (!order.providerAddress || !order.scopeHash || !order.proposalHash) {
+      throw new Error("This bounty is missing the scope or accepted-provider commitment required for escrow.");
+    }
+    const client = escrowClientFor(order);
+    const configuredChain = chains[client.chainId];
+    const escrowAddress = resolveEscrowAddress(configuredChain.chainId, order.escrowObservation?.contract_address);
+    if (!escrowAddress) throw new Error(`Escrow transactions are not enabled for ${configuredChain.name}.`);
     const onchainId = order.escrowObservation?.onchain_bounty_id;
     const parsedDeliveryDeadline = deadlineTimestamp(order.dueDate);
     if (parsedDeliveryDeadline === null) throw new Error("This bounty has an invalid delivery deadline.");
@@ -1420,7 +1473,7 @@ export default function App() {
     });
     const scheduleHash = milestoneSchedule?.length
       ? hashMilestoneSchedule({
-        chainId: BigInt(chain.chainId),
+        chainId: BigInt(client.chainId),
         escrowAddress,
         scopeHash: order.scopeHash,
         milestoneAmounts: milestoneSchedule.map((milestone) => BigInt(milestone.amountBaseUnits)),
@@ -1429,7 +1482,7 @@ export default function App() {
       : undefined;
     const termsHash = scheduleHash
       ? hashMilestoneTerms({
-        chainId: BigInt(chain.chainId),
+        chainId: BigInt(client.chainId),
         escrowAddress,
         scopeHash: order.scopeHash,
         proposalHash: order.proposalHash,
@@ -1437,22 +1490,14 @@ export default function App() {
         scheduleHash
       }).value
       : hashTerms({
-        chainId: BigInt(chain.chainId),
+        chainId: BigInt(client.chainId),
         escrowAddress,
         scopeHash: order.scopeHash,
         proposalHash: order.proposalHash,
         provider: order.providerAddress
       }).value;
     return {
-      client: createViemEscrowAdapter({
-        chain,
-        eoaProvider: window.ethereum,
-        awaitCreationConfirmation: false,
-        onSubmission: (submission) => updateEscrowCreationLock(order.id, {
-          ...submission,
-          createdAt: new Date().toISOString()
-        })
-      }),
+      client,
       ref: {
         orderId: order.id,
         onchainId,
@@ -2392,7 +2437,7 @@ export default function App() {
               <WalletCards size={20} aria-hidden="true" />
               <div>
                 <strong>Escrow funding starts after you select an applicant</strong>
-                <p>The onchain escrow commits to the chosen labor-provider wallet, so publishing this listing did not request a wallet transaction or move tokens. {order.fundOnApplicantAcceptance === false ? "You chose manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : "When you accept an applicant, Bounties will open the wallet funding flow automatically."}</p>
+                <p>The onchain escrow commits to the chosen labor-provider wallet, so tokens move only after you accept an applicant. {order.fundOnApplicantAcceptance === false ? "You chose manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : order.prepareFundingOnPublish ? "You approved the exact token allowance when publishing; accepting an applicant will create and fund escrow without another approval step." : "When you accept an applicant, Bounties will open the wallet approval and funding flow automatically."}</p>
               </div>
             </aside>
           ) : null}
@@ -2802,24 +2847,24 @@ export default function App() {
                   </fieldset>
                   <label>Resources provided<textarea value={draft.support} onChange={(event) => setDraft({ ...draft, support: event.target.value })} placeholder="List source files, documentation, access, or contacts you will provide." required /></label>
                   <label>Acceptance criteria<textarea value={draft.criteria} onChange={(event) => setDraft({ ...draft, criteria: event.target.value })} placeholder="Add one measurable acceptance condition per line." required /></label>
-                  <fieldset className="funding-timing-choice">
-                    <legend>When should escrow funding begin?</legend>
-                    <p>Publishing creates the bounty listing only. The escrow contract must include the selected labor provider, so no wallet transaction or token transfer occurs until after you accept an applicant.</p>
+                  <section className="funding-timing-choice" role="group" aria-labelledby="funding-timing-heading">
+                    <h3 id="funding-timing-heading">When should the wallet funding flow begin?</h3>
+                    <p>The escrow contract must include the selected labor provider. You can approve the exact token allowance now, but tokens remain in your wallet until an applicant is accepted and escrow is created.</p>
                     <label>
-                      <input type="radio" name="fundingTiming" value="automatic" checked={draft.fundOnApplicantAcceptance !== false} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true })} />
-                      <span><strong>Open my wallet after I accept an applicant</strong><small>Recommended. Accepting an applicant starts the wallet flow to approve the ERC20 if needed, then create and fund escrow.</small></span>
+                      <input type="radio" name="fundingTiming" value="acceptance" checked={draft.prepareFundingOnPublish !== true} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true, prepareFundingOnPublish: false })} />
+                      <span><strong>After I accept an applicant</strong><small>Recommended. Accepting an applicant opens the wallet to approve the ERC20 if needed, then creates and funds escrow.</small></span>
                     </label>
                     <label>
-                      <input type="radio" name="fundingTiming" value="manual" checked={draft.fundOnApplicantAcceptance === false} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: false })} />
-                      <span><strong>Accept an applicant, then fund manually</strong><small>The applicant is selected first. A clear “Create and fund escrow” action then appears on that bounty; work cannot begin until funding is confirmed.</small></span>
+                      <input type="radio" name="fundingTiming" value="publication" checked={draft.prepareFundingOnPublish === true} onChange={() => setDraft({ ...draft, fundOnApplicantAcceptance: true, prepareFundingOnPublish: true })} disabled={!ESCROW_CREATION_ENABLED} />
+                      <span><strong>When I publish the listing</strong><small>Publishing opens the wallet to approve the exact token amount. Tokens move into escrow only after you accept an applicant.</small></span>
                     </label>
-                  </fieldset>
+                  </section>
                   <button
                     type={wallet ? "submit" : "button"}
                     onClick={wallet ? undefined : () => void connect()}
                     disabled={wallet ? !isDraftValid({ ...draft, deliveryDeadline: milestoneSchedule.at(-1)?.deliveryDeadline ?? draft.deliveryDeadline }) || !selectedToken || !scheduleValid : false}
                   >
-                    {wallet ? "Publish bounty listing" : "Connect wallet to publish"}
+                    {wallet ? draft.prepareFundingOnPublish ? "Publish listing and approve funding" : "Publish bounty listing" : "Connect wallet to publish"}
                   </button>
                 </form> : null}
 

@@ -76,6 +76,7 @@ export const ESCROW_BOUNDARY_ABI = {
   interfaceVersion: "escrow-adapter.v1",
   artifactHash: canonicalAbi.artifactHash as `sha256:${string}`,
   functions: [
+    { name: "prepareEscrowFunding", inputs: [tokenAddress, amountBaseUnits] },
     { name: "createEscrow", inputs: [orderId, tokenAddress, amountBaseUnits, deliveryDeadline, scopeHash, providerAddress, proposalHash] },
     { name: "fundEscrow", inputs: [orderId, onchainId, tokenAddress, amountBaseUnits] },
     { name: "acceptBounty", inputs: [orderId, onchainId, termsHash] },

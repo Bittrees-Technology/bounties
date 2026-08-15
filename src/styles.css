@@ -3243,12 +3243,17 @@ textarea {
   border-radius: 14px;
   display: grid;
   gap: 9px;
-  margin: 0;
+  margin: 6px 0 0;
   min-width: 0;
   padding: 14px;
 }
 
-.funding-timing-choice legend { color: #24342d; font-weight: 800; padding: 0 6px; }
+.funding-timing-choice > h3 {
+  color: #24342d;
+  font-size: 1rem;
+  line-height: 1.35;
+  margin: 0;
+}
 .funding-timing-choice > p { color: #4f5f57; line-height: 1.5; margin: 0 0 2px; }
 
 .funding-timing-choice > label {
@@ -3267,6 +3272,10 @@ textarea {
   margin-top: 4px;
   min-height: auto;
   width: auto;
+}
+
+.funding-timing-choice input:disabled + span {
+  opacity: 0.62;
 }
 
 .funding-timing-choice span {

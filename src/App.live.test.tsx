@@ -27,7 +27,7 @@ async function renderConfiguredEscrow() {
   return within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
 }
 
-it("enables participant escrow creation only when a deployment is configured", async () => {
+it("can prepare the exact token approval while publishing a listing", async () => {
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
   vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
   vi.stubEnv("VITE_CHAIN_84532_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
@@ -40,23 +40,20 @@ it("enables participant escrow creation only when a deployment is configured", a
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
-  await user.type(screen.getByLabelText(/bounty title/i), "Verify escrow observation");
+  await user.type(screen.getByLabelText(/bounty title/i), "Prepare escrow funding");
   await user.type(screen.getByLabelText(/^description/i), "Marketplace");
   await user.type(screen.getByLabelText(/contact alias/i), "Marketplace Ops");
   await user.type(screen.getByLabelText(/resources provided/i), "Project brief and source files");
   await user.type(screen.getByLabelText(/acceptance criteria/i), "Delivery matches the approved scope");
   await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /USDC.*USDC test token/i }));
-  const fundingTiming = screen.getByRole("group", { name: /when should escrow funding begin/i });
-  expect(within(fundingTiming).getByRole("radio", { name: /open my wallet after i accept an applicant/i })).toBeChecked();
-  await user.click(within(fundingTiming).getByRole("radio", { name: /accept an applicant, then fund manually/i }));
-  await user.click(screen.getByRole("button", { name: /publish bounty listing/i }));
+  const fundingTiming = screen.getByRole("group", { name: /when should the wallet funding flow begin/i });
+  expect(within(fundingTiming).getByRole("radio", { name: /after i accept an applicant/i })).toBeChecked();
+  await user.click(within(fundingTiming).getByRole("radio", { name: /when i publish the listing/i }));
+  await user.click(screen.getByRole("button", { name: /publish listing and approve funding/i }));
 
-  const order = within(await screen.findByRole("heading", { name: "Verify escrow observation" }).then((node) => node.closest("article") as HTMLElement));
-  expect(await screen.findByRole("status")).toHaveTextContent(/bounty listing published.*no tokens moved.*manual funding action/i);
-  expect(order.getByRole("region", { name: /escrow ready to fund/i })).toHaveTextContent(/manual funding.*wallet has not been asked.*ERC20 approval.*escrow funding transaction/i);
-  expect(order.getByRole("button", { name: /^create and fund escrow$/i })).toBeInTheDocument();
-  expect(order.queryByRole("button", { name: /verify escrow observation/i })).not.toBeInTheDocument();
-  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(false);
+  expect(await screen.findByRole("status")).toHaveTextContent(/listing published and token funding approved.*no tokens moved yet.*after you accept an applicant/i);
+  expect(await screen.findByRole("heading", { name: "Prepare escrow funding" })).toBeInTheDocument();
+  expect(vi.mocked(window.ethereum!.request).mock.calls.some(([request]) => request.method === "eth_sendTransaction")).toBe(true);
 });
 
 it("keeps applicant acceptance visible when immediate wallet funding does not finish", async () => {
@@ -148,7 +145,7 @@ it("makes manual escrow funding explicit after applicant acceptance", async () =
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
-  expect(screen.getByRole("complementary", { name: /escrow funding timing/i })).toHaveTextContent(/starts after you select an applicant.*did not request a wallet transaction.*manual funding/i);
+  expect(screen.getByRole("complementary", { name: /escrow funding timing/i })).toHaveTextContent(/starts after you select an applicant.*tokens move only after you accept an applicant.*manual funding/i);
   await user.click(await screen.findByRole("button", { name: /^accept applicant$/i }));
 
   expect(await screen.findByRole("status")).toHaveTextContent(/applicant accepted.*create and fund escrow.*open the funding transaction/i);

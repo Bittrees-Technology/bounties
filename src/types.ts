@@ -118,6 +118,7 @@ export interface MarketplaceOrder {
   escrowObservation?: import("./persistence/supabase").EscrowObservation;
   escrowScheduleStatus?: "structured" | "requires_recreation";
   fundOnApplicantAcceptance?: boolean;
+  prepareFundingOnPublish?: boolean;
   moderationStatus?: "visible" | "hidden";
   moderationReason?: string;
   reviews?: import("./persistence/supabase").ParticipantReview[];
@@ -150,4 +151,5 @@ export interface RequestDraft {
   support: string;
   criteria: string;
   fundOnApplicantAcceptance?: boolean;
+  prepareFundingOnPublish?: boolean;
 }

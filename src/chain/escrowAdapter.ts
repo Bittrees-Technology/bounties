@@ -385,6 +385,41 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
   return {
     chainId,
     mode: "live",
+    prepareFunding: async (funding) => {
+      const { mode, provider, account } = await selectEscrowProvider(options, chainId);
+      if (mode === "eoa") await switchProviderChain(provider, options.chain);
+      const amount = requiredFunding(chainId, funding);
+      await assertSufficientBalance(provider, account, chainId, funding);
+      const approvalCalls = await buildExactApprovalCalls(provider, account, contractAddress, chainId, funding);
+      if (approvalCalls.length === 0) return { state: "confirmed" };
+
+      if (mode === "smart-wallet") {
+        return sendSmartWalletCalls(provider, account, chainId, approvalCalls, pollIntervalMs, pollAttempts);
+      }
+
+      let txHash: string | undefined;
+      for (const approvalCall of approvalCalls) {
+        txHash = await sendEoaTransaction(provider, account, chainId, approvalCall);
+        await waitForEoaReceipt(
+          provider,
+          txHash,
+          pollIntervalMs,
+          pollAttempts,
+          "INSUFFICIENT_ALLOWANCE",
+          "The ERC20 approval is still pending. Retry preparation after it confirms."
+        );
+      }
+      const allowance = await readAllowance(
+        provider,
+        account,
+        contractAddress,
+        requiredAddress(funding.token.contractAddress, "token contract", "ASSET_UNSUPPORTED")
+      );
+      if (allowance !== amount) {
+        throw new EscrowClientError("INSUFFICIENT_ALLOWANCE", "The confirmed ERC20 approval does not match the exact escrow amount.");
+      }
+      return { state: "confirmed", txHash };
+    },
     createEscrow: async (order, funding) => {
       const amount = requiredFunding(chainId, funding);
       const milestoneSchedule = optionalMilestoneSchedule(order, amount);
@@ -459,6 +494,7 @@ export function createDisabledLiveEscrowAdapter(chainId: SupportedChainId): Escr
   return {
     chainId,
     mode: "live",
+    prepareFunding: fail,
     createEscrow: fail,
     fundEscrow: fail,
     acceptBounty: fail,
@@ -598,6 +634,24 @@ async function buildApprovalCalls(
   const token = requiredAddress(funding.token.contractAddress, "token contract", "ASSET_UNSUPPORTED");
   const allowance = await readAllowance(provider, owner, spender, token);
   if (allowance >= amount) return [];
+
+  const approvals: WalletCall[] = [];
+  if (allowance !== 0n) approvals.push(approvalCall(token, spender, 0n));
+  approvals.push(approvalCall(token, spender, amount));
+  return approvals;
+}
+
+async function buildExactApprovalCalls(
+  provider: Eip1193Provider,
+  owner: ChecksumAddress,
+  spender: ChecksumAddress,
+  chainId: SupportedChainId,
+  funding: EscrowFundingInput
+): Promise<WalletCall[]> {
+  const amount = requiredFunding(chainId, funding);
+  const token = requiredAddress(funding.token.contractAddress, "token contract", "ASSET_UNSUPPORTED");
+  const allowance = await readAllowance(provider, owner, spender, token);
+  if (allowance === amount) return [];
 
   const approvals: WalletCall[] = [];
   if (allowance !== 0n) approvals.push(approvalCall(token, spender, 0n));

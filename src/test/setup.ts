@@ -1,5 +1,5 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { decodeFunctionData, encodeFunctionResult } from "viem";
+import { decodeFunctionData, encodeFunctionResult, parseAbi } from "viem";
 import { createSiweMessage } from "viem/siwe";
 import { beforeEach, expect, vi } from "vitest";
 
@@ -49,6 +49,12 @@ type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "Buye
 let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
 let activeWalletEscrowState: MockWalletEscrowState | null = null;
 let walletChainId = "0x14a34";
+let walletTokenAllowance = 0n;
+const testErc20Abi = parseAbi([
+  "function balanceOf(address owner) view returns (uint256)",
+  "function allowance(address owner,address spender) view returns (uint256)",
+  "function approve(address spender,uint256 amount) returns (bool)"
+]);
 
 export function configureMockEscrowRecordOutcome(outcome: EscrowRecordOutcome) {
   escrowRecordOutcome = outcome;
@@ -437,6 +443,7 @@ beforeEach(() => {
   walletEscrowStateReads = null;
   activeWalletEscrowState = null;
   walletChainId = "0x14a34";
+  walletTokenAllowance = 0n;
   if (typeof window === "undefined") return;
   const storage = new Map<string, string>();
   Object.defineProperty(window, "localStorage", {
@@ -463,9 +470,21 @@ beforeEach(() => {
           return null;
         }
         if (method === "personal_sign") return `0x${"ab".repeat(65)}`;
-        if (method === "eth_call" && walletEscrowStateReads) {
+        if (method === "eth_call") {
           const data = (params as Array<{ data?: `0x${string}` }> | undefined)?.[0]?.data;
           if (!data) return null;
+          try {
+            const tokenCall = decodeFunctionData({ abi: testErc20Abi, data });
+            if (tokenCall.functionName === "balanceOf") {
+              return encodeFunctionResult({ abi: testErc20Abi, functionName: "balanceOf", result: 10n ** 30n });
+            }
+            if (tokenCall.functionName === "allowance") {
+              return encodeFunctionResult({ abi: testErc20Abi, functionName: "allowance", result: walletTokenAllowance });
+            }
+          } catch {
+            // Continue with escrow reads.
+          }
+          if (!walletEscrowStateReads) return null;
           const decoded = decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data });
           if (decoded.functionName === "getBounty") {
             activeWalletEscrowState = walletEscrowStateReads.shift() ?? activeWalletEscrowState;
@@ -518,7 +537,18 @@ beforeEach(() => {
             });
           }
         }
-        if (method === "eth_sendTransaction") return `0x${"99".repeat(32)}`;
+        if (method === "eth_sendTransaction") {
+          const data = (params as Array<{ data?: `0x${string}` }> | undefined)?.[0]?.data;
+          if (data) {
+            try {
+              const tokenCall = decodeFunctionData({ abi: testErc20Abi, data });
+              if (tokenCall.functionName === "approve") walletTokenAllowance = tokenCall.args[1];
+            } catch {
+              // Escrow transactions are handled by the generic successful receipt below.
+            }
+          }
+          return `0x${"99".repeat(32)}`;
+        }
         if (method === "eth_getTransactionReceipt") return { status: "0x1", transactionHash: `0x${"99".repeat(32)}` };
         return null;
       })
