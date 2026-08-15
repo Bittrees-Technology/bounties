@@ -364,14 +364,15 @@ export function configureMockProfileRoleBounties() {
 
 export function configureMockSettlementProposal(
   proposer: "requester" | "provider",
-  expiry: string
+  expiry: string,
+  participant: "buyer" | "provider" = "buyer"
 ) {
-  configureMockMilestoneEscrow("ProviderAccepted", "Pending");
+  configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", participant);
   const escrow = bounties[0]?.escrow as Record<string, unknown> | undefined;
   if (!escrow) throw new Error("mock escrow missing");
   escrow.settlement_proposer = proposer === "requester"
-    ? testWallet
-    : "0x3333333333333333333333333333333333333333";
+    ? participant === "buyer" ? testWallet : "0x5555555555555555555555555555555555555555"
+    : participant === "provider" ? testWallet : "0x3333333333333333333333333333333333333333";
   escrow.proposed_provider_payout_base_units = "75000000";
   escrow.settlement_proposal_expiry = expiry;
 }

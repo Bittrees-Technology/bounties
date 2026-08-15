@@ -263,20 +263,21 @@ it("requires the provider to enter an exact delivered-bytes digest instead of ha
   expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
   expect(within(lifecycleControls).getByRole("button", { name: /refresh canonical escrow state/i })).toBeInTheDocument();
   expect(lifecycleControls.compareDocumentPosition(reviewPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  const settlementInput = within(settlement).getByLabelText(/labor provider amount \(USDC\)/i);
+  const settlementInput = within(settlement).getByLabelText(/your amount \(USDC\)/i);
   const settlementButton = within(settlement).getByRole("button", { name: /propose settlement split/i });
-  const splitEditor = within(settlement).getByRole("group", { name: /exact settlement split/i });
-  const capitalShare = within(splitEditor).getByRole("article", { name: /capital provider settlement share/i });
-  const laborShare = within(splitEditor).getByRole("article", { name: /labor provider settlement share/i });
+  const splitEditor = within(settlement).getByRole("group", { name: /expected settlement outcome/i });
+  const capitalShare = within(splitEditor).getByRole("article", { name: /capital provider expected settlement share/i });
+  const laborShare = within(splitEditor).getByRole("article", { name: /your expected settlement as labor provider/i });
   expect(settlementInput).toHaveAttribute("name", "providerPayout");
   expect(settlementButton).toBeDisabled();
-  expect(within(splitEditor).getAllByRole("article")[0]).toBe(capitalShare);
+  expect(within(splitEditor).getAllByRole("article")[0]).toBe(laborShare);
   expect(capitalShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
   expect(laborShare).not.toHaveTextContent(/\d+\s*\/\s*\d+/);
   const settlementUser = userEvent.setup();
   await settlementUser.type(settlementInput, "75.123456");
   expect(capitalShare).toHaveTextContent("74.876544 / 150 USDC");
   expect(laborShare).toHaveTextContent("75.123456 / 150 USDC");
+  expect(within(settlement).getByText(/expected outcome:/i)).toHaveTextContent(/you receive 75\.123456 \/ 150 USDC.*capital provider receives 74\.876544 \/ 150 USDC.*funds move only if they accept/i);
   expect(capitalShare).not.toHaveTextContent("250 USDC");
   expect(settlementButton).toBeEnabled();
   await settlementUser.clear(settlementInput);
@@ -372,14 +373,43 @@ it("lets the current proposer cancel and never offers acceptance to that propose
   const order = await renderConfiguredEscrow();
   expect(order.getByRole("button", { name: /cancel my settlement proposal/i })).toBeInTheDocument();
   expect(order.queryByRole("button", { name: /accept current exact split/i })).not.toBeInTheDocument();
-  expect(order.getByText(/only the counterparty can accept this exact split before/i)).toBeInTheDocument();
+  expect(order.getByText(/the other party can accept this exact split before/i)).toBeInTheDocument();
   const currentProposal = order.getByRole("complementary", { name: /current settlement proposal/i });
+  expect(within(currentProposal).getByText(/your proposed split/i)).toBeInTheDocument();
   const proposalShares = within(currentProposal).getAllByRole("article");
-  expect(proposalShares[0]).toHaveAccessibleName(/capital provider settlement share/i);
+  expect(proposalShares[0]).toHaveAccessibleName(/your expected settlement as capital provider/i);
   expect(proposalShares[0]).toHaveTextContent("75 / 150 USDC");
   expect(proposalShares[1]).toHaveAccessibleName(/labor provider settlement share/i);
   expect(proposalShares[1]).toHaveTextContent("75 / 150 USDC");
   expect(currentProposal).not.toHaveTextContent(/base units/i);
+});
+
+it("shows a counterparty proposal from the connected participant's perspective", async () => {
+  configureMockSettlementProposal("provider", "2099-12-30T00:00:00.000Z");
+  const order = await renderConfiguredEscrow();
+  const currentProposal = order.getByRole("complementary", { name: /current settlement proposal/i });
+  const proposalShares = within(currentProposal).getAllByRole("article");
+
+  expect(within(currentProposal).getByText(/settlement proposed to you/i)).toBeInTheDocument();
+  expect(proposalShares[0]).toHaveAccessibleName(/your expected settlement as capital provider/i);
+  expect(proposalShares[0]).toHaveTextContent(/you receive.*75 \/ 150 USDC/i);
+  expect(proposalShares[1]).toHaveAccessibleName(/labor provider settlement share/i);
+  expect(order.getByRole("button", { name: /accept current exact split/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /cancel my settlement proposal/i })).not.toBeInTheDocument();
+});
+
+it("shows a labor-provider proposer their own expected outcome first", async () => {
+  configureMockSettlementProposal("provider", "2099-12-30T00:00:00.000Z", "provider");
+  const order = await renderConfiguredEscrow();
+  const currentProposal = order.getByRole("complementary", { name: /current settlement proposal/i });
+  const proposalShares = within(currentProposal).getAllByRole("article");
+
+  expect(within(currentProposal).getByText(/your proposed split/i)).toBeInTheDocument();
+  expect(proposalShares[0]).toHaveAccessibleName(/your expected settlement as labor provider/i);
+  expect(proposalShares[0]).toHaveTextContent(/you receive.*75 \/ 150 USDC/i);
+  expect(proposalShares[1]).toHaveAccessibleName(/capital provider settlement share/i);
+  expect(order.getByRole("button", { name: /cancel my settlement proposal/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /accept current exact split/i })).not.toBeInTheDocument();
 });
 
 it("does not offer acceptance for an expired counterparty proposal", async () => {
@@ -396,7 +426,7 @@ it("shows an exact terminal settlement receipt and unlocks participant reviews",
   const shares = within(receipt).getAllByRole("article");
 
   expect(within(receipt).getByRole("heading", { name: /^settlement completed$/i })).toBeInTheDocument();
-  expect(shares[0]).toHaveAccessibleName(/capital provider settlement share/i);
+  expect(shares[0]).toHaveAccessibleName(/your expected settlement as capital provider/i);
   expect(shares[0]).toHaveTextContent("74.876544 / 150 USDC");
   expect(shares[1]).toHaveAccessibleName(/labor provider settlement share/i);
   expect(shares[1]).toHaveTextContent("75.123456 / 150 USDC");

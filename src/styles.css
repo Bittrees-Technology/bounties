@@ -3223,7 +3223,7 @@ textarea {
 
 .settlement-party-card small { color: #69766f; line-height: 1.4; }
 .settlement-party-card label { max-width: none; }
-.settlement-split-editor .labor-provider-split { background: #eef7f2; border-color: #9dc8b9; }
+.settlement-party-card.viewer-settlement-share { background: #eef7f2; border-color: #78b7a5; box-shadow: inset 0 0 0 1px rgba(15, 107, 87, .08); }
 
 .settlement-validation {
   color: #425047;

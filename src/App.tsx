@@ -400,19 +400,28 @@ function averageRating(reviews: MarketplaceOrder["reviews"]): string {
   return `${average.toFixed(1)} / 5`;
 }
 
-function SettlementSplitPreview({ split, symbol }: { split: ValidSettlementSplit; symbol: string }) {
+type SettlementPerspective = "capital" | "labor";
+
+function settlementRoleLabel(role: SettlementPerspective): string {
+  return role === "capital" ? "Capital provider" : "Labor provider";
+}
+
+function SettlementSplitPreview({ split, symbol, perspective }: { split: ValidSettlementSplit; symbol: string; perspective?: SettlementPerspective }) {
+  const roles: SettlementPerspective[] = perspective === "labor" ? ["labor", "capital"] : ["capital", "labor"];
   return (
     <div className="settlement-split-grid" role="group" aria-label="Exact settlement split">
-      <article className="settlement-party-card capital-provider-split" aria-label="Capital provider settlement share">
-        <span>Capital provider</span>
-        <strong>{split.capitalDisplay} / {split.totalDisplay} {symbol}</strong>
-        <small>Returned from remaining escrow</small>
-      </article>
-      <article className="settlement-party-card labor-provider-split" aria-label="Labor provider settlement share">
-        <span>Labor provider</span>
-        <strong>{split.laborDisplay} / {split.totalDisplay} {symbol}</strong>
-        <small>Paid from remaining escrow</small>
-      </article>
+      {roles.map((role) => {
+        const yours = perspective === role;
+        const roleLabel = settlementRoleLabel(role);
+        const display = role === "capital" ? split.capitalDisplay : split.laborDisplay;
+        return (
+          <article className={`settlement-party-card ${role}-provider-split ${yours ? "viewer-settlement-share" : ""}`} aria-label={yours ? `Your expected settlement as ${roleLabel.toLowerCase()}` : `${roleLabel} settlement share`} key={role}>
+            <span>{yours ? "You receive" : roleLabel}</span>
+            <strong>{display} / {split.totalDisplay} {symbol}</strong>
+            <small>{yours ? `Your expected outcome as the ${roleLabel.toLowerCase()}` : role === "capital" ? "Returned from remaining escrow" : "Paid from remaining escrow"}</small>
+          </article>
+        );
+      })}
     </div>
   );
 }
@@ -1492,6 +1501,7 @@ export default function App() {
     const settlementSplit = calculateSettlementSplit(settlementDraft, remainingEscrowBaseUnits, token.decimals);
     const proposedSettlementSplit = settlementSplitFromBaseUnits(proposedPayout, remainingEscrowBaseUnits, token.decimals);
     const settlementSymbol = token.symbol ?? "token";
+    const settlementPerspective: SettlementPerspective | undefined = isBuyer(order) ? "capital" : isProvider(order) ? "labor" : undefined;
     const settlementExpiry = deadlineTimestamp(order.escrowObservation?.settlement_proposal_expiry);
     const hasSettlementProposal = Boolean(settlementProposer && !/^0x0{40}$/i.test(settlementProposer));
     const settlementProposalActive = hasSettlementProposal && settlementExpiry !== null && settlementExpiry > Date.now();
@@ -1532,7 +1542,7 @@ export default function App() {
               <ShieldCheck size={24} aria-hidden="true" />
               <div><span>Canonical terminal record</span><h5>Settlement completed</h5><p>The escrow reached its final bilateral settlement state. No further proposal or acceptance action is available.</p></div>
             </header>
-            {completedSplit.status === "valid" ? <SettlementSplitPreview split={completedSplit} symbol={settlementSymbol} /> : (
+            {completedSplit.status === "valid" ? <SettlementSplitPreview split={completedSplit} symbol={settlementSymbol} perspective={settlementPerspective} /> : (
               <p className="settlement-receipt-pending" role="status">Canonical status is Settled, but the verified settlement-event allocation is still being indexed. Party amounts are withheld rather than inferred from cleared proposal fields.</p>
             )}
             <dl className="settlement-terminal-meta">
@@ -1623,37 +1633,43 @@ export default function App() {
               if (settlementSplit.status !== "valid") return;
               void submitEscrowTransaction(order, (client, ref) => client.proposeSettlement(ref, { providerPayoutBaseUnits: settlementSplit.laborBaseUnits }));
             }}>
-              <div className="settlement-split-grid settlement-split-editor" role="group" aria-label="Exact settlement split">
-                <article className="settlement-party-card capital-provider-split" aria-label="Capital provider settlement share">
-                  <span>Capital provider</span>
-                  {settlementSplit.status === "valid" ? <strong>{settlementSplit.capitalDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong> : <small>Calculated after a valid labor amount is entered</small>}
-                  {settlementSplit.status === "valid" ? <small>Returned from remaining escrow</small> : null}
-                </article>
-                <article className="settlement-party-card labor-provider-split" aria-label="Labor provider settlement share">
-                  <label>Labor provider amount ({settlementSymbol})
-                    <input
-                      name="providerPayout"
-                      inputMode="decimal"
-                      value={settlementDraft}
-                      onChange={(event) => setSettlementDraftByOrder((current) => ({ ...current, [order.id]: event.target.value }))}
-                      pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?"
-                      aria-describedby={`settlement-help-${order.id} settlement-validation-${order.id}`}
-                      aria-invalid={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable"}
-                      required
-                    />
-                  </label>
-                  {settlementSplit.status === "valid" ? <strong>{settlementSplit.laborDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong> : <small>Editable amount sent to the escrow contract</small>}
-                </article>
+              <div className="settlement-split-grid settlement-split-editor" role="group" aria-label="Expected settlement outcome">
+                {(settlementPerspective === "labor" ? ["labor", "capital"] as SettlementPerspective[] : ["capital", "labor"] as SettlementPerspective[]).map((role) => {
+                  const yours = settlementPerspective === role;
+                  const roleLabel = settlementRoleLabel(role);
+                  const display = settlementSplit.status === "valid" ? role === "capital" ? settlementSplit.capitalDisplay : settlementSplit.laborDisplay : null;
+                  return (
+                    <article className={`settlement-party-card ${role}-provider-split ${yours ? "viewer-settlement-share" : ""}`} aria-label={yours ? `Your expected settlement as ${roleLabel.toLowerCase()}` : `${roleLabel} expected settlement share`} key={role}>
+                      <span>{yours ? "You receive" : `${roleLabel} receives`}</span>
+                      {role === "labor" ? (
+                        <label>{yours ? `Your amount (${settlementSymbol})` : `Labor provider amount (${settlementSymbol})`}
+                          <input
+                            name="providerPayout"
+                            inputMode="decimal"
+                            value={settlementDraft}
+                            onChange={(event) => setSettlementDraftByOrder((current) => ({ ...current, [order.id]: event.target.value }))}
+                            pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?"
+                            aria-describedby={`settlement-help-${order.id} settlement-validation-${order.id}`}
+                            aria-invalid={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable"}
+                            required
+                          />
+                        </label>
+                      ) : null}
+                      {display ? <strong>{display} / {settlementSplit.status === "valid" ? settlementSplit.totalDisplay : ""} {settlementSymbol}</strong> : <small>{role === "labor" ? "Enter the proposed labor-provider amount" : "Calculated from the labor-provider amount"}</small>}
+                      {display ? <small>{yours ? "Your expected outcome if the other party accepts" : "Expected counterparty outcome"}</small> : null}
+                    </article>
+                  );
+                })}
               </div>
-              <span className="form-hint" id={`settlement-help-${order.id}`}>The total is the canonical remaining escrow after any released milestones. The capital return is calculated exactly from the labor amount.</span>
-              <p className={`settlement-validation ${settlementSplit.status}`} id={`settlement-validation-${order.id}`} role={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable" ? "alert" : undefined} aria-live="polite">{settlementSplit.status === "valid" ? "Exact split ready for the counterparty to review." : settlementSplit.message}</p>
+              <span className="form-hint" id={`settlement-help-${order.id}`}>{settlementPerspective === "labor" ? "Enter the amount you would receive. The capital provider receives the exact remainder." : "Enter the amount the labor provider would receive. You receive the exact remainder as the capital provider."} The total is the canonical remaining escrow after any released milestones.</span>
+              <p className={`settlement-validation ${settlementSplit.status}`} id={`settlement-validation-${order.id}`} role={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable" ? "alert" : undefined} aria-live="polite">{settlementSplit.status === "valid" && settlementPerspective ? <>Expected outcome: you receive <strong>{settlementPerspective === "capital" ? settlementSplit.capitalDisplay : settlementSplit.laborDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong>; the {settlementPerspective === "capital" ? "labor" : "capital"} provider receives <strong>{settlementPerspective === "capital" ? settlementSplit.laborDisplay : settlementSplit.capitalDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong>. Funds move only if they accept.</> : settlementSplit.status === "valid" ? "Exact split ready for the counterparty to review." : settlementSplit.message}</p>
               <button type="submit" disabled={settlementSplit.status !== "valid"}>Propose settlement split</button>
             </form>
             {hasSettlementProposal ? (
               <aside className="current-settlement-proposal" aria-label="Current settlement proposal">
-                <strong>Current proposed split</strong>
-                {proposedSettlementSplit.status === "valid" ? <SettlementSplitPreview split={proposedSettlementSplit} symbol={settlementSymbol} /> : <p className="settlement-validation invalid" role="alert">{proposedSettlementSplit.message} Refresh canonical escrow state before acting.</p>}
-                <p className="form-hint">{settlementProposalActive ? <>Only the counterparty can accept this exact split before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p>
+                <strong>{canCancelSettlement ? "Your proposed split" : "Settlement proposed to you"}</strong>
+                {proposedSettlementSplit.status === "valid" ? <SettlementSplitPreview split={proposedSettlementSplit} symbol={settlementSymbol} perspective={settlementPerspective} /> : <p className="settlement-validation invalid" role="alert">{proposedSettlementSplit.message} Refresh canonical escrow state before acting.</p>}
+                <p className="form-hint">{settlementProposalActive ? canCancelSettlement ? <>The other party can accept this exact split before {new Date(settlementExpiry!).toLocaleString()}.</> : <>Review what you would receive, then accept or leave this proposal unchanged before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p>
               </aside>
             ) : null}
             {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedSettlementSplit.status === "valid" ? proposedSettlementSplit.laborBaseUnits : proposedPayout! }))}>Accept current exact split</button> : null}
