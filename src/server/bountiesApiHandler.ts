@@ -118,11 +118,14 @@ const ensProfileLookups = new Map<string, Promise<EnsProfileIdentity>>();
 const ensNameCacheLimit = 512;
 const ensNameCacheTtlMs = 30 * 60 * 1_000;
 const ensNameMissCacheTtlMs = 5 * 60 * 1_000;
+const ensProfileResolutionBudgetMs = 5_000;
+const profileResponseBudgetMs = 8_000;
 let cachedEthereumMainnetProvider: { url: string; provider: JsonRpcProvider } | null = null;
 const safeServiceErrorCodes = new Set([
   "ENS_RPC_UNAVAILABLE",
   "ENS_RPC_CHAIN_MISMATCH",
   "ENS_RESOLUTION_TIMEOUT",
+  "PROFILE_LOAD_TIMEOUT",
   "TOKEN_INSPECTION_RPC_UNAVAILABLE",
   "TOKEN_INSPECTION_CHAIN_MISMATCH",
   "TOKEN_INSPECTION_TIMEOUT"
@@ -546,8 +549,7 @@ async function resolveEnsProfile(walletAddress: string, providedName?: unknown):
   const pending = ensProfileLookups.get(cacheKey);
   if (pending) return pending;
 
-  const lookup = (async () => {
-    try {
+  const lookup = withTimeout((async () => {
       const network = await withTimeout(provider.getNetwork(), "ENS_RESOLUTION_TIMEOUT", 5_000);
       if (Number(network.chainId) !== 1) return { name: knownName, avatarUrl: null };
       const resolvedName = knownName ?? normalizedEnsName(await withTimeout(provider.lookupAddress(normalizedAddress), "ENS_RESOLUTION_TIMEOUT", 5_000));
@@ -561,10 +563,8 @@ async function resolveEnsProfile(walletAddress: string, providedName?: unknown):
         expiresAt: Date.now() + (resolvedName ? ensNameCacheTtlMs : ensNameMissCacheTtlMs)
       });
       return identity;
-    } catch {
-      return { name: knownName, avatarUrl: null };
-    }
-  })();
+  })(), "ENS_RESOLUTION_TIMEOUT", ensProfileResolutionBudgetMs)
+    .catch(() => ({ name: knownName, avatarUrl: null }));
   ensProfileLookups.set(cacheKey, lookup);
   try {
     return await lookup;
@@ -1591,11 +1591,14 @@ async function handle(request: Request, action: string): Promise<Response> {
   const publicProfileMatch = action.match(/^profiles\/(0x[0-9a-fA-F]{40})$/);
   if (publicProfileMatch && method === "GET") {
     await consumePublicDiscoveryLimit(request, requestOrigin);
-    const profile = await callRpc<PublicProfileRecord | null>("app_public_wallet_profile", {
-      p_wallet_address: checkedAddress(publicProfileMatch[1], "INVALID_WALLET")
-    });
-    if (!profile || profile.profile_moderation_status === "hidden") throw new ApiError("PROFILE_NOT_FOUND", 404);
-    return Response.json(await enrichPublicProfile(profile), { headers });
+    const profile = await withTimeout((async () => {
+      const record = await callRpc<PublicProfileRecord | null>("app_public_wallet_profile", {
+        p_wallet_address: checkedAddress(publicProfileMatch[1], "INVALID_WALLET")
+      });
+      if (!record || record.profile_moderation_status === "hidden") throw new ApiError("PROFILE_NOT_FOUND", 404);
+      return enrichPublicProfile(record);
+    })(), "PROFILE_LOAD_TIMEOUT", profileResponseBudgetMs);
+    return Response.json(profile, { headers });
   }
 
   const requiresCsrf = mutationMethods.has(method);
@@ -1622,11 +1625,14 @@ async function handle(request: Request, action: string): Promise<Response> {
   }
 
   if (action === "profiles/me" && method === "GET") {
-    const profile = await callRpc<PublicProfileRecord | null>("app_my_wallet_profile", {
-      p_actor_id: session.account_id
-    });
-    if (!profile) throw new ApiError("PROFILE_NOT_FOUND", 404);
-    return Response.json(await enrichPublicProfile(profile), { headers });
+    const profile = await withTimeout((async () => {
+      const record = await callRpc<PublicProfileRecord | null>("app_my_wallet_profile", {
+        p_actor_id: session.account_id
+      });
+      if (!record) throw new ApiError("PROFILE_NOT_FOUND", 404);
+      return enrichPublicProfile(record);
+    })(), "PROFILE_LOAD_TIMEOUT", profileResponseBudgetMs);
+    return Response.json(profile, { headers });
   }
 
   if (action === "me" && method === "GET") {

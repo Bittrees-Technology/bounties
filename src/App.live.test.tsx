@@ -121,9 +121,17 @@ it("shows saved profile identities for both bounty participants", async () => {
 
   await waitFor(() => expect(participants).toHaveTextContent("Capital provider: Test participant"));
   await waitFor(() => expect(participants).toHaveTextContent("Labor provider: Delivery specialist"));
-  expect(within(participants).getByRole("link", { name: /view test participant profile/i })).toHaveAttribute("href", "/profiles/0x1111111111111111111111111111111111111111");
+  const ownProfileLink = within(participants).getByRole("link", { name: /view test participant profile/i });
+  expect(ownProfileLink).toHaveAttribute("href", "/profiles/0x1111111111111111111111111111111111111111");
   expect(within(participants).getByRole("link", { name: /view delivery specialist profile/i })).toHaveAttribute("href", "/profiles/0x3333333333333333333333333333333333333333");
   expect(participants).not.toHaveTextContent(/0x1111|0x3333/i);
+
+  const ownProfileRequests = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input).endsWith("/api/bounties/profiles/me")).length;
+  const requestsBeforeOpening = ownProfileRequests();
+  await user.click(ownProfileLink);
+  expect(await screen.findByRole("heading", { level: 3, name: "Test participant" })).toBeInTheDocument();
+  expect(screen.queryByText(/loading wallet profile/i)).not.toBeInTheDocument();
+  expect(ownProfileRequests()).toBe(requestsBeforeOpening);
 });
 
 it("makes manual escrow funding explicit after applicant acceptance", async () => {

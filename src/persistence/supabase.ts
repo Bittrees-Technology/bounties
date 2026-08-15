@@ -93,6 +93,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "ENS_RPC_UNAVAILABLE") return "ENS search is not configured. Operations must add the Ethereum mainnet server-side RPC endpoint.";
   if (serverCode === "ENS_RPC_CHAIN_MISMATCH") return "ENS search is unavailable because the configured endpoint is not Ethereum mainnet.";
   if (serverCode === "ENS_RESOLUTION_TIMEOUT") return "Ethereum mainnet did not answer the ENS lookup in time. Try again shortly.";
+  if (serverCode === "PROFILE_LOAD_TIMEOUT") return "Profile details took too long to load. Please try again.";
   if (serverCode === "INVALID_PROFILE_QUERY") return "Enter at least two characters or choose a valid profile filter.";
   if (serverCode === "INVALID_TIMEZONE") return "Choose a valid timezone.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";

@@ -788,7 +788,7 @@ describe("App", () => {
     });
   });
 
-  it("falls back to the wallet address when a public profile has no ENS name", async () => {
+  it("keeps the preferred profile name while retaining the wallet link when ENS is unavailable", async () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
@@ -800,7 +800,8 @@ describe("App", () => {
     expect(within(walletIdentity).getByText("0x2222…2222", { selector: "code" })).toBeInTheDocument();
     const profileCard = walletIdentity.closest(".profile-card") as HTMLElement;
     expect(within(profileCard).getAllByText("0x2222…2222", { selector: "code" })).toHaveLength(1);
-    expect(walletIdentity.closest("h3")).toBeInTheDocument();
+    expect(within(profileCard).getByRole("heading", { level: 3, name: "Capital guide" })).toBeInTheDocument();
+    expect(walletIdentity.closest("h3")).not.toBeInTheDocument();
     const identityMeta = profileCard.querySelector(".profile-identity-meta") as HTMLElement;
     expect(within(identityMeta).getByRole("link", { name: /^website$/i })).toHaveAttribute("href", "https://example.test/profile");
     await user.click(within(profileCard).getByText(/report this profile/i));

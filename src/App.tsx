@@ -145,6 +145,28 @@ function uniqueProfileSelections(values: string[]): string[] {
 
 const workTypeLabel = (value: string) => scopes.find((scope) => scope.value === value)?.label ?? value;
 const ethereumExplorerUrl = (walletAddress: string) => `https://etherscan.io/address/${walletAddress}`;
+const profileLoadTimeoutMs = 8_000;
+
+function withProfileLoadTimeout<T>(promise: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timeout = setTimeout(() => reject(new Error("Profile request timed out.")), profileLoadTimeoutMs);
+    })
+  ]).finally(() => {
+    if (timeout !== undefined) clearTimeout(timeout);
+  });
+}
+
+async function loadProfileForView(walletAddress: string, isOwnProfile: boolean): Promise<PublicWalletProfile> {
+  if (!isOwnProfile) return withProfileLoadTimeout(loadPublicProfile(walletAddress));
+  try {
+    return await withProfileLoadTimeout(loadMyProfile());
+  } catch {
+    return withProfileLoadTimeout(loadPublicProfile(walletAddress));
+  }
+}
 
 function ensExplorerLink(profile: PublicWalletProfile, className?: string) {
   if (!profile.ens_name) return null;
@@ -155,13 +177,15 @@ function walletExplorerLink(walletAddress: string) {
   return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
+type OpenProfile = (address: string, resolvedProfile?: PublicWalletProfile) => void;
+
 function useIdentityProfile(walletAddress: string, currentWallet?: string | null) {
   const [profile, setProfile] = useState<PublicWalletProfile | null>(null);
   const isOwnProfile = currentWallet?.toLowerCase() === walletAddress.toLowerCase();
 
   useEffect(() => {
     let cancelled = false;
-    void (isOwnProfile ? loadMyProfile() : loadPublicProfile(walletAddress))
+    void loadProfileForView(walletAddress, Boolean(isOwnProfile))
       .then((result) => {
         if (!cancelled) setProfile(result);
       })
@@ -174,13 +198,13 @@ function useIdentityProfile(walletAddress: string, currentWallet?: string | null
   return profile;
 }
 
-function preferredProfileIdentity(profile: PublicWalletProfile | null, walletAddress: string) {
-  return profile?.display_name?.trim() || profile?.ens_name?.trim() || short(walletAddress);
+function preferredProfileIdentity(profile: PublicWalletProfile | null, walletAddress: string, knownIdentity?: string | null) {
+  return profile?.display_name?.trim() || profile?.ens_name?.trim() || knownIdentity?.trim() || short(walletAddress);
 }
 
-function ProfileIdentityLink({ walletAddress, currentWallet, onOpenProfile }: { walletAddress: string; currentWallet?: string | null; onOpenProfile: (address: string) => void }) {
+function ProfileIdentityLink({ walletAddress, currentWallet, knownIdentity, onOpenProfile }: { walletAddress: string; currentWallet?: string | null; knownIdentity?: string | null; onOpenProfile: OpenProfile }) {
   const profile = useIdentityProfile(walletAddress, currentWallet);
-  const preferredIdentity = preferredProfileIdentity(profile, walletAddress);
+  const preferredIdentity = preferredProfileIdentity(profile, walletAddress, knownIdentity);
 
   return (
     <a
@@ -191,7 +215,7 @@ function ProfileIdentityLink({ walletAddress, currentWallet, onOpenProfile }: { 
       onClick={(event) => {
         if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
-        onOpenProfile(walletAddress);
+        onOpenProfile(walletAddress, profile ?? undefined);
       }}
     >
       {preferredIdentity}
@@ -199,7 +223,7 @@ function ProfileIdentityLink({ walletAddress, currentWallet, onOpenProfile }: { 
   );
 }
 
-function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: string; onOpenProfile: (address: string) => void }) {
+function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: string; onOpenProfile: OpenProfile }) {
   const profile = useIdentityProfile(walletAddress);
 
   const preferredIdentity = preferredProfileIdentity(profile, walletAddress);
@@ -212,7 +236,7 @@ function ApplicantIdentity({ walletAddress, onOpenProfile }: { walletAddress: st
         onClick={(event) => {
           if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
           event.preventDefault();
-          onOpenProfile(walletAddress);
+          onOpenProfile(walletAddress, profile ?? undefined);
         }}
       >
         {preferredIdentity}
@@ -782,21 +806,22 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function openProfile(address: string) {
+  function openProfile(address: string, resolvedProfile?: PublicWalletProfile) {
     const target = profilePath(address);
     if (window.location.pathname !== target) window.history.pushState({}, "", target);
     setSelectedProfileAddress(address);
-    setPublicProfile(null);
-    setProfileMessage("Loading wallet profile…");
+    setPublicProfile(resolvedProfile ?? null);
+    setProfileMessage(resolvedProfile ? null : "Loading wallet profile…");
     navigateToPage("profile");
     window.scrollTo({ top: 0, behavior: "smooth" });
+    if (resolvedProfile) return;
     const isOwnProfile = wallet?.toLowerCase() === address.toLowerCase();
-    void (isOwnProfile ? loadMyProfile() : loadPublicProfile(address))
+    void loadProfileForView(address, isOwnProfile)
       .then((profile) => {
         setPublicProfile(profile);
         setProfileMessage(null);
       })
-      .catch(() => setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below."));
+      .catch(() => setProfileMessage("Profile details could not be loaded. Return to profiles and try again."));
   }
 
   function openBountyFromProfile(event: MouseEvent<HTMLAnchorElement>, bountyId: string) {
@@ -951,17 +976,18 @@ export default function App() {
     if (activePage !== "profile" || !selectedProfileAddress || publicProfile || profileMessage) return;
     let cancelled = false;
     setProfileMessage("Loading wallet profile…");
-    void loadPublicProfile(selectedProfileAddress)
+    const isOwnProfile = wallet?.toLowerCase() === selectedProfileAddress.toLowerCase();
+    void loadProfileForView(selectedProfileAddress, isOwnProfile)
       .then((profile) => {
         if (cancelled) return;
         setPublicProfile(profile);
         setProfileMessage(null);
       })
       .catch(() => {
-        if (!cancelled) setProfileMessage("This wallet has not completed a public profile yet. Verified marketplace activity is shown below.");
+        if (!cancelled) setProfileMessage("Profile details could not be loaded. Return to profiles and try again.");
       });
     return () => { cancelled = true; };
-  }, [activePage, profileMessage, publicProfile, selectedProfileAddress]);
+  }, [activePage, profileMessage, publicProfile, selectedProfileAddress, wallet]);
 
   useEffect(() => {
     if (!notificationsOpen) return;
@@ -2251,8 +2277,8 @@ export default function App() {
           <p className="bounty-description">{linkedDescription(order.project)}</p>
           <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
           <div className="participant-links">
-            {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} onOpenProfile={openProfile} /></span> : null}
-            {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} onOpenProfile={openProfile} /></span> : null}
+            {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} knownIdentity={session?.account.display_name} onOpenProfile={openProfile} /></span> : null}
+            {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} knownIdentity={order.providerAddress.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
           </div>
           {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
           {cardProgress(order)}
@@ -2353,7 +2379,7 @@ export default function App() {
               {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
             </div>
           </div>
-          {profileDirectoryView === "tiles" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button> : null}
+          {profileDirectoryView === "tiles" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
         </header>
         {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
           {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{visibleWorkTypes.map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}{hiddenWorkTypeCount ? <span className="profile-specialty-overflow">+{hiddenWorkTypeCount}</span> : null}</div></div> : null}
@@ -2365,7 +2391,7 @@ export default function App() {
           <div aria-label={`Labor provider: ${laborSummary}`}><UsersRound size={15} /><strong>Labor</strong><span>{laborSummary}</span></div>
           <span className="profile-directory-last-active">{profileLastCompletedLabel(profile)}</span>
         </div>
-        {profileDirectoryView === "list" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address)}>View profile</button> : null}
+        {profileDirectoryView === "list" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
       </article>
     );
   }
