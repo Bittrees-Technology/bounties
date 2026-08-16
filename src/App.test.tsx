@@ -1143,6 +1143,7 @@ describe("App", () => {
       status: "resolved",
       decision: "no_action",
       public_response: "Verified source code was confirmed on the explorer.",
+      internal_note: "Administrative review evidence was archived.",
       actor_id: "00000000-0000-4000-8000-000000000111",
       actor_wallet_address: "0x1111111111111111111111111111111111111111",
       actor_display_name: "Governance reviewer",
@@ -1154,11 +1155,11 @@ describe("App", () => {
     await connectWallet(user);
     await user.click(screen.getByRole("link", { name: /^moderator$/i }));
 
-    expect(screen.getByText(/^Partner audit access$/i)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /^audit history$/i })).toBeInTheDocument();
+    expect(screen.getByText(/^Admin audit access · Partner$/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^admin audit history$/i })).toBeInTheDocument();
     expect(screen.getByText("BIT on network 11155111")).toBeInTheDocument();
     expect(screen.getByText(/source verified/i)).toBeInTheDocument();
-    expect(screen.getByText(/internal moderator notes remain restricted to administrators/i)).toBeInTheDocument();
+    expect(screen.getByText(/administrative review evidence was archived/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^verification requests$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /complete verification|resolve report/i })).not.toBeInTheDocument();
   });

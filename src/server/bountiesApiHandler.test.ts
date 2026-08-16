@@ -967,7 +967,7 @@ describe("optional shared moderation projection", () => {
       if (name === "app_sync_shared_moderation_role") return Promise.resolve({ data: { authorized: false }, error: null });
       if (name === "app_moderation_audit_history") return Promise.resolve({ data: {
         accessRole: "partner",
-        canViewInternalNotes: false,
+        canViewInternalNotes: true,
         events: [{ event_id: "audit-event-1", actor_wallet_address: session.wallet_address }]
       }, error: null });
       if (name === "app_marketplace_snapshot") return Promise.resolve({ data: {
@@ -987,7 +987,7 @@ describe("optional shared moderation projection", () => {
       staffRole: null,
       auditRole: "partner",
       moderationReports: [],
-      moderationAudit: { accessRole: "partner", canViewInternalNotes: false }
+      moderationAudit: { accessRole: "partner", canViewInternalNotes: true }
     });
     expect(rpcMock).toHaveBeenCalledWith("app_moderation_audit_history", {
       p_actor_id: session.account_id,

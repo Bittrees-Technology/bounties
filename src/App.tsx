@@ -3613,7 +3613,7 @@ export default function App() {
 
               {visiblePage === "moderator" && hasModeratorWorkspaceAccess ? (
                 <section id="moderation" className="panel moderation-panel authorized-panel">
-                  <div className="moderator-badge"><ShieldCheck size={16} />{session?.staffRole ? `Authorized ${session.staffRole}` : `${moderationAuditRoleLabel(session?.auditRole)} audit access`}</div>
+                  <div className="moderator-badge"><ShieldCheck size={16} />{session?.staffRole ? `Authorized ${session.staffRole}` : `Admin audit access · ${moderationAuditRoleLabel(session?.auditRole)}`}</div>
                   <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
                   {session?.staffRole && session.auditRole ? <nav className="moderator-tabs" aria-label="Moderator panel views">
                     <button type="button" aria-pressed={visibleModeratorTab === "queue"} onClick={() => setModeratorTab("queue")}>Open queue</button>
@@ -3629,7 +3629,7 @@ export default function App() {
                     {!session.moderationReports.length ? <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open items</strong><span>New verification requests and safety reports will appear here.</span></div> : null}
                   </div> : null}
                   {visibleModeratorTab === "audit" && session?.auditRole ? <section className="moderator-tab-panel moderation-audit-panel" aria-labelledby="moderation-audit-heading">
-                    <div><h3 id="moderation-audit-heading">Audit history</h3><p>Read-only decisions are retained with the acting wallet, affected item, outcome, and time.</p></div>
+                    <div><h3 id="moderation-audit-heading">Admin audit history</h3><p>Read-only decisions are retained with the acting wallet, affected item, outcome, and time.</p></div>
                     {!session.moderationAudit?.canViewInternalNotes ? <p className="moderation-audit-privacy"><ShieldCheck size={16} />Internal moderator notes remain restricted to administrators.</p> : null}
                     {session.moderationAudit?.events.length ? <div className="moderation-audit-list">{session.moderationAudit.events.map((event) => {
                       const outcome = event.request_kind === "verification_request"

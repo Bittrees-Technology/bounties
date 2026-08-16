@@ -208,7 +208,7 @@ export function configureMockStaff(
 export function configureMockAuditAccess(
   role: "associate" | "junior_partner" | "partner" | "admin" | null,
   events: Array<Record<string, unknown>> = [],
-  canViewInternalNotes = role === "admin"
+  canViewInternalNotes = role !== null
 ) {
   snapshotAuditRole = role;
   snapshotModerationAudit = role ? { accessRole: role, canViewInternalNotes, events } : null;
