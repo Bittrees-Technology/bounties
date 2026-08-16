@@ -98,6 +98,13 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "INVALID_TIMEZONE") return "Choose a valid timezone.";
   if (serverCode === "PROFILE_MODERATOR_HIDDEN") return "This profile was hidden by a moderator and cannot be reactivated from profile settings.";
   if (serverCode === "TOKEN_MODERATOR_HIDDEN") return "This token has been hidden from Bounties after moderation review. Choose another payment token.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_PENDING") return "The 250 BIT payment is still confirming. Use the same request again shortly; you will not be asked to pay twice.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_REVERTED") return "The 250 BIT payment reverted and the review request was not submitted.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_MISMATCH") return "That payment does not match the required 250 BIT review fee or Bounties recipient.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED") return "Moderator review payments are available only on Ethereum Sepolia, or Ethereum mainnet after launch configuration.";
+  if (serverCode === "TOKEN_REVIEW_MAINNET_NOT_CONFIGURED") return "Ethereum mainnet review payments are not enabled yet.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_RPC_UNAVAILABLE" || serverCode === "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT" || serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_MISMATCH") return "The review payment could not be verified right now. Retry with the same submitted payment shortly.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_ALREADY_USED") return "That payment has already been used for a moderator review request.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
   if (serverCode === "BOUNTY_ALREADY_MATCHED") return "This bounty already has a selected applicant. Refresh to see its current status.";
   if (serverCode === "BOUNTY_NOT_OPEN") return "This bounty is no longer accepting applicant changes. Refresh to see its current status.";
@@ -491,7 +498,13 @@ export function searchPublicProfiles(query: string, filters: ProfileSearchFilter
 }
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null; timezone?: string | null; timezonePublic?: boolean }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
-export const reportContent = (entityType: "bounty" | "review" | "profile" | "token", entityId: string, reason: string) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason }) });
+export type TokenReviewPayment = { chainId: 1 | 11155111; txHash: string };
+export const reportContent = (
+  entityType: "bounty" | "review" | "profile" | "token",
+  entityId: string,
+  reason: string,
+  payment?: TokenReviewPayment
+) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason, ...(payment ? { paymentChainId: payment.chainId, paymentTxHash: payment.txHash } : {}) }) });
 export const decideContentReport = (
   reportId: string,
   decision: ModerationDecision,

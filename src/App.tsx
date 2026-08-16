@@ -81,6 +81,7 @@ import { buildTimeZoneOptions, formatTimeZoneLabel } from "./timeZones";
 import { deliveryProofMethodConfig, deliveryProofMethods, hashCanonicalDeliveryDescription, hashLocalDeliveryFile, safeDeliveryProofHref, type DeliveryFingerprintMode, type DeliveryProofMethod } from "./deliveryProof";
 import { SavedDeliveryDescription } from "./DeliveryDescription";
 import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
+import { submitTokenReviewPayment, TOKEN_REVIEW_FEE_DISPLAY, tokenReviewPaymentPolicy } from "./tokenReviewPayment";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -270,6 +271,7 @@ type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: strin
 type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowMilestoneRecord | null };
 type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
+const TOKEN_REVIEW_PAYMENTS_KEY = "bounties.token-review-payments.v1";
 const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
 const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled", "AwaitingFunding", "PartiallyCompleted"]);
 
@@ -288,6 +290,17 @@ function readEscrowCreationLocks(): Record<string, EscrowCreationLock> {
       const validBundleId = lock?.bundleId === undefined || Boolean(lock.bundleId.trim());
       return Boolean(lock && typeof lock.createdAt === "string" && validTxHash && validBundleId && (lock.txHash || lock.bundleId));
     }));
+  } catch {
+    return {};
+  }
+}
+
+function readTokenReviewPayments(): Record<string, string> {
+  try {
+    if (typeof window.localStorage?.getItem !== "function") return {};
+    const value = JSON.parse(window.localStorage.getItem(TOKEN_REVIEW_PAYMENTS_KEY) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^0x[0-9a-fA-F]{64}$/.test(entry[1])));
   } catch {
     return {};
   }
@@ -639,6 +652,7 @@ export default function App() {
   const [tokenPolicyConfirmed, setTokenPolicyConfirmed] = useState(false);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
   const [escrowCreationLocks, setEscrowCreationLocks] = useState<Record<string, EscrowCreationLock>>(readEscrowCreationLocks);
+  const [tokenReviewPayments, setTokenReviewPayments] = useState<Record<string, string>>(readTokenReviewPayments);
   const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(() => profileAddressFromPath(window.location.pathname));
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
@@ -1129,6 +1143,48 @@ export default function App() {
       if (successMessage) setNotice(successMessage);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Marketplace action failed.";
+      setError(message);
+      setExpired(message.toLowerCase().includes("expired"));
+    } finally {
+      actionPending.current = false;
+      setLoading(false);
+    }
+  }
+
+  function rememberTokenReviewPayment(tokenId: string, txHash?: string) {
+    setTokenReviewPayments((current) => {
+      const next = { ...current };
+      if (txHash) next[tokenId] = txHash;
+      else delete next[tokenId];
+      try { window.localStorage.setItem(TOKEN_REVIEW_PAYMENTS_KEY, JSON.stringify(next)); } catch { /* In-memory state still prevents a duplicate during this session. */ }
+      return next;
+    });
+  }
+
+  async function submitPaidTokenReview(tokenId: string, reason: string, form: HTMLFormElement) {
+    if (actionPending.current) return;
+    const policy = tokenReviewPaymentPolicy();
+    try {
+      actionPending.current = true;
+      setLoading(true);
+      setError(null);
+      setNotice(null);
+      let txHash = tokenReviewPayments[tokenId];
+      if (!txHash) {
+        if (!window.ethereum) throw new Error("Open Bounties in an Ethereum wallet to pay for this review request.");
+        txHash = await submitTokenReviewPayment(window.ethereum, session!.account.wallet_address, policy);
+        rememberTokenReviewPayment(tokenId, txHash);
+      }
+      await reportContent("token", tokenId, reason, { chainId: policy.chainId, txHash });
+      rememberTokenReviewPayment(tokenId);
+      form.reset();
+      await refresh();
+      setNotice("Paid review request sent to the moderator queue.");
+    } catch (caught) {
+      if (caught instanceof PersistenceError && ["TOKEN_REVIEW_PAYMENT_REVERTED", "TOKEN_REVIEW_PAYMENT_MISMATCH", "TOKEN_REVIEW_PAYMENT_ALREADY_USED"].includes(caught.serverCode ?? "")) {
+        rememberTokenReviewPayment(tokenId);
+      }
+      const message = caught instanceof Error ? caught.message : "The token review request could not be completed.";
       setError(message);
       setExpired(message.toLowerCase().includes("expired"));
     } finally {
@@ -2107,6 +2163,8 @@ export default function App() {
 
   function reportForm(entityType: ReportableEntity, entityId: string) {
     const tokenReport = entityType === "token";
+    const paymentPolicy = tokenReviewPaymentPolicy();
+    const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
     return (
       <details className="report-control">
         <summary>{tokenReport ? <ShieldCheck size={14} /> : <Flag size={14} />} {tokenReport ? "Request moderator review" : `Report this ${reportEntityNoun(entityType)}`}</summary>
@@ -2117,13 +2175,15 @@ export default function App() {
             const category = String(form.get("category") ?? "Other safety concern");
             const details = String(form.get("details") ?? "").trim();
             const reason = details ? `${category}: ${details}` : category;
-            void act(
-              () => reportContent(entityType, entityId, reason),
-              tokenReport ? "Review request sent to the moderator queue." : "Report received. A moderator will review it."
-            );
-            event.currentTarget.reset();
+            if (tokenReport) {
+              void submitPaidTokenReview(entityId, reason, event.currentTarget);
+            } else {
+              void act(() => reportContent(entityType, entityId, reason), "Report received. A moderator will review it.");
+              event.currentTarget.reset();
+            }
           }}
         >
+          {tokenReport ? <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Retry to verify it without paying again.</span></> : null}</p> : null}
           <label>
             {tokenReport ? "Review reason" : "Concern"}
             {tokenReport ? (
@@ -2147,7 +2207,7 @@ export default function App() {
             )}
           </label>
           <label>Details (optional)<textarea name="details" maxLength={430} /></label>
-          <button type="submit">{tokenReport ? "Request review" : "Submit report"}</button>
+          <button type="submit">{tokenReport ? pendingPayment ? "Verify payment and request review" : `Pay ${TOKEN_REVIEW_FEE_DISPLAY} and request review` : "Submit report"}</button>
         </form>
       </details>
     );

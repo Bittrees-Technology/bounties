@@ -451,8 +451,18 @@ describe("App", () => {
     expect(JSON.parse(String(reportCall?.[1]?.body))).toEqual({
       entityType: "token",
       entityId: "00000000-0000-4000-8000-000000000003",
-      reason: "Suspected scam token: Impersonates another asset"
+      reason: "Suspected scam token: Impersonates another asset",
+      paymentChainId: 11155111,
+      paymentTxHash: `0x${"99".repeat(32)}`
     });
+    expect(vi.mocked(window.ethereum!.request)).toHaveBeenCalledWith(expect.objectContaining({
+      method: "wallet_switchEthereumChain",
+      params: [{ chainId: "0xaa36a7" }]
+    }));
+    expect(vi.mocked(window.ethereum!.request)).toHaveBeenCalledWith(expect.objectContaining({
+      method: "eth_sendTransaction",
+      params: [expect.objectContaining({ to: "0x57A447E4d5e18A9423408C365963A73F08B9d18C" })]
+    }));
   });
 
   it("offers compatibility review from a bounty's payment-token details", async () => {
@@ -474,7 +484,9 @@ describe("App", () => {
     expect(JSON.parse(String(reportCall?.[1]?.body))).toEqual({
       entityType: "token",
       entityId: "00000000-0000-4000-8000-000000000003",
-      reason: "Compatibility review requested: Please review the inconclusive automated result"
+      reason: "Compatibility review requested: Please review the inconclusive automated result",
+      paymentChainId: 11155111,
+      paymentTxHash: `0x${"99".repeat(32)}`
     });
   });
 

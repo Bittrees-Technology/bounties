@@ -21,6 +21,12 @@ const erc20Abi = [
   "function decimals() view returns (uint8)",
   "function totalSupply() view returns (uint256)"
 ];
+const erc20TransferInterface = new Interface([
+  "event Transfer(address indexed from,address indexed to,uint256 value)"
+]);
+const TOKEN_REVIEW_TREASURY_ADDRESS = getAddress("0x594f3B031992C2d6855383b3755653D6Fde35F01");
+const TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS = getAddress("0x57A447E4d5e18A9423408C365963A73F08B9d18C");
+const TOKEN_REVIEW_FEE_BASE_UNITS = 250n * 10n ** 18n;
 const bountyEscrowInterface = new Interface([
   "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout,uint64 settlementProposalExpiry,uint256 allocatedAmount,uint256 releasedAmount,uint32 milestoneCount,uint32 currentMilestone,bytes32 scheduleHash) bounty)",
   "function getMilestone(uint256 bountyId,uint256 milestoneIndex) view returns ((uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint64 revisionDeadline,uint8 state,bytes32 evidenceHash,bytes32 previousEvidenceHash,bytes32 approvalHash,bytes32 revisionReasonHash,bool revisionRequested) milestone)",
@@ -709,6 +715,55 @@ function requiredConfirmations(chainId: number): number {
     throw new ApiError("ESCROW_CONFIRMATION_CONFIG_INVALID", 500);
   }
   return configured;
+}
+
+function tokenReviewPaymentPolicy(chainId: number): { chainId: 1 | 11155111; tokenAddress: string } {
+  if (chainId === 11155111) return { chainId, tokenAddress: TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS };
+  if (chainId === 1 && serverEnv("TOKEN_REVIEW_MAINNET_ENABLED") === "true") {
+    const configured = serverEnv("TOKEN_REVIEW_BIT_1_ADDRESS");
+    if (!configured) throw new ApiError("TOKEN_REVIEW_MAINNET_NOT_CONFIGURED", 503);
+    try {
+      return { chainId, tokenAddress: getAddress(configured) };
+    } catch {
+      throw new ApiError("TOKEN_REVIEW_MAINNET_NOT_CONFIGURED", 503);
+    }
+  }
+  throw new ApiError("TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED", 400);
+}
+
+async function verifyTokenReviewPayment(session: Session, body: Record<string, unknown>) {
+  const chainId = numberField(body, "paymentChainId");
+  const txHash = transactionHash(body, "paymentTxHash").toLowerCase();
+  const policy = tokenReviewPaymentPolicy(chainId);
+  const providerUrl = configuredServerRpcUrl(chainId);
+  if (!providerUrl) throw new ApiError("TOKEN_REVIEW_PAYMENT_RPC_UNAVAILABLE", 503);
+  const provider = new JsonRpcProvider(providerUrl);
+  const network = await withTimeout(provider.getNetwork(), "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT");
+  if (Number(network.chainId) !== chainId) throw new ApiError("TOKEN_REVIEW_PAYMENT_CHAIN_MISMATCH", 503);
+  const receipt = await withTimeout(provider.getTransactionReceipt(txHash), "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT");
+  if (!receipt) throw new ApiError("TOKEN_REVIEW_PAYMENT_PENDING", 409);
+  if (receipt.status !== 1) throw new ApiError("TOKEN_REVIEW_PAYMENT_REVERTED", 400);
+  const currentBlock = await withTimeout(provider.getBlockNumber(), "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT");
+  const confirmations = Math.max(0, currentBlock - receipt.blockNumber + 1);
+  if (confirmations < requiredConfirmations(chainId)) throw new ApiError("TOKEN_REVIEW_PAYMENT_PENDING", 409);
+
+  const payer = getAddress(session.wallet_address);
+  const matches = receipt.logs.flatMap((log) => {
+    let logAddress: string;
+    try { logAddress = getAddress(log.address); } catch { return []; }
+    if (logAddress !== policy.tokenAddress) return [];
+    try {
+      const parsed = erc20TransferInterface.parseLog({ topics: log.topics as string[], data: log.data });
+      if (!parsed || parsed.name !== "Transfer") return [];
+      return [{ from: getAddress(String(parsed.args.from)), to: getAddress(String(parsed.args.to)), value: BigInt(parsed.args.value) }];
+    } catch {
+      return [];
+    }
+  }).filter((transfer) => transfer.from === payer
+    && transfer.to === TOKEN_REVIEW_TREASURY_ADDRESS
+    && transfer.value === TOKEN_REVIEW_FEE_BASE_UNITS);
+  if (matches.length !== 1) throw new ApiError("TOKEN_REVIEW_PAYMENT_MISMATCH", 400);
+  return { chainId, txHash, tokenAddress: policy.tokenAddress, amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS.toString() };
 }
 
 function explorerUrl(chainId: number, checksumAddress: string): string {
@@ -1940,12 +1995,23 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_limit: 20,
       p_window_seconds: 3600
     });
-    const data = await callRpc("app_report_content", {
-      p_actor_id: session.account_id,
-      p_entity_type: reportedEntityType,
-      p_entity_id: reportedEntityId,
-      p_reason: requiredString(body, "reason")
-    });
+    const reason = requiredString(body, "reason");
+    const data = reportedEntityType === "token"
+      ? await verifyTokenReviewPayment(session, body).then((payment) => callRpc("app_report_paid_token_review", {
+        p_actor_id: session.account_id,
+        p_token_id: reportedEntityId,
+        p_reason: reason,
+        p_payment_chain_id: payment.chainId,
+        p_payment_tx_hash: payment.txHash,
+        p_payment_token_address: payment.tokenAddress,
+        p_payment_amount_base_units: payment.amountBaseUnits
+      }))
+      : await callRpc("app_report_content", {
+        p_actor_id: session.account_id,
+        p_entity_type: reportedEntityType,
+        p_entity_id: reportedEntityId,
+        p_reason: reason
+      });
     return Response.json(data, { headers });
   }
 

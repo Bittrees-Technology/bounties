@@ -642,7 +642,28 @@ describe("profile report ownership boundary", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("app_report_content", expect.anything());
   });
 
-  it("accepts a token report and forwards the exact token record identity", async () => {
+  it("accepts a receipt-verified 250 BIT token review payment and forwards its immutable proof", async () => {
+    const transferInterface = new Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
+    const transfer = transferInterface.encodeEventLog(transferInterface.getEvent("Transfer")!, [
+      session.wallet_address,
+      "0x594f3B031992C2d6855383b3755653D6Fde35F01",
+      250n * 10n ** 18n
+    ]);
+    vi.stubEnv("CHAIN_11155111_RPC_URL", "https://rpc.example.test");
+    vi.stubEnv("CHAIN_11155111_REQUIRED_CONFIRMATIONS", "2");
+    providerGetNetworkMock.mockResolvedValue({ chainId: 11155111n });
+    providerGetBlockNumberMock.mockResolvedValue(101);
+    providerGetReceiptMock.mockResolvedValue({
+      status: 1,
+      blockNumber: 100,
+      blockHash: `0x${"88".repeat(32)}`,
+      logs: [{
+        address: "0x57A447E4d5e18A9423408C365963A73F08B9d18C",
+        topics: transfer.topics,
+        data: transfer.data,
+        index: 1
+      }]
+    });
     const response = await handleBountiesApi(new Request(
       "https://bounties.bittrees.org/api/bounties/reports",
       {
@@ -656,18 +677,49 @@ describe("profile report ownership boundary", () => {
         body: JSON.stringify({
           entityType: "token",
           entityId: "10000000-0000-4000-8000-000000000010",
-          reason: "Suspected scam token"
+          reason: "Compatibility review requested",
+          paymentChainId: 11155111,
+          paymentTxHash: `0x${"77".repeat(32)}`
         })
       }
     ), "reports");
 
     expect(response.status).toBe(200);
-    expect(rpcMock).toHaveBeenCalledWith("app_report_content", {
+    expect(rpcMock).toHaveBeenCalledWith("app_report_paid_token_review", {
       p_actor_id: session.account_id,
-      p_entity_type: "token",
-      p_entity_id: "10000000-0000-4000-8000-000000000010",
-      p_reason: "Suspected scam token"
+      p_token_id: "10000000-0000-4000-8000-000000000010",
+      p_reason: "Compatibility review requested",
+      p_payment_chain_id: 11155111,
+      p_payment_tx_hash: `0x${"77".repeat(32)}`,
+      p_payment_token_address: "0x57A447E4d5e18A9423408C365963A73F08B9d18C",
+      p_payment_amount_base_units: "250000000000000000000"
     });
+  });
+
+  it("rejects token review payment networks other than Ethereum Sepolia or explicitly enabled mainnet", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/reports",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          entityType: "token",
+          entityId: "10000000-0000-4000-8000-000000000010",
+          reason: "Compatibility review requested",
+          paymentChainId: 84532,
+          paymentTxHash: `0x${"77".repeat(32)}`
+        })
+      }
+    ), "reports");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_report_paid_token_review", expect.anything());
   });
 });
 
