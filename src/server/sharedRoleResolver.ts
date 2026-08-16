@@ -11,6 +11,15 @@ const MODERATION_ROLES = new Map<string, "moderator" | "admin">([
   ["mod", "moderator"],
   ["admin", "admin"]
 ]);
+const AUDIT_ROLES = new Map<string, SharedAuditRole>([
+  ["associate", "associate"],
+  ["junior partner", "junior_partner"],
+  ["junior_partner", "junior_partner"],
+  ["partner", "partner"],
+  ["admin", "admin"]
+]);
+
+export type SharedAuditRole = "associate" | "junior_partner" | "partner" | "admin";
 
 export type SharedModeratorResolution =
   | {
@@ -35,6 +44,11 @@ export type SharedModeratorResolution =
       walletAddress: string | null;
       reason: "invalid_wallet" | "invalid_response" | "response_too_large";
     };
+
+export type SharedAuditResolution =
+  | { status: "authorized"; role: SharedAuditRole; walletAddress: string }
+  | { status: "not_authorized"; role: null; walletAddress: string }
+  | Extract<SharedModeratorResolution, { status: "unavailable" | "malformed" }>;
 
 export type SharedRoleResolverErrorKind = "unavailable" | "malformed";
 export type SharedRoleResolverErrorReason =
@@ -243,6 +257,55 @@ export async function resolveSharedModerator(
       : { status: "not_authorized", role: null, walletAddress };
   } catch (error) {
     return failure(error, walletAddress, timedOut);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Resolves the read-only moderation-audit capability independently from the
+ * moderator capability. Governance tags never authorize moderation actions.
+ */
+export async function resolveSharedAuditAccess(
+  verifiedWalletAddress: string,
+  options: SharedRoleResolverOptions = {}
+): Promise<SharedAuditResolution> {
+  let walletAddress: string | null = null;
+  let timedOut = false;
+  const controller = new AbortController();
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxResponseBytes = options.maxResponseBytes ?? DEFAULT_MAX_RESPONSE_BYTES;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    walletAddress = normalizeVerifiedWallet(verifiedWalletAddress);
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || !Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1) {
+      throw new SharedRoleResolverError("unavailable", "not_configured");
+    }
+    const { url, token } = configuredRegistry(options.env ?? process.env);
+    const response = await (options.fetch ?? globalThis.fetch)(registryGetUrl(url), {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        authorization: `Bearer ${token}`,
+        "cache-control": "no-store"
+      },
+      cache: "no-store",
+      signal: controller.signal
+    });
+    if (!response.ok) throw new SharedRoleResolverError("unavailable", "upstream_error");
+
+    const roles = parseRelevantRoles(await boundedText(response, maxResponseBytes), walletAddress);
+    const resolved = roles?.map(({ label }) => AUDIT_ROLES.get(label.toLowerCase())).filter(Boolean) as SharedAuditRole[] | undefined;
+    const role = (["admin", "partner", "junior_partner", "associate"] as const).find((candidate) => resolved?.includes(candidate)) ?? null;
+    return role
+      ? { status: "authorized", role, walletAddress }
+      : { status: "not_authorized", role: null, walletAddress };
+  } catch (error) {
+    return failure(error, walletAddress, timedOut) as SharedAuditResolution;
   } finally {
     clearTimeout(timeout);
   }

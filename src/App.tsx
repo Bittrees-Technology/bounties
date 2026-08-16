@@ -665,6 +665,13 @@ function displayedOrderStatus(order: MarketplaceOrder): string {
   return orderStatusLabel(order.status);
 }
 
+function moderationAuditRoleLabel(role: MarketplaceSnapshot["auditRole"]): string {
+  if (role === "junior_partner") return "Junior Partner";
+  if (role === "partner") return "Partner";
+  if (role === "associate") return "Associate";
+  return "Administrator";
+}
+
 export default function App() {
   const initialProfileSearch = useRef(profileSearchSelectionFromLocation()).current;
   const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
@@ -717,6 +724,7 @@ export default function App() {
   const [marketplaceChain, setMarketplaceChain] = useState("");
   const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
   const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
+  const [moderatorTab, setModeratorTab] = useState<"queue" | "audit">("queue");
   const actionPending = useRef(false);
   const tokenReviewReconciliationInFlight = useRef(false);
   const canonicalEscrowFallbacks = useRef(new Map<string, CanonicalEscrowFallback>());
@@ -3004,7 +3012,13 @@ export default function App() {
     );
   }
 
-  const visiblePage = activePage === "moderator" && !session?.staffRole ? "marketplace" : activePage;
+  const hasModeratorWorkspaceAccess = Boolean(session?.staffRole || session?.auditRole);
+  const visiblePage = activePage === "moderator" && !hasModeratorWorkspaceAccess ? "marketplace" : activePage;
+  const visibleModeratorTab = moderatorTab === "queue" && !session?.staffRole
+    ? "audit"
+    : moderatorTab === "audit" && !session?.auditRole
+      ? "queue"
+      : moderatorTab;
   const moderationVerificationRequests = session?.moderationReports.filter(isTokenVerificationRequest) ?? [];
   const moderationSafetyReports = session?.moderationReports.filter((report) => !isTokenVerificationRequest(report)) ?? [];
   const displayedProfiles = profileSearchApplied ? profileSearchResults : profileDirectory;
@@ -3123,7 +3137,7 @@ export default function App() {
               <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
               <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
               {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
-              {session?.staffRole ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
+              {hasModeratorWorkspaceAccess ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
             </nav>
           ) : null}
         </aside>
@@ -3134,7 +3148,7 @@ export default function App() {
               <div className="topbar-copy">
                 {visiblePage === "moderator" ? <p className="eyebrow">Authorized workspace</p> : null}
                 <h1>{visiblePage === "marketplace" ? selectedBountyId ? "Bounty details" : "Marketplace" : visiblePage === "create" ? "Create a bounty" : "Moderator panel"}</h1>
-                <p>{visiblePage === "marketplace" ? selectedBountyId ? "Review the complete terms, participants, escrow state, milestones, evidence, and next actions." : "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : "Review reports and manage frontend visibility without authority over escrow or payments."}</p>
+                <p>{visiblePage === "marketplace" ? selectedBountyId ? "Review the complete terms, participants, escrow state, milestones, evidence, and next actions." : "Browse opportunities, apply with a plan, and follow each bounty from application to accepted work." : visiblePage === "create" ? "Define the work, budget, timeline, and acceptance criteria." : session?.staffRole ? "Review reports, manage frontend visibility, and inspect the authorized audit record." : "Inspect the permanent moderation decision record."}</p>
               </div>
             </header>
           ) : null}
@@ -3597,17 +3611,38 @@ export default function App() {
                 </section>
               ) : null}
 
-              {visiblePage === "moderator" && session?.staffRole ? (
+              {visiblePage === "moderator" && hasModeratorWorkspaceAccess ? (
                 <section id="moderation" className="panel moderation-panel authorized-panel">
-                  <div className="moderator-badge"><ShieldCheck size={16} />Authorized {session.staffRole}</div>
+                  <div className="moderator-badge"><ShieldCheck size={16} />{session?.staffRole ? `Authorized ${session.staffRole}` : `${moderationAuditRoleLabel(session?.auditRole)} audit access`}</div>
                   <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
-                  <p>Complete paid token verification requests and review separately submitted safety reports.</p>
-                  <p className="moderation-safety-note"><ShieldCheck size={16} /> Verification outcomes document a review only. Safety decisions may change frontend visibility; neither flow affects escrow, payment, or blockchain records.</p>
-                  <p>{session.staffRole} access · {moderationVerificationRequests.length} verification request{moderationVerificationRequests.length === 1 ? "" : "s"} · {moderationSafetyReports.length} safety report{moderationSafetyReports.length === 1 ? "" : "s"}</p>
-                  {Object.keys(tokenReviewPayments).length ? <p className="moderator-pending-review" role="status"><Loader2 size={16} /> {Object.keys(tokenReviewPayments).length} paid token review payment{Object.keys(tokenReviewPayments).length === 1 ? " is" : "s are"} confirming. Confirmed requests are added here automatically.</p> : null}
-                  {moderationVerificationRequests.length ? <section className="moderation-queue-section" aria-labelledby="verification-requests-heading"><h3 id="verification-requests-heading">Verification requests</h3>{moderationVerificationRequests.map(tokenVerificationRequestCard)}</section> : null}
-                  {moderationSafetyReports.length ? <section className="moderation-queue-section" aria-labelledby="safety-reports-heading"><h3 id="safety-reports-heading">Safety reports</h3>{moderationSafetyReports.map(safetyReportCard)}</section> : null}
-                  {!session.moderationReports.length ? <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open items</strong><span>New verification requests and safety reports will appear here.</span></div> : null}
+                  {session?.staffRole && session.auditRole ? <nav className="moderator-tabs" aria-label="Moderator panel views">
+                    <button type="button" aria-pressed={visibleModeratorTab === "queue"} onClick={() => setModeratorTab("queue")}>Open queue</button>
+                    <button type="button" aria-pressed={visibleModeratorTab === "audit"} onClick={() => setModeratorTab("audit")}>Audit history</button>
+                  </nav> : null}
+                  {visibleModeratorTab === "queue" && session?.staffRole ? <div className="moderator-tab-panel">
+                    <p>Complete paid token verification requests and review separately submitted safety reports.</p>
+                    <p className="moderation-safety-note"><ShieldCheck size={16} /> Verification outcomes document a review only. Safety decisions may change frontend visibility; neither flow affects escrow, payment, or blockchain records.</p>
+                    <p>{session.staffRole} access · {moderationVerificationRequests.length} verification request{moderationVerificationRequests.length === 1 ? "" : "s"} · {moderationSafetyReports.length} safety report{moderationSafetyReports.length === 1 ? "" : "s"}</p>
+                    {Object.keys(tokenReviewPayments).length ? <p className="moderator-pending-review" role="status"><Loader2 size={16} /> {Object.keys(tokenReviewPayments).length} paid token review payment{Object.keys(tokenReviewPayments).length === 1 ? " is" : "s are"} confirming. Confirmed requests are added here automatically.</p> : null}
+                    {moderationVerificationRequests.length ? <section className="moderation-queue-section" aria-labelledby="verification-requests-heading"><h3 id="verification-requests-heading">Verification requests</h3>{moderationVerificationRequests.map(tokenVerificationRequestCard)}</section> : null}
+                    {moderationSafetyReports.length ? <section className="moderation-queue-section" aria-labelledby="safety-reports-heading"><h3 id="safety-reports-heading">Safety reports</h3>{moderationSafetyReports.map(safetyReportCard)}</section> : null}
+                    {!session.moderationReports.length ? <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open items</strong><span>New verification requests and safety reports will appear here.</span></div> : null}
+                  </div> : null}
+                  {visibleModeratorTab === "audit" && session?.auditRole ? <section className="moderator-tab-panel moderation-audit-panel" aria-labelledby="moderation-audit-heading">
+                    <div><h3 id="moderation-audit-heading">Audit history</h3><p>Read-only decisions are retained with the acting wallet, affected item, outcome, and time.</p></div>
+                    {!session.moderationAudit?.canViewInternalNotes ? <p className="moderation-audit-privacy"><ShieldCheck size={16} />Internal moderator notes remain restricted to administrators.</p> : null}
+                    {session.moderationAudit?.events.length ? <div className="moderation-audit-list">{session.moderationAudit.events.map((event) => {
+                      const outcome = event.request_kind === "verification_request"
+                        ? event.verification_outcome?.replaceAll("_", " ") ?? "review completed"
+                        : event.decision?.replaceAll("_", " ") ?? event.status;
+                      return <article className="moderation-audit-row" key={event.event_id}>
+                        <header><div><strong>{event.entity_title}</strong><span>{event.entity_type} · {event.request_kind === "verification_request" ? "verification" : "safety"}</span></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString()}</time></header>
+                        <dl><div><dt>Action by</dt><dd><a href={`/profiles/${event.actor_wallet_address}`}>{event.actor_display_name || short(event.actor_wallet_address)}</a></dd></div><div><dt>Outcome</dt><dd>{outcome}</dd></div><div><dt>Record</dt><dd>Version {event.report_version}</dd></div></dl>
+                        {event.public_response ? <p><strong>Public response:</strong> {event.public_response}</p> : null}
+                        {event.internal_note ? <p className="moderation-audit-internal"><strong>Internal note:</strong> {event.internal_note}</p> : null}
+                      </article>;
+                    })}</div> : <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No completed decisions yet</strong><span>Completed moderation and verification decisions will appear here permanently.</span></div>}
+                  </section> : null}
                 </section>
               ) : null}
           <footer className="legal-footer">

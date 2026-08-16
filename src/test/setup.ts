@@ -32,6 +32,8 @@ let bounties: Array<Record<string, unknown>> = [];
 let authenticated = false;
 let snapshotRoles: Array<"buyer" | "provider"> = ["buyer", "provider"];
 let snapshotStaffRole: "moderator" | "admin" | null = null;
+let snapshotAuditRole: "associate" | "junior_partner" | "partner" | "admin" | null = null;
+let snapshotModerationAudit: Record<string, unknown> | null = null;
 let snapshotModerationReports: Array<Record<string, unknown>> = [];
 let snapshotMyReports: Array<Record<string, unknown>> = [];
 let snapshotNotifications: Array<Record<string, unknown>> = [];
@@ -201,6 +203,15 @@ export function configureMockStaff(
 ) {
   snapshotStaffRole = role;
   snapshotModerationReports = reports;
+}
+
+export function configureMockAuditAccess(
+  role: "associate" | "junior_partner" | "partner" | "admin" | null,
+  events: Array<Record<string, unknown>> = [],
+  canViewInternalNotes = role === "admin"
+) {
+  snapshotAuditRole = role;
+  snapshotModerationAudit = role ? { accessRole: role, canViewInternalNotes, events } : null;
 }
 
 export function configureMockProfileLegacySpecialty(value: string | null) {
@@ -441,6 +452,8 @@ beforeEach(() => {
   authenticated = false;
   snapshotRoles = ["buyer", "provider"];
   snapshotStaffRole = null;
+  snapshotAuditRole = null;
+  snapshotModerationAudit = null;
   snapshotModerationReports = [];
   snapshotMyReports = [];
   snapshotNotifications = [];
@@ -618,6 +631,8 @@ beforeEach(() => {
       account: { id: "00000000-0000-4000-8000-000000000111", wallet_address: testWallet },
       roles: snapshotRoles,
       staffRole: snapshotStaffRole,
+      auditRole: snapshotAuditRole,
+      moderationAudit: snapshotModerationAudit,
       tokens,
       bounties,
       notifications: snapshotNotifications,

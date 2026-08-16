@@ -256,11 +256,40 @@ export type ModerationReport = {
   } | null;
   created_at: string;
 };
+export type ModerationAuditRole = "associate" | "junior_partner" | "partner" | "admin";
+export type ModerationAuditEvent = {
+  event_id: string;
+  report_id: string;
+  report_version: number;
+  created_at: string;
+  entity_type: "bounty" | "review" | "profile" | "token";
+  entity_id: string;
+  entity_title: string;
+  request_kind: "safety_report" | "verification_request";
+  verification_outcome?: TokenVerificationOutcome | null;
+  reason: string;
+  status: "resolved" | "dismissed";
+  decision?: ModerationDecision | null;
+  public_response?: string | null;
+  internal_note?: string | null;
+  content_moderation_status?: "visible" | "hidden" | null;
+  actor_id: string;
+  actor_wallet_address: string;
+  actor_display_name?: string | null;
+  reporter_id: string;
+  reporter_wallet_address: string;
+  reporter_display_name?: string | null;
+};
+export type ModerationAuditHistory = {
+  accessRole: ModerationAuditRole;
+  canViewInternalNotes: boolean;
+  events: ModerationAuditEvent[];
+};
 type Evidence = { id: string; uri: string; description?: string | null; content_hash: string; evidence_hash: string; canonical_approval_hash?: string | null; revision: number };
 type ApiMilestone = { id: string; ordinal: number; title: string; amount_base_units: string; delivery_deadline?: string | null; status: string; evidence?: Evidence[]; revision_request?: { reason: string; reason_hash: `0x${string}`; transaction_hash: `0x${string}` } | null; scope_source?: { criteria?: string[]; deliveryDeadline?: string } };
 export type ApiProposal = { id: string; provider_id: string; provider_wallet_address: string; proposal_hash: string | null; note: string; proposed_total_base_units: string; proposed_milestones?: unknown; status: string };
 export type BountyRow = { id: string; creator_id: string; title: string; description: string; scope_source: Record<string, unknown>; scope_hash: `0x${string}`; chain_id: number; token_id: string; token_decimals: number; budget_base_units: string; status: string; escrow_schedule_status?: "structured" | "requires_recreation"; moderation_status?: "visible" | "hidden"; moderation_reason?: string | null; created_at: string; accepted_proposal_id?: string; token: TokenRecord; milestones: ApiMilestone[]; proposals: ApiProposal[]; escrow?: EscrowObservation | null; reviews?: ParticipantReview[] };
-export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; myReports: ModerationReport[]; moderationReports: ModerationReport[] };
+export type MarketplaceSnapshot = { account: { id: string; wallet_address: string; display_name?: string | null }; roles: Role[]; staffRole?: "moderator" | "admin" | null; auditRole?: ModerationAuditRole | null; moderationAudit?: ModerationAuditHistory | null; tokens: TokenRecord[]; orders: MarketplaceOrder[]; notifications: Notification[]; myReports: ModerationReport[]; moderationReports: ModerationReport[] };
 export type RatingSummary = {
   average_rating: number | null;
   review_count: number;
@@ -289,7 +318,7 @@ export type PublicWalletProfile = {
   rating_summaries: { capital_provider: RatingSummary; labor_provider: RatingSummary };
   reviews_received: Array<Pick<ParticipantReview, "id" | "bounty_id" | "direction" | "rating" | "body" | "created_at" | "response_body" | "response_created_at"> & { author_wallet_address: string }>;
 };
-type RawSnapshot = { account: MarketplaceSnapshot["account"]; roles?: Role[]; staffRole?: MarketplaceSnapshot["staffRole"]; tokens?: TokenRecord[]; bounties?: BountyRow[]; notifications?: Notification[]; myReports?: ModerationReport[]; moderationReports?: ModerationReport[] };
+type RawSnapshot = { account: MarketplaceSnapshot["account"]; roles?: Role[]; staffRole?: MarketplaceSnapshot["staffRole"]; auditRole?: MarketplaceSnapshot["auditRole"]; moderationAudit?: MarketplaceSnapshot["moderationAudit"]; tokens?: TokenRecord[]; bounties?: BountyRow[]; notifications?: Notification[]; myReports?: ModerationReport[]; moderationReports?: ModerationReport[] };
 
 const fromBase = (value: string, decimals: number) => Number(value) / 10 ** decimals;
 export const formatBase = (value: string, decimals: number) => formatUnits(BigInt(value), decimals);
@@ -363,7 +392,7 @@ function canonicalDeadline(value: string): string {
 
 export async function loadMarketplace(): Promise<MarketplaceSnapshot> {
   const raw = await request<RawSnapshot>("/snapshot", { method: "GET" });
-  return { account: raw.account, roles: raw.roles ?? [], staffRole: raw.staffRole ?? null, tokens: raw.tokens ?? [], orders: (raw.bounties ?? []).map(mapBounty), notifications: raw.notifications ?? [], myReports: raw.myReports ?? [], moderationReports: raw.moderationReports ?? [] };
+  return { account: raw.account, roles: raw.roles ?? [], staffRole: raw.staffRole ?? null, auditRole: raw.auditRole ?? null, moderationAudit: raw.moderationAudit ?? null, tokens: raw.tokens ?? [], orders: (raw.bounties ?? []).map(mapBounty), notifications: raw.notifications ?? [], myReports: raw.myReports ?? [], moderationReports: raw.moderationReports ?? [] };
 }
 
 export async function createBounty(draft: RequestDraft, token: TokenRecord): Promise<MarketplaceOrder> {

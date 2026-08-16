@@ -10,7 +10,7 @@ import { configuredServerRpcUrl } from "./chainRpc.js";
 import { requestRateLimitDigest } from "./requestRateLimit.js";
 import { ProxyRequestError, resolveApplicationOrigin, safeApplicationOrigin } from "./vercelProxy.js";
 import { requiredServerEnv, serverEnv } from "./serverEnv.js";
-import { resolveSharedModerator } from "./sharedRoleResolver.js";
+import { resolveSharedAuditAccess, resolveSharedModerator, type SharedAuditResolution, type SharedAuditRole } from "./sharedRoleResolver.js";
 import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryFingerprintMode, type DeliveryProofMethod } from "../deliveryProof.js";
 import { inspectTokenCompatibility, type PreviousTokenInspection } from "./tokenCompatibility.js";
 import { tokenReportReasonIsAllowed, type TokenReportAction } from "../tokenReportPolicy.js";
@@ -509,6 +509,32 @@ async function refreshSharedModeratorGrant(session: Session, required: boolean):
   }
   if (required && !authorized) throw new ApiError("MODERATOR_REQUIRED", 403);
   return authorized ? resolution.role : null;
+}
+
+async function loadSharedModerationAudit(
+  session: Session,
+  staffRole: "moderator" | "admin" | null,
+  resolvedAudit?: SharedAuditResolution
+): Promise<{ auditRole: SharedAuditRole | null; moderationAudit: Record<string, unknown> | null }> {
+  let auditRole: SharedAuditRole | null = staffRole === "admin" ? "admin" : null;
+  if (!auditRole) {
+    const resolution = resolvedAudit ?? await resolveSharedAuditAccess(session.wallet_address);
+    if (resolution.status !== "authorized") return { auditRole: null, moderationAudit: null };
+    auditRole = resolution.role;
+  }
+
+  try {
+    const moderationAudit = await callRpc<Record<string, unknown>>("app_moderation_audit_history", {
+      p_actor_id: session.account_id,
+      p_access_role: auditRole,
+      p_limit: 100
+    });
+    return { auditRole, moderationAudit };
+  } catch {
+    // Audit access is optional during ordinary marketplace reads and fails
+    // closed if its dedicated projection is unavailable.
+    return { auditRole: null, moderationAudit: null };
+  }
 }
 
 function checkedAddress(value: string, code: string): string {
@@ -1711,12 +1737,18 @@ async function handle(request: Request, action: string): Promise<Response> {
   const body = await readBody(request);
 
   if (action === "snapshot" && method === "GET") {
-    const sharedStaffRole = await refreshSharedModeratorGrant(session, false);
+    const [sharedStaffRole, resolvedAudit] = await Promise.all([
+      refreshSharedModeratorGrant(session, false),
+      resolveSharedAuditAccess(session.wallet_address)
+    ]);
+    const { auditRole, moderationAudit } = await loadSharedModerationAudit(session, sharedStaffRole, resolvedAudit);
     const snapshot = await callRpc<Record<string, unknown>>("app_marketplace_snapshot", { p_actor_id: session.account_id });
     const projectedSnapshot = projectCurrentEscrowSnapshot(snapshot);
     return Response.json({
       ...projectedSnapshot,
       staffRole: sharedStaffRole,
+      auditRole,
+      moderationAudit,
       moderationReports: sharedStaffRole ? projectedSnapshot.moderationReports : []
     }, { headers });
   }

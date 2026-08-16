@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
+import { configureMockAuditAccess, configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -1126,5 +1126,40 @@ describe("App", () => {
       outcome: "source_verified",
       publicResponse: "The source is verified; exact transfer behavior remains unconfirmed."
     });
+  });
+
+  it("gives Partner governance tags a read-only moderation audit tab", async () => {
+    configureMockAuditAccess("partner", [{
+      event_id: "00000000-0000-4000-8000-000000000990",
+      report_id: "00000000-0000-4000-8000-000000000991",
+      report_version: 2,
+      created_at: "2026-08-16T12:00:00.000Z",
+      entity_type: "token",
+      entity_id: "00000000-0000-4000-8000-000000000003",
+      entity_title: "BIT on network 11155111",
+      request_kind: "verification_request",
+      verification_outcome: "source_verified",
+      reason: "Token/source verification review",
+      status: "resolved",
+      decision: "no_action",
+      public_response: "Verified source code was confirmed on the explorer.",
+      actor_id: "00000000-0000-4000-8000-000000000111",
+      actor_wallet_address: "0x1111111111111111111111111111111111111111",
+      actor_display_name: "Governance reviewer",
+      reporter_id: "00000000-0000-4000-8000-000000000222",
+      reporter_wallet_address: "0x2222222222222222222222222222222222222222"
+    }]);
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^moderator$/i }));
+
+    expect(screen.getByText(/^Partner audit access$/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^audit history$/i })).toBeInTheDocument();
+    expect(screen.getByText("BIT on network 11155111")).toBeInTheDocument();
+    expect(screen.getByText(/source verified/i)).toBeInTheDocument();
+    expect(screen.getByText(/internal moderator notes remain restricted to administrators/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^verification requests$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /complete verification|resolve report/i })).not.toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SHARED_BITTREES_ROLES_KEY,
+  resolveSharedAuditAccess,
   resolveSharedModerator,
   type SharedRoleResolverEnvironment
 } from "./sharedRoleResolver";
@@ -200,6 +201,38 @@ describe("resolveSharedModerator", () => {
       status: "malformed",
       role: null,
       reason: "response_too_large"
+    });
+  });
+});
+
+describe("resolveSharedAuditAccess", () => {
+  it.each([
+    ["partner", "partner"],
+    ["Junior Partner", "junior_partner"],
+    ["junior_partner", "junior_partner"],
+    ["associate", "associate"],
+    ["admin", "admin"]
+  ])("authorizes the exact shared %s tag for read-only audit access", async (label, role) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(registryResponse({
+      [walletLower]: [{ label }]
+    }));
+
+    await expect(resolveSharedAuditAccess(wallet, { env: readOnlyEnv, fetch: fetchMock })).resolves.toEqual({
+      status: "authorized",
+      role,
+      walletAddress: walletLower
+    });
+  });
+
+  it.each(["moderator", "operations", "partner ", "site-associate"])("does not infer audit access from %s", async (label) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(registryResponse({
+      [walletLower]: [{ label }]
+    }));
+
+    await expect(resolveSharedAuditAccess(wallet, { env: readOnlyEnv, fetch: fetchMock })).resolves.toMatchObject({
+      status: "not_authorized",
+      role: null,
+      walletAddress: walletLower
     });
   });
 });

@@ -11,6 +11,7 @@ const {
   providerGetNetworkMock,
   providerLookupAddressMock,
   providerGetReceiptMock,
+  resolveSharedAuditAccessMock,
   resolveSharedModeratorMock,
   rpcMock
 } = vi.hoisted(() => ({
@@ -23,6 +24,11 @@ const {
   providerGetNetworkMock: vi.fn(),
   providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
+  resolveSharedAuditAccessMock: vi.fn().mockResolvedValue({
+    status: "not_authorized",
+    role: null,
+    walletAddress: "0x1111111111111111111111111111111111111111"
+  }),
   resolveSharedModeratorMock: vi.fn(),
   rpcMock: vi.fn()
 }));
@@ -51,6 +57,7 @@ vi.mock("@supabase/supabase-js", () => ({
 }));
 
 vi.mock("./sharedRoleResolver", () => ({
+  resolveSharedAuditAccess: resolveSharedAuditAccessMock,
   resolveSharedModerator: resolveSharedModeratorMock
 }));
 
@@ -825,6 +832,12 @@ describe("token verification decisions", () => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
     resolveSharedModeratorMock.mockReset();
+    resolveSharedAuditAccessMock.mockReset();
+    resolveSharedAuditAccessMock.mockResolvedValue({
+      status: "not_authorized",
+      role: null,
+      walletAddress: session.wallet_address
+    });
     resolveSharedModeratorMock.mockResolvedValue({
       status: "authorized",
       role: "moderator",
@@ -904,6 +917,12 @@ describe("optional shared moderation projection", () => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
     vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
     resolveSharedModeratorMock.mockReset();
+    resolveSharedAuditAccessMock.mockReset();
+    resolveSharedAuditAccessMock.mockResolvedValue({
+      status: "not_authorized",
+      role: null,
+      walletAddress: session.wallet_address
+    });
     rpcMock.mockReset();
     resolveSharedModeratorMock.mockResolvedValue({
       status: "authorized",
@@ -930,6 +949,51 @@ describe("optional shared moderation projection", () => {
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ staffRole: null, moderationReports: [] });
+  });
+
+  it("gives a shared Partner read-only audit history without exposing moderation actions", async () => {
+    resolveSharedModeratorMock.mockResolvedValue({
+      status: "not_authorized",
+      role: null,
+      walletAddress: session.wallet_address
+    });
+    resolveSharedAuditAccessMock.mockResolvedValue({
+      status: "authorized",
+      role: "partner",
+      walletAddress: session.wallet_address
+    });
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_sync_shared_moderation_role") return Promise.resolve({ data: { authorized: false }, error: null });
+      if (name === "app_moderation_audit_history") return Promise.resolve({ data: {
+        accessRole: "partner",
+        canViewInternalNotes: false,
+        events: [{ event_id: "audit-event-1", actor_wallet_address: session.wallet_address }]
+      }, error: null });
+      if (name === "app_marketplace_snapshot") return Promise.resolve({ data: {
+        account: { id: session.account_id },
+        moderationReports: [{ id: "must-not-leak" }]
+      }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/snapshot",
+      { headers: { cookie: "bounties_session=opaque-session" } }
+    ), "snapshot");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      staffRole: null,
+      auditRole: "partner",
+      moderationReports: [],
+      moderationAudit: { accessRole: "partner", canViewInternalNotes: false }
+    });
+    expect(rpcMock).toHaveBeenCalledWith("app_moderation_audit_history", {
+      p_actor_id: session.account_id,
+      p_access_role: "partner",
+      p_limit: 100
+    });
   });
 
   it("fails closed when the same projection failure precedes a moderator decision", async () => {
