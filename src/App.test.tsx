@@ -210,14 +210,23 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
+    expect(screen.queryByRole("heading", { name: /^my requests$/i })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /^my profile$/i }));
     const activity = screen.getByRole("heading", { name: /^my requests$/i }).closest("section") as HTMLElement;
 
+    expect(within(activity).getByText(/only you can see the requests and reports submitted by this wallet/i)).toBeInTheDocument();
     expect(within(activity).getByText(/^Token verification$/i)).toBeInTheDocument();
     expect(within(activity).getByText(/^Inconclusive$/i)).toBeInTheDocument();
     expect(within(activity).getByText(/^Moderator response$/i)).toBeInTheDocument();
     expect(within(activity).getByText(/no transfer tax or hidden transfer logic was found/i)).toBeInTheDocument();
     expect(within(activity).queryByText(/track token verification/i)).not.toBeInTheDocument();
     expect(within(activity).queryByText(/no additional review details/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("link", { name: /^profiles$/i }));
+    const otherProfileButton = await screen.findByRole("button", { name: /view capital guide profile/i });
+    await user.click(otherProfileButton);
+    expect(await screen.findByRole("heading", { name: /capital guide/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^my requests$/i })).not.toBeInTheDocument();
   });
 
   it("shows a verified requester outcome as verified instead of inconclusive", async () => {
@@ -237,6 +246,7 @@ describe("App", () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
+    await user.click(screen.getByRole("link", { name: /^my profile$/i }));
     const activity = screen.getByRole("heading", { name: /^my requests$/i }).closest("section") as HTMLElement;
 
     expect(within(activity).getByText(/^Verified for Bounties$/i)).toBeInTheDocument();
@@ -621,7 +631,6 @@ describe("App", () => {
     render(<App />);
     await connectWallet(user);
 
-    expect(await screen.findByText(/^Token verification$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: /^moderator$/i }));
     const moderatorPanel = screen.getByRole("heading", { level: 2, name: /^moderator panel$/i }).closest("section") as HTMLElement;
     expect(within(moderatorPanel).getByText(/^Token verification request ·/i)).toBeInTheDocument();

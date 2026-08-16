@@ -1087,7 +1087,8 @@ export default function App() {
       return;
     }
     if (notification.entity_type === "report") {
-      navigateToPage("marketplace");
+      if (wallet) openProfile(wallet);
+      else navigateToPage("profile");
       window.setTimeout(() => document.getElementById("my-reports")?.scrollIntoView({ block: "start" }), 0);
       return;
     }
@@ -3494,31 +3495,6 @@ export default function App() {
                 </section> : null}
               </section> : null}
 
-              {visiblePage === "marketplace" && session?.myReports.length ? (
-                <section id="my-reports" className="panel my-reports-panel">
-                  <div className="section-heading"><Flag /><h2>My requests</h2></div>
-                  <div className="my-reports-list">
-                    {session.myReports.map((report) => {
-                      const verification = isTokenVerificationRequest(report);
-                      const verificationDetails = verification ? tokenVerificationDetails(report.reason) : null;
-                      const statusLabel = verification
-                        ? report.status === "open" ? "Pending" : tokenVerificationStatusLabel(report.verification_outcome)
-                        : report.status === "open" ? "Under review" : report.decision === "no_action" ? "No action needed" : report.decision === "hide" ? "Content hidden" : "Content restored";
-                      return (
-                        <article className={`my-report-row${verification ? " verification-request-row" : ""}`} key={report.id}>
-                          <header>
-                            <strong>{verification ? "Token verification" : `${reportEntityLabel(report.entity_type)} report`}</strong>
-                            <span className="my-report-status">{statusLabel}</span>
-                          </header>
-                          {verificationDetails ? <p className="my-report-details"><strong>Request details</strong><span>{verificationDetails}</span></p> : !verification ? <p className="my-report-details"><strong>Report details</strong><span>{report.reason}</span></p> : null}
-                          {report.moderator_response ? <div className="my-report-response"><strong>Moderator response</strong><p>{report.moderator_response}</p></div> : null}
-                        </article>
-                      );
-                    })}
-                  </div>
-                </section>
-              ) : null}
-
               {visiblePage === "profile" ? (
                 <section className="page-stack profile-page" aria-label="Wallet profile">
                   <section className="panel profile-discovery">
@@ -3724,6 +3700,31 @@ export default function App() {
                           {profileBountyList(profileLaborOrders, "labor")}
                         </article>
                       </section>
+                      {wallet.toLowerCase() === selectedProfile.address.toLowerCase() && session?.myReports.length ? (
+                        <section id="my-reports" className="panel my-reports-panel" aria-label="Private account requests">
+                          <div className="section-heading"><Flag /><h2>My requests</h2></div>
+                          <p className="form-hint">Only you can see the requests and reports submitted by this wallet.</p>
+                          <div className="my-reports-list">
+                            {session.myReports.map((report) => {
+                              const verification = isTokenVerificationRequest(report);
+                              const verificationDetails = verification ? tokenVerificationDetails(report.reason) : null;
+                              const statusLabel = verification
+                                ? report.status === "open" ? "Pending" : tokenVerificationStatusLabel(report.verification_outcome)
+                                : report.status === "open" ? "Under review" : report.decision === "no_action" ? "No action needed" : report.decision === "hide" ? "Content hidden" : "Content restored";
+                              return (
+                                <article className={`my-report-row${verification ? " verification-request-row" : ""}`} key={report.id}>
+                                  <header>
+                                    <strong>{verification ? "Token verification" : `${reportEntityLabel(report.entity_type)} report`}</strong>
+                                    <span className="my-report-status">{statusLabel}</span>
+                                  </header>
+                                  {verificationDetails ? <p className="my-report-details"><strong>Request details</strong><span>{verificationDetails}</span></p> : !verification ? <p className="my-report-details"><strong>Report details</strong><span>{report.reason}</span></p> : null}
+                                  {report.moderator_response ? <div className="my-report-response"><strong>Moderator response</strong><p>{report.moderator_response}</p></div> : null}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      ) : null}
                     </>
                   ) : null}
                 </section>
