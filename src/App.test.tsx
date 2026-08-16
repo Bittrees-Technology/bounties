@@ -533,10 +533,11 @@ describe("App", () => {
     render(<App />);
     await connectWallet(user);
 
-    expect(await screen.findByText(/^Token\/source verification review$/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Token verification request$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: /^moderator$/i }));
     const moderatorPanel = screen.getByRole("heading", { level: 2, name: /^moderator panel$/i }).closest("section") as HTMLElement;
-    expect(within(moderatorPanel).getByText(/^Token\/source verification review$/i)).toBeInTheDocument();
+    expect(within(moderatorPanel).getByText(/^Token verification request ·/i)).toBeInTheDocument();
+    expect(within(moderatorPanel).queryByText(/Token report/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/paid token review payment.*confirming/i)).not.toBeInTheDocument();
     expect(window.localStorage.getItem("bounties.token-review-payments.v1")).toBe("{}");
   });
@@ -1062,6 +1063,17 @@ describe("App", () => {
       status: "open",
       version: 1,
       created_at: new Date().toISOString()
+    }, {
+      id: "00000000-0000-4000-8000-000000000891",
+      entity_type: "token",
+      entity_id: "00000000-0000-4000-8000-000000000003",
+      entity_title: "BIT on network 11155111",
+      content: { type: "token", explorer_url: "https://sepolia.etherscan.io/address/0x4444444444444444444444444444444444444444" },
+      reason: "Token/source verification review: Confirm the verified source and exact transfer behavior",
+      request_kind: "verification_request",
+      status: "open",
+      version: 1,
+      created_at: new Date().toISOString()
     }]);
     const user = userEvent.setup();
     render(<App />);
@@ -1069,13 +1081,31 @@ describe("App", () => {
     await user.click(screen.getByRole("link", { name: /^moderator$/i }));
     expect(screen.getAllByRole("heading", { name: /moderator panel/i })).toHaveLength(2);
     expect(screen.getByText(/^Authorized moderator$/i)).toBeInTheDocument();
-    expect(screen.getByText(/do not affect escrow, payment, or blockchain records/i)).toBeInTheDocument();
+    expect(screen.getByText(/verification outcomes document a review only/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^verification requests$/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /^safety reports$/i })).toBeInTheDocument();
     expect(screen.getByText(/potentially illegal service/i)).toBeInTheDocument();
     expect(screen.getByText(/Profile report.*Profile 0x1111/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /view reported profile/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^view profile$/i })).toBeInTheDocument();
     expect(screen.getByText(/Token report.*BIT on network 84532/i)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /inspect reported token/i })).toHaveAttribute("href", expect.stringContaining("0x4444"));
+    expect(screen.getAllByRole("link", { name: /inspect token contract/i })).toHaveLength(2);
     expect(screen.getAllByRole("option", { name: /keep visible.*no action/i })).toHaveLength(3);
     expect(screen.getAllByLabelText(/message to reporter/i)).toHaveLength(3);
+    expect(screen.getByText(/Token verification request.*BIT on network 11155111/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Token report.*BIT on network 11155111/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/verification outcome/i)).toHaveValue("inconclusive");
+    expect(screen.getByLabelText(/message to requester/i)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText(/verification outcome/i), "source_verified");
+    await user.type(screen.getByLabelText(/message to requester/i), "The source is verified; exact transfer behavior remains unconfirmed.");
+    await user.click(screen.getByRole("button", { name: /complete verification/i }));
+
+    expect(await screen.findByText(/verification completed and the requester has been notified/i)).toBeInTheDocument();
+    const verificationCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/admin/token-verification/decision"));
+    expect(JSON.parse(String(verificationCall?.[1]?.body))).toMatchObject({
+      reportId: "00000000-0000-4000-8000-000000000891",
+      outcome: "source_verified",
+      publicResponse: "The source is verified; exact transfer behavior remains unconfirmed."
+    });
   });
 });

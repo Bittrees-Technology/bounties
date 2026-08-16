@@ -3368,6 +3368,26 @@ textarea {
   white-space: normal;
 }
 
+.moderation-queue-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.moderation-queue-section > h3 {
+  font-size: 1.2rem;
+  margin: 8px 0 0;
+}
+
+.verification-request-row {
+  background: #f1f8f4;
+  border-color: #a9d1c1;
+}
+
+.verification-request-row .report-summary > strong {
+  color: #0f6b57;
+}
+
 .review-form {
   grid-template-columns: minmax(110px, 160px) minmax(220px, 1fr) auto;
 }

@@ -478,6 +478,14 @@ function moderationDecision(body: Record<string, unknown>): "hide" | "restore" |
   return value;
 }
 
+function tokenVerificationOutcome(body: Record<string, unknown>): "verified" | "source_verified" | "inconclusive" | "incompatible" {
+  const value = requiredString(body, "outcome");
+  if (value !== "verified" && value !== "source_verified" && value !== "inconclusive" && value !== "incompatible") {
+    throw new ApiError("INVALID_TOKEN_VERIFICATION_OUTCOME", 400);
+  }
+  return value;
+}
+
 async function refreshSharedModeratorGrant(session: Session, required: boolean): Promise<"moderator" | "admin" | null> {
   const resolution = await resolveSharedModerator(session.wallet_address);
   if (resolution.status === "unavailable" || resolution.status === "malformed") {
@@ -2042,6 +2050,19 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_actor_id: session.account_id,
       p_report_id: requiredUuid(body, "reportId"),
       p_decision: moderationDecision(body),
+      p_public_response: requiredString(body, "publicResponse"),
+      p_internal_note: optionalString(body, "internalNote"),
+      p_expected_version: zeroBasedIntegerField(body, "expectedVersion")
+    });
+    return Response.json(data, { headers });
+  }
+
+  if (action === "admin/token-verification/decision" && method === "POST") {
+    await refreshSharedModeratorGrant(session, true);
+    const data = await callRpc("app_complete_token_verification_request", {
+      p_actor_id: session.account_id,
+      p_report_id: requiredUuid(body, "reportId"),
+      p_outcome: tokenVerificationOutcome(body),
       p_public_response: requiredString(body, "publicResponse"),
       p_internal_note: optionalString(body, "internalNote"),
       p_expected_version: zeroBasedIntegerField(body, "expectedVersion")

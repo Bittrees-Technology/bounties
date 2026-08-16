@@ -783,6 +783,85 @@ describe("profile report ownership boundary", () => {
   });
 });
 
+describe("token verification decisions", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    resolveSharedModeratorMock.mockReset();
+    resolveSharedModeratorMock.mockResolvedValue({
+      status: "authorized",
+      role: "moderator",
+      walletAddress: session.wallet_address
+    });
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_sync_shared_moderation_role") return Promise.resolve({ data: { ok: true }, error: null });
+      if (name === "app_complete_token_verification_request") return Promise.resolve({ data: args, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+  });
+
+  it("routes a verification outcome through the dedicated non-visibility RPC", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/admin/token-verification/decision",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          reportId: "10000000-0000-4000-8000-000000000003",
+          outcome: "source_verified",
+          publicResponse: "Source verified; exact transfer behavior remains unconfirmed.",
+          internalNote: "Reviewed verified explorer source.",
+          expectedVersion: 1
+        })
+      }
+    ), "admin/token-verification/decision");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_complete_token_verification_request", {
+      p_actor_id: session.account_id,
+      p_report_id: "10000000-0000-4000-8000-000000000003",
+      p_outcome: "source_verified",
+      p_public_response: "Source verified; exact transfer behavior remains unconfirmed.",
+      p_internal_note: "Reviewed verified explorer source.",
+      p_expected_version: 1
+    });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_decide_content_report", expect.anything());
+  });
+
+  it("rejects an unsupported verification outcome before database mutation", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/admin/token-verification/decision",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          reportId: "10000000-0000-4000-8000-000000000003",
+          outcome: "hide",
+          publicResponse: "Hide this token.",
+          expectedVersion: 1
+        })
+      }
+    ), "admin/token-verification/decision");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "INVALID_TOKEN_VERIFICATION_OUTCOME" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_complete_token_verification_request", expect.anything());
+    expect(rpcMock).not.toHaveBeenCalledWith("app_decide_content_report", expect.anything());
+  });
+});
+
 describe("optional shared moderation projection", () => {
   beforeEach(() => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");

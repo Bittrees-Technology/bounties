@@ -910,12 +910,13 @@ beforeEach(() => {
     }
     if (url.endsWith("/api/bounties/reports")) {
       if (tokenReportOutcome === "pending") return Response.json({ code: "TOKEN_REVIEW_PAYMENT_PENDING" }, { status: 409 });
-      const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string };
+      const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string; tokenReportAction?: string };
       const report = {
         id: "00000000-0000-4000-8000-000000000555",
         entity_type: body.entityType,
         entity_id: body.entityId,
         reason: body.reason,
+        request_kind: body.tokenReportAction === "review" ? "verification_request" : "safety_report",
         status: "open",
         version: 1,
         created_at: new Date().toISOString()
@@ -923,6 +924,14 @@ beforeEach(() => {
       snapshotMyReports = [report];
       if (snapshotStaffRole) snapshotModerationReports = [report];
       return Response.json(report);
+    }
+    if (url.endsWith("/api/bounties/admin/token-verification/decision")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { reportId: string; outcome: string; publicResponse: string };
+      snapshotModerationReports = snapshotModerationReports.filter((report) => report.id !== body.reportId);
+      snapshotMyReports = snapshotMyReports.map((report) => report.id === body.reportId
+        ? { ...report, status: "resolved", verification_outcome: body.outcome, moderator_response: body.publicResponse }
+        : report);
+      return Response.json({ ok: true });
     }
     if (url.endsWith("/api/bounties/notifications/read")) {
       const body = JSON.parse(String(init?.body ?? "{}")) as { notificationId: string };

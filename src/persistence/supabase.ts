@@ -228,6 +228,7 @@ export type ParticipantReview = {
   response_body?: string | null; response_created_at?: string | null;
 };
 export type ModerationDecision = "hide" | "restore" | "no_action";
+export type TokenVerificationOutcome = "verified" | "source_verified" | "inconclusive" | "incompatible";
 export type ModerationReport = {
   id: string;
   entity_type: "bounty" | "review" | "profile" | "token";
@@ -236,6 +237,8 @@ export type ModerationReport = {
   status: "open" | "resolved" | "dismissed";
   version?: number;
   decision?: ModerationDecision | null;
+  request_kind?: "safety_report" | "verification_request";
+  verification_outcome?: TokenVerificationOutcome | null;
   moderator_response?: string | null;
   current_moderation_status?: "visible" | "hidden";
   entity_title?: string | null;
@@ -516,5 +519,15 @@ export const decideContentReport = (
 ) => request("/admin/reports/decision", {
   method: "POST",
   body: JSON.stringify({ reportId, decision, publicResponse, internalNote: internalNote || null, expectedVersion })
+});
+export const completeTokenVerificationRequest = (
+  reportId: string,
+  outcome: TokenVerificationOutcome,
+  publicResponse: string,
+  internalNote: string,
+  expectedVersion: number
+) => request("/admin/token-verification/decision", {
+  method: "POST",
+  body: JSON.stringify({ reportId, outcome, publicResponse, internalNote: internalNote || null, expectedVersion })
 });
 export const markNotificationRead = (notificationId: string) => request("/notifications/read", { method: "POST", body: JSON.stringify({ notificationId }) });

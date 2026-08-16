@@ -38,6 +38,7 @@ import {
   createParticipantReview,
   createReviewResponse,
   createProposal,
+  completeTokenVerificationRequest,
   decideContentReport,
   inspectToken,
   loadMarketplace,
@@ -57,12 +58,14 @@ import {
   updateMyProfile,
   type MarketplaceSnapshot,
   type ModerationDecision,
+  type ModerationReport,
   type Notification,
   type EscrowObservation,
   PersistenceError,
   type PublicWalletProfile,
   type TokenCompatibilityStatus,
-  type TokenRecord
+  type TokenRecord,
+  type TokenVerificationOutcome
 } from "./persistence/supabase";
 import type { MarketplaceOrder, RequestDraft, ServiceCategory, WorkScope } from "./types";
 import {
@@ -330,6 +333,18 @@ type ReconciledMilestoneObservation = NonNullable<MarketplaceOrder["escrowObserv
 
 const reportEntityLabel = (entityType: ReportableEntity) => entityType === "bounty" ? "Listing" : entityType === "profile" ? "Profile" : entityType === "token" ? "Token" : "Review";
 const reportEntityNoun = (entityType: ReportableEntity) => reportEntityLabel(entityType).toLowerCase();
+const isTokenVerificationRequest = (report: ModerationReport) => report.request_kind === "verification_request"
+  || (report.entity_type === "token" && report.reason.startsWith(PAID_TOKEN_REVIEW_REASON));
+const tokenVerificationDetails = (reason: string) => reason.startsWith(`${PAID_TOKEN_REVIEW_REASON}:`)
+  ? reason.slice(PAID_TOKEN_REVIEW_REASON.length + 1).trim()
+  : "No additional review details were provided.";
+const tokenVerificationOutcomeLabel = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
+  ? "Verified for Bounties"
+  : outcome === "source_verified"
+    ? "Source verified · compatibility unconfirmed"
+    : outcome === "incompatible"
+      ? "Not compatible with Bounties escrow"
+      : "Verification inconclusive";
 
 const pageRoutes: Record<ProductPage, string> = {
   home: "/",
@@ -976,6 +991,9 @@ export default function App() {
     }
     if (notification.entity_type === "report") {
       const report = session?.myReports.find((candidate) => candidate.id === notification.entity_id);
+      if (report && isTokenVerificationRequest(report)) {
+        return { context: `Token verification · ${report.status === "open" ? "Under review" : tokenVerificationOutcomeLabel(report.verification_outcome)}`, action: "View verification" };
+      }
       return { context: report ? `${reportEntityLabel(report.entity_type)} report · ${report.status === "open" ? "Under review" : "Reviewed"}` : "Your content report", action: "View report" };
     }
     if (notification.entity_type === "profile") return { context: "Your public profile", action: "View profile" };
@@ -2316,6 +2334,99 @@ export default function App() {
     );
   }
 
+  function reportReference(report: ModerationReport, verification = false) {
+    if (report.entity_type === "profile" && report.content?.wallet_address) {
+      return <button className="wallet-link" type="button" onClick={() => openProfile(report.content!.wallet_address!)}>View profile</button>;
+    }
+    if (report.entity_type === "token" && report.content?.explorer_url) {
+      return <a href={report.content.explorer_url} target="_blank" rel="noreferrer noopener">Inspect token contract <ExternalLink size={12} /></a>;
+    }
+    return <a href={`#${report.entity_type}-${report.entity_id}`}>View {verification ? "token" : reportEntityNoun(report.entity_type)}</a>;
+  }
+
+  function tokenVerificationRequestCard(report: ModerationReport) {
+    return (
+      <article className="report-row verification-request-row" key={report.id}>
+        <div className="report-summary">
+          <strong>Token verification request · {report.entity_title || short(report.entity_id)}</strong>
+          <p>{tokenVerificationDetails(report.reason)}</p>
+          <span>Requested {new Date(report.created_at).toLocaleString()} · {reportReference(report, true)}</span>
+        </div>
+        <form
+          className="moderation-decision-form verification-decision-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            void act(
+              () => completeTokenVerificationRequest(
+                report.id,
+                String(form.get("outcome")) as TokenVerificationOutcome,
+                String(form.get("publicResponse") ?? ""),
+                String(form.get("internalNote") ?? ""),
+                report.version ?? 1
+              ),
+              "Verification completed and the requester has been notified."
+            );
+          }}
+        >
+          <label>
+            Verification outcome
+            <select name="outcome" defaultValue="inconclusive" required>
+              <option value="verified">Verified for Bounties</option>
+              <option value="source_verified">Source verified · compatibility unconfirmed</option>
+              <option value="inconclusive">Verification inconclusive</option>
+              <option value="incompatible">Not compatible with Bounties escrow</option>
+            </select>
+          </label>
+          <label>Message to requester<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Summarize what was checked and explain the outcome." required /></label>
+          <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
+          <button type="submit">Complete verification</button>
+        </form>
+      </article>
+    );
+  }
+
+  function safetyReportCard(report: ModerationReport) {
+    return (
+      <article className="report-row" key={report.id}>
+        <div className="report-summary">
+          <strong>{reportEntityLabel(report.entity_type)} report · {report.entity_title || short(report.entity_id)}</strong>
+          <p>{report.reason}</p>
+          <span>Reported {new Date(report.created_at).toLocaleString()} · {reportReference(report)}</span>
+        </div>
+        <form
+          className="moderation-decision-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            void act(
+              () => decideContentReport(
+                report.id,
+                String(form.get("decision")) as ModerationDecision,
+                String(form.get("publicResponse") ?? ""),
+                String(form.get("internalNote") ?? ""),
+                report.version ?? 1
+              ),
+              "Safety report resolved and the reporter has been notified."
+            );
+          }}
+        >
+          <label>
+            Visibility decision
+            <select name="decision" defaultValue="no_action" required>
+              <option value="no_action">Keep visible — no action</option>
+              <option value="hide">Hide from Bounties</option>
+              <option value="restore">Restore on Bounties</option>
+            </select>
+          </label>
+          <label>Message to reporter<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Explain the outcome in clear, neutral language." required /></label>
+          <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
+          <button type="submit">Resolve safety report</button>
+        </form>
+      </article>
+    );
+  }
+
   function reviews(order: MarketplaceOrder) {
     const participantReviews = order.reviews ?? [];
     const alreadyReviewed = participantReviews.some((review) => review.author_id === session?.account.id);
@@ -2881,6 +2992,8 @@ export default function App() {
   }
 
   const visiblePage = activePage === "moderator" && !session?.staffRole ? "marketplace" : activePage;
+  const moderationVerificationRequests = session?.moderationReports.filter(isTokenVerificationRequest) ?? [];
+  const moderationSafetyReports = session?.moderationReports.filter((report) => !isTokenVerificationRequest(report)) ?? [];
   const displayedProfiles = profileSearchApplied ? profileSearchResults : profileDirectory;
   const orderedProfiles = useMemo(
     () => orderAndFilterProfiles(displayedProfiles, profileDirectoryOrder, profileActivityWindow),
@@ -3239,19 +3352,24 @@ export default function App() {
 
               {visiblePage === "marketplace" && session?.myReports.length ? (
                 <section id="my-reports" className="panel my-reports-panel">
-                  <div className="section-heading"><Flag /><h2>My reports</h2></div>
-                  <p>Track the reports you submitted and read moderator responses.</p>
+                  <div className="section-heading"><Flag /><h2>My requests and reports</h2></div>
+                  <p>Track token verification requests separately from safety reports.</p>
                   <div className="my-reports-list">
-                    {session.myReports.map((report) => (
-                      <article className="my-report-row" key={report.id}>
-                        <div>
-                          <strong>{reportEntityLabel(report.entity_type)} report</strong>
-                          <span>{report.status === "open" ? "Under review" : report.decision === "no_action" ? "Reviewed · no action" : report.decision === "hide" ? "Reviewed · hidden" : "Reviewed · restored"}</span>
-                        </div>
-                        <p>{report.reason}</p>
-                        {report.moderator_response ? <blockquote><strong>Moderator response</strong><span>{report.moderator_response}</span></blockquote> : null}
-                      </article>
-                    ))}
+                    {session.myReports.map((report) => {
+                      const verification = isTokenVerificationRequest(report);
+                      return (
+                        <article className={`my-report-row${verification ? " verification-request-row" : ""}`} key={report.id}>
+                          <div>
+                            <strong>{verification ? "Token verification request" : `${reportEntityLabel(report.entity_type)} safety report`}</strong>
+                            <span>{verification
+                              ? report.status === "open" ? "Verification pending" : tokenVerificationOutcomeLabel(report.verification_outcome)
+                              : report.status === "open" ? "Under review" : report.decision === "no_action" ? "Reviewed · no action" : report.decision === "hide" ? "Reviewed · hidden" : "Reviewed · restored"}</span>
+                          </div>
+                          <p>{verification ? tokenVerificationDetails(report.reason) : report.reason}</p>
+                          {report.moderator_response ? <blockquote><strong>{verification ? "Verification response" : "Moderator response"}</strong><span>{report.moderator_response}</span></blockquote> : null}
+                        </article>
+                      );
+                    })}
                   </div>
                 </section>
               ) : null}
@@ -3470,54 +3588,13 @@ export default function App() {
                 <section id="moderation" className="panel moderation-panel authorized-panel">
                   <div className="moderator-badge"><ShieldCheck size={16} />Authorized {session.staffRole}</div>
                   <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
-                  <p>Review reported listings, reviews, profiles, and tokens, choose a visibility decision, and respond to the reporter.</p>
-                  <p className="moderation-safety-note"><ShieldCheck size={16} /> These actions change visibility on Bounties only. They do not affect escrow, payment, or blockchain records.</p>
-                  <p>{session.staffRole} access · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
+                  <p>Complete paid token verification requests and review separately submitted safety reports.</p>
+                  <p className="moderation-safety-note"><ShieldCheck size={16} /> Verification outcomes document a review only. Safety decisions may change frontend visibility; neither flow affects escrow, payment, or blockchain records.</p>
+                  <p>{session.staffRole} access · {moderationVerificationRequests.length} verification request{moderationVerificationRequests.length === 1 ? "" : "s"} · {moderationSafetyReports.length} safety report{moderationSafetyReports.length === 1 ? "" : "s"}</p>
                   {Object.keys(tokenReviewPayments).length ? <p className="moderator-pending-review" role="status"><Loader2 size={16} /> {Object.keys(tokenReviewPayments).length} paid token review payment{Object.keys(tokenReviewPayments).length === 1 ? " is" : "s are"} confirming. Confirmed requests are added here automatically.</p> : null}
-                  {session.moderationReports.length ? session.moderationReports.map((report) => (
-                    <article className="report-row" key={report.id}>
-                      <div className="report-summary">
-                        <strong>{reportEntityLabel(report.entity_type)} report · {report.entity_title || short(report.entity_id)}</strong>
-                        <p>{report.reason}</p>
-                        <span>Reported {new Date(report.created_at).toLocaleString()} · {report.entity_type === "profile" && report.content?.wallet_address
-                          ? <button className="wallet-link" type="button" onClick={() => openProfile(report.content!.wallet_address!)}>View reported profile</button>
-                          : report.entity_type === "token" && report.content?.explorer_url
-                            ? <a href={report.content.explorer_url} target="_blank" rel="noreferrer noopener">Inspect reported token <ExternalLink size={12} /></a>
-                            : <a href={`#${report.entity_type}-${report.entity_id}`}>View reported {reportEntityNoun(report.entity_type)}</a>}</span>
-                      </div>
-                      <form
-                        className="moderation-decision-form"
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          const form = new FormData(event.currentTarget);
-                          void act(
-                            () => decideContentReport(
-                              report.id,
-                              String(form.get("decision")) as ModerationDecision,
-                              String(form.get("publicResponse") ?? ""),
-                              String(form.get("internalNote") ?? ""),
-                              report.version ?? 1
-                            ),
-                            "Report resolved and the reporter has been notified."
-                          );
-                        }}
-                      >
-                        <label>
-                          Decision
-                          <select name="decision" defaultValue="no_action" required>
-                            <option value="no_action">Keep visible — no action</option>
-                            <option value="hide">Hide from Bounties</option>
-                            <option value="restore">Restore on Bounties</option>
-                          </select>
-                        </label>
-                        <label>Message to reporter<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Explain the outcome in clear, neutral language." required /></label>
-                        <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
-                        <button type="submit">Resolve report</button>
-                      </form>
-                    </article>
-                  )) : (
-                    <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open reports</strong><span>New reports will appear here for moderator review.</span></div>
-                  )}
+                  {moderationVerificationRequests.length ? <section className="moderation-queue-section" aria-labelledby="verification-requests-heading"><h3 id="verification-requests-heading">Verification requests</h3>{moderationVerificationRequests.map(tokenVerificationRequestCard)}</section> : null}
+                  {moderationSafetyReports.length ? <section className="moderation-queue-section" aria-labelledby="safety-reports-heading"><h3 id="safety-reports-heading">Safety reports</h3>{moderationSafetyReports.map(safetyReportCard)}</section> : null}
+                  {!session.moderationReports.length ? <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No open items</strong><span>New verification requests and safety reports will appear here.</span></div> : null}
                 </section>
               ) : null}
           <footer className="legal-footer">
