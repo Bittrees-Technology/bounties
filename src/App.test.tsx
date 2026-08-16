@@ -179,6 +179,8 @@ describe("App", () => {
     expect(within(tokenCard).queryByText(/automated checks could not prove/i)).not.toBeInTheDocument();
     expect(within(tokenCard).queryByText(/source verification was not available/i)).not.toBeInTheDocument();
     expect(within(tokenCard).queryByText(/review before use/i)).not.toBeInTheDocument();
+    expect(within(tokenCard).queryByText(/request token\/source verification review/i)).not.toBeInTheDocument();
+    expect(within(tokenCard).getByText(/flag a potentially malicious token or contract/i)).toBeInTheDocument();
   });
 
   it("shows verification results as concise requester activity", async () => {

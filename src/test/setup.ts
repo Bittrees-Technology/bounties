@@ -335,6 +335,7 @@ export function configureMockSelectedUnfundedProvider() {
   bounties = [{
     id: "00000000-0000-4000-8000-000000000411",
     creator_id: "00000000-0000-4000-8000-000000000444",
+    creator_wallet_address: "0x4444444444444444444444444444444444444444",
     title: "Selected unfunded work",
     description: "Funding precedes work submission",
     scope_source: { project: "Funding precedes work submission", buyer: "Marketplace Ops", deliveryDeadline: "2099-12-31", criteria: [] },
@@ -359,6 +360,7 @@ export function configureMockAcceptedUnfundedBuyer() {
   bounties = [{
     id: "00000000-0000-4000-8000-000000000421",
     creator_id: "00000000-0000-4000-8000-000000000111",
+    creator_wallet_address: testWallet,
     title: "Buyer unfunded escrow",
     description: "Creation safety fixture",
     scope_source: { project: "Creation safety", buyer: "Test participant", deliveryDeadline: "2099-12-31", criteria: [] },

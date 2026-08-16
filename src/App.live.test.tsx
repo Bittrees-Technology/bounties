@@ -130,6 +130,26 @@ it("shows saved profile identities for both bounty participants", async () => {
   expect(ownProfileRequests()).toBe(requestsBeforeOpening);
 });
 
+it("shows the capital provider while the labor provider views the bounty", async () => {
+  configureMockSelectedUnfundedProvider();
+  configureMockPublicProfileIdentity("0x4444444444444444444444444444444444444444", "Capital specialist", "capital.eth");
+  vi.resetModules();
+  const { default: App } = await import("./App");
+  const user = userEvent.setup();
+
+  render(<App />);
+  await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
+  const card = (await screen.findByRole("heading", { name: /selected unfunded work/i })).closest("article") as HTMLElement;
+  await user.click(within(card).getByRole("link", { name: /view bounty/i }));
+  const detail = (await screen.findByRole("heading", { level: 2, name: /selected unfunded work/i })).closest("article") as HTMLElement;
+  const participants = detail.querySelector(".participant-links") as HTMLElement;
+
+  await waitFor(() => expect(participants).toHaveTextContent("Capital provider: Capital specialist"));
+  await waitFor(() => expect(participants).toHaveTextContent("Labor provider: Test participant"));
+  expect(within(participants).getByRole("link", { name: /view capital specialist profile/i })).toHaveAttribute("href", "/profiles/0x4444444444444444444444444444444444444444");
+});
+
 it("shows manual funding after applicant acceptance without redundant preselection panels", async () => {
   configureMockOpenBountyWithApplicantForBuyer(false);
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");

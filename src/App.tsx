@@ -2354,14 +2354,14 @@ export default function App() {
     );
   }
 
-  function reportForm(entityType: ReportableEntity, entityId: string) {
+  function reportForm(entityType: ReportableEntity, entityId: string, tokenRecord?: TokenRecord) {
     const tokenReport = entityType === "token";
     const paymentPolicy = tokenReviewPaymentPolicy();
     const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
     const paymentChain = chains[pendingPayment?.chainId ?? paymentPolicy.chainId];
     if (tokenReport) return (
       <div className="token-report-actions" aria-label="Token review and safety actions">
-        <details className="report-control token-review-control">
+        {!tokenRecord || !tokenIsModeratorVerified(tokenRecord) ? <details className="report-control token-review-control">
           <summary><ShieldCheck size={14} /> Request token/source verification review</summary>
           <form onSubmit={(event) => {
             event.preventDefault();
@@ -2380,7 +2380,7 @@ export default function App() {
             <label>Review details (optional)<textarea name="details" maxLength={430} /></label>
             <button type="submit">{pendingPayment ? "Verify payment and request review" : `Pay ${TOKEN_REVIEW_FEE_DISPLAY} and request review`}</button>
           </form>
-        </details>
+        </details> : null}
         <details className="report-control token-safety-control">
           <summary><Flag size={14} /> Flag a potentially malicious token or contract</summary>
           <form onSubmit={(event) => {
@@ -2959,7 +2959,7 @@ export default function App() {
           </section>
           <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
           <div className="participant-links">
-            {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} knownIdentity={session?.account.display_name} onOpenProfile={openProfile} /></span> : null}
+            {order.requesterAddress || (isBuyer(order) && wallet) ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={order.requesterAddress ?? wallet!} currentWallet={wallet} knownIdentity={(order.requesterAddress ?? wallet)?.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
             {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} knownIdentity={order.providerAddress.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
           </div>
           {order.tokenRecord ? <div className="token-identity-card">
@@ -2971,7 +2971,7 @@ export default function App() {
             <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>
             {!tokenIsModeratorVerified(order.tokenRecord) ? <small>{tokenVerificationCopy(order.tokenRecord)}</small> : null}
             {meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}
-            {reportForm("token", order.tokenRecord.id)}
+            {reportForm("token", order.tokenRecord.id, order.tokenRecord)}
           </div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
@@ -3380,7 +3380,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id, selectedToken)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>

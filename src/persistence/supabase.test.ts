@@ -81,6 +81,7 @@ describe("Supabase marketplace mapping", () => {
     const row: BountyRow = {
       id: "00000000-0000-4000-8000-000000000020",
       creator_id: "00000000-0000-4000-8000-000000000021",
+      creator_wallet_address: "0x1111111111111111111111111111111111111111",
       title: "Provider identity",
       description: "",
       scope_source: {},
@@ -114,6 +115,7 @@ describe("Supabase marketplace mapping", () => {
 
     const order = mapBounty(row);
     expect(order.persistenceStatus).toBe("accepted");
+    expect(order.requesterAddress).toBe("0x1111111111111111111111111111111111111111");
     expect(order.providerId).toBe("00000000-0000-4000-8000-000000000023");
     expect(order.providerAddress).toBe("0x3333333333333333333333333333333333333333");
     expect(order.proposalHash).toMatch(/^0x[0-9a-f]{64}$/);
