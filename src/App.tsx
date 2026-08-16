@@ -2109,7 +2109,7 @@ export default function App() {
     const tokenReport = entityType === "token";
     return (
       <details className="report-control">
-        <summary><Flag size={14} /> {tokenReport ? "Flag this token" : `Report this ${reportEntityNoun(entityType)}`}</summary>
+        <summary>{tokenReport ? <ShieldCheck size={14} /> : <Flag size={14} />} {tokenReport ? "Request moderator review" : `Report this ${reportEntityNoun(entityType)}`}</summary>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -2119,15 +2119,17 @@ export default function App() {
             const reason = details ? `${category}: ${details}` : category;
             void act(
               () => reportContent(entityType, entityId, reason),
-              "Report received. A moderator will review it."
+              tokenReport ? "Review request sent to the moderator queue." : "Report received. A moderator will review it."
             );
             event.currentTarget.reset();
           }}
         >
           <label>
-            Concern
+            {tokenReport ? "Review reason" : "Concern"}
             {tokenReport ? (
-              <select name="category" defaultValue="Suspected scam token" required>
+              <select name="category" defaultValue="Compatibility review requested" required>
+                <option>Compatibility review requested</option>
+                <option>Source verification review requested</option>
                 <option>Suspected scam token</option>
                 <option>Impersonation or misleading metadata</option>
                 <option>Malicious transfer behavior</option>
@@ -2145,7 +2147,7 @@ export default function App() {
             )}
           </label>
           <label>Details (optional)<textarea name="details" maxLength={430} /></label>
-          <button type="submit">Submit report</button>
+          <button type="submit">{tokenReport ? "Request review" : "Submit report"}</button>
         </form>
       </details>
     );
@@ -2572,7 +2574,17 @@ export default function App() {
             {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} knownIdentity={session?.account.display_name} onOpenProfile={openProfile} /></span> : null}
             {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} knownIdentity={order.providerAddress.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
           </div>
-          {order.tokenRecord ? <div className="token-identity-card"><div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span><small>{tokenCompatibilityCopy(order.tokenRecord)}</small>{tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}<code>{order.tokenRecord.checksum_address}</code><a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a><small>{tokenVerificationCopy(order.tokenRecord)}</small>{meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}</div> : null}
+          {order.tokenRecord ? <div className="token-identity-card">
+            <div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div>
+            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span>
+            <small>{tokenCompatibilityCopy(order.tokenRecord)}</small>
+            {tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
+            <code>{order.tokenRecord.checksum_address}</code>
+            <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>
+            <small>{tokenVerificationCopy(order.tokenRecord)}</small>
+            {meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}
+            {reportForm("token", order.tokenRecord.id)}
+          </div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
           {providerNextAction(order)}

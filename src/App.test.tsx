@@ -432,7 +432,7 @@ describe("App", () => {
     expect(screen.getAllByText(/USD Coin \(USDC\)/i).length).toBeGreaterThan(0);
   });
 
-  it("lets a signed-in user flag the selected token as a suspected scam", async () => {
+  it("lets a signed-in user request token review or flag a suspected scam", async () => {
     const user = userEvent.setup();
     render(<App />);
     await connectWallet(user);
@@ -440,17 +440,41 @@ describe("App", () => {
 
     await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /^BIT · Base Sepolia/i }));
     const selectedTokenCard = screen.getByText(/selected token/i).closest(".selected-token-card") as HTMLElement;
-    await user.click(within(selectedTokenCard).getByText(/flag this token/i));
-    expect(within(selectedTokenCard).getByLabelText(/concern/i)).toHaveValue("Suspected scam token");
+    await user.click(within(selectedTokenCard).getByText(/request moderator review/i));
+    expect(within(selectedTokenCard).getByLabelText(/review reason/i)).toHaveValue("Compatibility review requested");
+    await user.selectOptions(within(selectedTokenCard).getByLabelText(/review reason/i), "Suspected scam token");
     await user.type(within(selectedTokenCard).getByLabelText(/details/i), "Impersonates another asset");
-    await user.click(within(selectedTokenCard).getByRole("button", { name: /submit report/i }));
+    await user.click(within(selectedTokenCard).getByRole("button", { name: /request review/i }));
 
-    expect(await screen.findByText(/report received/i)).toBeInTheDocument();
+    expect(await screen.findByText(/review request sent to the moderator queue/i)).toBeInTheDocument();
     const reportCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/reports"));
     expect(JSON.parse(String(reportCall?.[1]?.body))).toEqual({
       entityType: "token",
       entityId: "00000000-0000-4000-8000-000000000003",
       reason: "Suspected scam token: Impersonates another asset"
+    });
+  });
+
+  it("offers compatibility review from a bounty's payment-token details", async () => {
+    configureMockOpenBountyWithApplicantForBuyer(false);
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    const directoryCard = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
+    await user.click(within(directoryCard).getByRole("link", { name: /view bounty/i }));
+    const tokenCard = screen.getByText(/^payment token$/i).closest(".token-identity-card") as HTMLElement;
+    await user.click(within(tokenCard).getByText(/request moderator review/i));
+    expect(within(tokenCard).getByLabelText(/review reason/i)).toHaveValue("Compatibility review requested");
+    await user.type(within(tokenCard).getByLabelText(/details/i), "Please review the inconclusive automated result");
+    await user.click(within(tokenCard).getByRole("button", { name: /request review/i }));
+
+    expect(await screen.findByText(/review request sent to the moderator queue/i)).toBeInTheDocument();
+    const reportCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/reports"));
+    expect(JSON.parse(String(reportCall?.[1]?.body))).toEqual({
+      entityType: "token",
+      entityId: "00000000-0000-4000-8000-000000000003",
+      reason: "Compatibility review requested: Please review the inconclusive automated result"
     });
   });
 
