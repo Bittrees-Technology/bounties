@@ -1138,7 +1138,7 @@ describe("App", () => {
       entity_id: "00000000-0000-4000-8000-000000000003",
       entity_title: "BIT on network 11155111",
       request_kind: "verification_request",
-      verification_outcome: "source_verified",
+      verification_outcome: "verified",
       reason: "Token/source verification review",
       status: "resolved",
       decision: "no_action",
@@ -1158,7 +1158,14 @@ describe("App", () => {
     expect(screen.getByText(/^Admin audit access · Partner$/i)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /^admin audit history$/i })).toBeInTheDocument();
     expect(screen.getByText("BIT on network 11155111")).toBeInTheDocument();
-    expect(screen.getByText(/source verified/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Verified for Bounties$/i)).toBeInTheDocument();
+    expect(screen.getByText(/records the review result at that time/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Response to requester:/i)).toBeInTheDocument();
+    expect(screen.getByText(/shown to the wallet that submitted the verification request/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Decision recorded$/i)).toBeInTheDocument();
+    expect(screen.getByText(/submitted request was the preceding event/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Version 2/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Public response:/i)).not.toBeInTheDocument();
     expect(screen.getByText(/administrative review evidence was archived/i)).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /^verification requests$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /complete verification|resolve report/i })).not.toBeInTheDocument();

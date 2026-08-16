@@ -346,6 +346,13 @@ const tokenVerificationOutcomeLabel = (outcome?: ModerationReport["verification_
     : outcome === "incompatible"
       ? "Not compatible with Bounties escrow"
       : "Verification inconclusive";
+const tokenVerificationOutcomeDescription = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
+  ? "The moderator selected “Verified for Bounties” after reviewing the available token and source evidence. This records the review result at that time; it does not guarantee token value, liquidity, or future behavior."
+  : outcome === "source_verified"
+    ? "The contract source was verified on the block explorer, but compatibility with Bounties’ exact escrow accounting was not confirmed."
+    : outcome === "incompatible"
+      ? "The moderator determined that the token should not be used with Bounties escrow."
+      : "The available evidence was not sufficient to confirm compatibility with Bounties escrow.";
 
 const pageRoutes: Record<ProductPage, string> = {
   home: "/",
@@ -3632,13 +3639,15 @@ export default function App() {
                     <div><h3 id="moderation-audit-heading">Admin audit history</h3><p>Read-only decisions are retained with the acting wallet, affected item, outcome, and time.</p></div>
                     {!session.moderationAudit?.canViewInternalNotes ? <p className="moderation-audit-privacy"><ShieldCheck size={16} />Internal moderator notes remain restricted to administrators.</p> : null}
                     {session.moderationAudit?.events.length ? <div className="moderation-audit-list">{session.moderationAudit.events.map((event) => {
-                      const outcome = event.request_kind === "verification_request"
-                        ? event.verification_outcome?.replaceAll("_", " ") ?? "review completed"
+                      const verification = event.request_kind === "verification_request";
+                      const outcome = verification
+                        ? tokenVerificationOutcomeLabel(event.verification_outcome)
                         : event.decision?.replaceAll("_", " ") ?? event.status;
+                      const earlierEvents = Math.max(1, event.report_version - 1);
                       return <article className="moderation-audit-row" key={event.event_id}>
-                        <header><div><strong>{event.entity_title}</strong><span>{event.entity_type} · {event.request_kind === "verification_request" ? "verification" : "safety"}</span></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString()}</time></header>
-                        <dl><div><dt>Action by</dt><dd><a href={`/profiles/${event.actor_wallet_address}`}>{event.actor_display_name || short(event.actor_wallet_address)}</a></dd></div><div><dt>Outcome</dt><dd>{outcome}</dd></div><div><dt>Record</dt><dd>Version {event.report_version}</dd></div></dl>
-                        {event.public_response ? <p><strong>Public response:</strong> {event.public_response}</p> : null}
+                        <header><div><strong>{event.entity_title}</strong><span>{event.entity_type} · {verification ? "verification" : "safety"}</span></div><time dateTime={event.created_at}>{new Date(event.created_at).toLocaleString()}</time></header>
+                        <dl><div><dt>Action by</dt><dd><a href={`/profiles/${event.actor_wallet_address}`}>{event.actor_display_name || short(event.actor_wallet_address)}</a></dd></div><div className="moderation-audit-outcome"><dt>Outcome</dt><dd>{outcome}</dd>{verification ? <small>{tokenVerificationOutcomeDescription(event.verification_outcome)}</small> : null}</div><div><dt>Audit event</dt><dd>Decision recorded</dd><small>{earlierEvents === 1 ? "The submitted request was the preceding event." : `${earlierEvents} earlier request events preceded this decision.`}</small></div></dl>
+                        {event.public_response ? <p><strong>{verification ? "Response to requester" : "Response to reporter"}:</strong> {event.public_response}<small className="moderation-audit-response-audience">Shown to the wallet that submitted the {verification ? "verification request" : "safety report"}.</small></p> : null}
                         {event.internal_note ? <p className="moderation-audit-internal"><strong>Internal note:</strong> {event.internal_note}</p> : null}
                       </article>;
                     })}</div> : <div className="empty-state-panel compact-empty-state"><CheckCircle2 /><strong>No completed decisions yet</strong><span>Completed moderation and verification decisions will appear here permanently.</span></div>}

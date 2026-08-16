@@ -3519,6 +3519,10 @@ textarea {
 .moderation-audit-row dl > div { display: grid; gap: 3px; min-width: 0; }
 .moderation-audit-row dt { color: #64716b; font-size: .72rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .moderation-audit-row dd { font-weight: 700; margin: 0; overflow-wrap: anywhere; text-transform: capitalize; }
+.moderation-audit-row dl small,
+.moderation-audit-response-audience { color: #5a6862; display: block; font-size: .8rem; font-weight: 400; line-height: 1.45; text-transform: none; }
+.moderation-audit-outcome dd { color: #0f6b57; }
+.moderation-audit-row > p { line-height: 1.55; }
 .moderation-audit-row a { color: #0f6b57; text-decoration: underline; text-underline-offset: 2px; }
 .moderation-audit-internal { background: #fff8e7; border-left: 3px solid #a17316; padding: 10px 12px; }
 
