@@ -13,6 +13,7 @@ import { requiredServerEnv, serverEnv } from "./serverEnv.js";
 import { resolveSharedModerator } from "./sharedRoleResolver.js";
 import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryFingerprintMode, type DeliveryProofMethod } from "../deliveryProof.js";
 import { inspectTokenCompatibility, type PreviousTokenInspection } from "./tokenCompatibility.js";
+import { tokenReportReasonIsAllowed, type TokenReportAction } from "../tokenReportPolicy.js";
 
 const encoder = new TextEncoder();
 const erc20Abi = [
@@ -1996,22 +1997,42 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_window_seconds: 3600
     });
     const reason = requiredString(body, "reason");
-    const data = reportedEntityType === "token"
-      ? await verifyTokenReviewPayment(session, body).then((payment) => callRpc("app_report_paid_token_review", {
-        p_actor_id: session.account_id,
-        p_token_id: reportedEntityId,
-        p_reason: reason,
-        p_payment_chain_id: payment.chainId,
-        p_payment_tx_hash: payment.txHash,
-        p_payment_token_address: payment.tokenAddress,
-        p_payment_amount_base_units: payment.amountBaseUnits
-      }))
-      : await callRpc("app_report_content", {
+    let data: unknown;
+    if (reportedEntityType === "token") {
+      const tokenReportAction = requiredString(body, "tokenReportAction") as TokenReportAction;
+      if (!(["review", "safety_flag"] as string[]).includes(tokenReportAction) || !tokenReportReasonIsAllowed(tokenReportAction, reason)) {
+        throw new ApiError("TOKEN_REPORT_ACTION_MISMATCH", 400);
+      }
+      if (tokenReportAction === "review") {
+        const payment = await verifyTokenReviewPayment(session, body);
+        data = await callRpc("app_report_paid_token_review", {
+          p_actor_id: session.account_id,
+          p_token_id: reportedEntityId,
+          p_reason: reason,
+          p_payment_chain_id: payment.chainId,
+          p_payment_tx_hash: payment.txHash,
+          p_payment_token_address: payment.tokenAddress,
+          p_payment_amount_base_units: payment.amountBaseUnits
+        });
+      } else {
+        if (body.paymentChainId !== undefined || body.paymentTxHash !== undefined) {
+          throw new ApiError("TOKEN_SAFETY_FLAG_PAYMENT_NOT_ALLOWED", 400);
+        }
+        data = await callRpc("app_report_content", {
+          p_actor_id: session.account_id,
+          p_entity_type: "token",
+          p_entity_id: reportedEntityId,
+          p_reason: reason
+        });
+      }
+    } else {
+      data = await callRpc("app_report_content", {
         p_actor_id: session.account_id,
         p_entity_type: reportedEntityType,
         p_entity_id: reportedEntityId,
         p_reason: reason
       });
+    }
     return Response.json(data, { headers });
   }
 

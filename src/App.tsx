@@ -82,6 +82,7 @@ import { deliveryProofMethodConfig, deliveryProofMethods, hashCanonicalDeliveryD
 import { SavedDeliveryDescription } from "./DeliveryDescription";
 import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
 import { submitTokenReviewPayment, TOKEN_REVIEW_FEE_DISPLAY, tokenReviewPaymentPolicy } from "./tokenReviewPayment";
+import { FREE_TOKEN_SAFETY_REASONS, PAID_TOKEN_REVIEW_REASON } from "./tokenReportPolicy";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -1175,7 +1176,7 @@ export default function App() {
         txHash = await submitTokenReviewPayment(window.ethereum, session!.account.wallet_address, policy);
         rememberTokenReviewPayment(tokenId, txHash);
       }
-      await reportContent("token", tokenId, reason, { chainId: policy.chainId, txHash });
+      await reportContent("token", tokenId, reason, { chainId: policy.chainId, txHash }, "review");
       rememberTokenReviewPayment(tokenId);
       form.reset();
       await refresh();
@@ -2166,9 +2167,46 @@ export default function App() {
     const tokenReport = entityType === "token";
     const paymentPolicy = tokenReviewPaymentPolicy();
     const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
+    if (tokenReport) return (
+      <div className="token-report-actions" aria-label="Token review and safety actions">
+        <details className="report-control token-review-control">
+          <summary><ShieldCheck size={14} /> Request token/source verification review</summary>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const details = String(new FormData(event.currentTarget).get("details") ?? "").trim();
+            const reason = details ? `${PAID_TOKEN_REVIEW_REASON}: ${details}` : PAID_TOKEN_REVIEW_REASON;
+            void submitPaidTokenReview(entityId, reason, event.currentTarget);
+          }}>
+            <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Retry to verify it without paying again.</span></> : null}</p>
+            <label>Review details (optional)<textarea name="details" maxLength={430} /></label>
+            <button type="submit">{pendingPayment ? "Verify payment and request review" : `Pay ${TOKEN_REVIEW_FEE_DISPLAY} and request review`}</button>
+          </form>
+        </details>
+        <details className="report-control token-safety-control">
+          <summary><Flag size={14} /> Flag a potentially malicious token or contract</summary>
+          <form onSubmit={(event) => {
+            event.preventDefault();
+            const formElement = event.currentTarget;
+            const form = new FormData(formElement);
+            const category = String(form.get("category") ?? FREE_TOKEN_SAFETY_REASONS[0]);
+            const details = String(form.get("details") ?? "").trim();
+            const reason = details ? `${category}: ${details}` : category;
+            void act(async () => {
+              await reportContent("token", entityId, reason, undefined, "safety_flag");
+              formElement.reset();
+            }, "Safety flag sent to the moderator queue. No payment was required.");
+          }}>
+            <p className="token-safety-note">Safety flags are free and help protect marketplace participants.</p>
+            <label>Concern<select name="category" defaultValue={FREE_TOKEN_SAFETY_REASONS[0]} required>{FREE_TOKEN_SAFETY_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
+            <label>Details (optional)<textarea name="details" maxLength={430} /></label>
+            <button type="submit">Submit free safety flag</button>
+          </form>
+        </details>
+      </div>
+    );
     return (
       <details className="report-control">
-        <summary>{tokenReport ? <ShieldCheck size={14} /> : <Flag size={14} />} {tokenReport ? "Request moderator review" : `Report this ${reportEntityNoun(entityType)}`}</summary>
+        <summary><Flag size={14} /> Report this {reportEntityNoun(entityType)}</summary>
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -2176,39 +2214,23 @@ export default function App() {
             const category = String(form.get("category") ?? "Other safety concern");
             const details = String(form.get("details") ?? "").trim();
             const reason = details ? `${category}: ${details}` : category;
-            if (tokenReport) {
-              void submitPaidTokenReview(entityId, reason, event.currentTarget);
-            } else {
-              void act(() => reportContent(entityType, entityId, reason), "Report received. A moderator will review it.");
-              event.currentTarget.reset();
-            }
+            void act(() => reportContent(entityType, entityId, reason), "Report received. A moderator will review it.");
+            event.currentTarget.reset();
           }}
         >
-          {tokenReport ? <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Retry to verify it without paying again.</span></> : null}</p> : null}
           <label>
-            {tokenReport ? "Review reason" : "Concern"}
-            {tokenReport ? (
-              <select name="category" defaultValue="Compatibility review requested" required>
-                <option>Compatibility review requested</option>
-                <option>Source verification review requested</option>
-                <option>Suspected scam token</option>
-                <option>Impersonation or misleading metadata</option>
-                <option>Malicious transfer behavior</option>
-                <option>Other token safety concern</option>
-              </select>
-            ) : (
-              <select name="category" defaultValue="Fraud or misleading content" required>
-                <option>Illegal or prohibited activity</option>
-                <option>Fraud or misleading content</option>
-                <option>Harassment or personal information</option>
-                <option>Spam</option>
-                <option>Intellectual-property concern</option>
-                <option>Other safety concern</option>
-              </select>
-            )}
+            Concern
+            <select name="category" defaultValue="Fraud or misleading content" required>
+              <option>Illegal or prohibited activity</option>
+              <option>Fraud or misleading content</option>
+              <option>Harassment or personal information</option>
+              <option>Spam</option>
+              <option>Intellectual-property concern</option>
+              <option>Other safety concern</option>
+            </select>
           </label>
           <label>Details (optional)<textarea name="details" maxLength={430} /></label>
-          <button type="submit">{tokenReport ? pendingPayment ? "Verify payment and request review" : `Pay ${TOKEN_REVIEW_FEE_DISPLAY} and request review` : "Submit report"}</button>
+          <button type="submit">Submit report</button>
         </form>
       </details>
     );

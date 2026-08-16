@@ -499,12 +499,14 @@ export function searchPublicProfiles(query: string, filters: ProfileSearchFilter
 export const updateMyProfile = (profile: { displayName?: string | null; profileBio?: string | null; profileUrl?: string | null; workTypes?: string[]; categories?: string[]; customSpecialty?: string | null; timezone?: string | null; timezonePublic?: boolean }) => request<PublicWalletProfile>("/profiles/me", { method: "POST", body: JSON.stringify(profile) });
 export const setMyProfileVisibility = (visible: boolean) => request<PublicWalletProfile>("/profiles/visibility", { method: "POST", body: JSON.stringify({ visible }) });
 export type TokenReviewPayment = { chainId: 1 | 11155111; txHash: string };
+export type TokenReportAction = "review" | "safety_flag";
 export const reportContent = (
   entityType: "bounty" | "review" | "profile" | "token",
   entityId: string,
   reason: string,
-  payment?: TokenReviewPayment
-) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason, ...(payment ? { paymentChainId: payment.chainId, paymentTxHash: payment.txHash } : {}) }) });
+  payment?: TokenReviewPayment,
+  tokenReportAction?: TokenReportAction
+) => request<ModerationReport>("/reports", { method: "POST", body: JSON.stringify({ entityType, entityId, reason, ...(tokenReportAction ? { tokenReportAction } : {}), ...(payment ? { paymentChainId: payment.chainId, paymentTxHash: payment.txHash } : {}) }) });
 export const decideContentReport = (
   reportId: string,
   decision: ModerationDecision,

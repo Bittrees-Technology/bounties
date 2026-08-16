@@ -677,7 +677,8 @@ describe("profile report ownership boundary", () => {
         body: JSON.stringify({
           entityType: "token",
           entityId: "10000000-0000-4000-8000-000000000010",
-          reason: "Compatibility review requested",
+          reason: "Token/source verification review",
+          tokenReportAction: "review",
           paymentChainId: 11155111,
           paymentTxHash: `0x${"77".repeat(32)}`
         })
@@ -688,12 +689,70 @@ describe("profile report ownership boundary", () => {
     expect(rpcMock).toHaveBeenCalledWith("app_report_paid_token_review", {
       p_actor_id: session.account_id,
       p_token_id: "10000000-0000-4000-8000-000000000010",
-      p_reason: "Compatibility review requested",
+      p_reason: "Token/source verification review",
       p_payment_chain_id: 11155111,
       p_payment_tx_hash: `0x${"77".repeat(32)}`,
       p_payment_token_address: "0x57A447E4d5e18A9423408C365963A73F08B9d18C",
       p_payment_amount_base_units: "250000000000000000000"
     });
+  });
+
+  it("accepts a malicious-token safety flag without payment proof", async () => {
+    const receiptCallsBeforeFlag = providerGetReceiptMock.mock.calls.length;
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/reports",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          entityType: "token",
+          entityId: "10000000-0000-4000-8000-000000000010",
+          reason: "Suspected malicious token or contract: Impersonates USDC",
+          tokenReportAction: "safety_flag"
+        })
+      }
+    ), "reports");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_report_content", {
+      p_actor_id: session.account_id,
+      p_entity_type: "token",
+      p_entity_id: "10000000-0000-4000-8000-000000000010",
+      p_reason: "Suspected malicious token or contract: Impersonates USDC"
+    });
+    expect(providerGetReceiptMock).toHaveBeenCalledTimes(receiptCallsBeforeFlag);
+    expect(rpcMock).not.toHaveBeenCalledWith("app_report_paid_token_review", expect.anything());
+  });
+
+  it("does not allow the paid review service through the free safety-flag path", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/reports",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          entityType: "token",
+          entityId: "10000000-0000-4000-8000-000000000010",
+          reason: "Token/source verification review",
+          tokenReportAction: "safety_flag"
+        })
+      }
+    ), "reports");
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({ code: "TOKEN_REPORT_ACTION_MISMATCH" });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_report_content", expect.objectContaining({ p_entity_type: "token" }));
+    expect(rpcMock).not.toHaveBeenCalledWith("app_report_paid_token_review", expect.anything());
   });
 
   it("rejects token review payment networks other than Ethereum Sepolia or explicitly enabled mainnet", async () => {
@@ -710,7 +769,8 @@ describe("profile report ownership boundary", () => {
         body: JSON.stringify({
           entityType: "token",
           entityId: "10000000-0000-4000-8000-000000000010",
-          reason: "Compatibility review requested",
+          reason: "Token/source verification review",
+          tokenReportAction: "review",
           paymentChainId: 84532,
           paymentTxHash: `0x${"77".repeat(32)}`
         })
