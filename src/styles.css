@@ -1265,19 +1265,38 @@ li {
   text-underline-offset: 3px;
 }
 
-.marketplace-page { min-width: 0; }
+.marketplace-page {
+  container-name: marketplace-directory;
+  container-type: inline-size;
+  max-width: 100%;
+  min-width: 0;
+}
 
 .bounty-directory-filters {
   align-items: end;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(135px, 1fr)) minmax(188px, 1.15fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 100%;
+  min-width: 0;
 }
 
 .bounty-directory-filters label { min-width: 0; }
 .bounty-directory-filters :is(input, select) {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   width: 100%;
+}
+
+.bounty-keyword-field { grid-column: 1 / -1; }
+
+@container marketplace-directory (min-width: 1080px) {
+  .bounty-directory-filters {
+    grid-template-columns: minmax(180px, 1.2fr) repeat(4, minmax(135px, 1fr)) minmax(188px, 1.15fr);
+  }
+
+  .bounty-keyword-field { grid-column: auto; }
 }
 
 .bounty-directory-heading,
@@ -1297,7 +1316,12 @@ li {
 .bounty-directory-heading span,
 .bounty-detail-toolbar span { color: #5a6862; font-size: .82rem; }
 
-.bounty-directory-grid { display: grid; gap: 12px; }
+.bounty-directory-grid {
+  display: grid;
+  gap: 12px;
+  max-width: 100%;
+  min-width: 0;
+}
 .bounty-directory-grid--tiles { grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); }
 .bounty-directory-grid--list { grid-template-columns: 1fr; }
 
