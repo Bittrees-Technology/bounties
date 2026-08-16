@@ -5,6 +5,15 @@
 -- The fixed cutoff prevents this one-time reset from deleting any bounty created
 -- after the reset was requested, even if the migration is applied later.
 
+-- The schedule and amount validators are deferred consistency triggers for
+-- ordinary product writes. A complete hard delete would otherwise be evaluated
+-- as a zero-milestone schedule at transaction commit. They are disabled only
+-- inside this migration transaction and restored before it can commit.
+alter table public.bounties disable trigger bounties_validate_amounts;
+alter table public.proposals disable trigger proposals_validate_amounts;
+alter table public.milestones disable trigger milestones_validate_amounts;
+alter table public.milestones disable trigger milestones_validate_schedule;
+
 create temporary table app_v3_reset_bounties on commit drop as
 select bounty.id
 from public.bounties bounty
@@ -97,3 +106,8 @@ where milestone.id = target.id;
 delete from public.bounties bounty
 using app_v3_reset_bounties target
 where bounty.id = target.id;
+
+alter table public.bounties enable trigger bounties_validate_amounts;
+alter table public.proposals enable trigger proposals_validate_amounts;
+alter table public.milestones enable trigger milestones_validate_amounts;
+alter table public.milestones enable trigger milestones_validate_schedule;
