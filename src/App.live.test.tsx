@@ -130,7 +130,7 @@ it("shows saved profile identities for both bounty participants", async () => {
   expect(ownProfileRequests()).toBe(requestsBeforeOpening);
 });
 
-it("makes manual escrow funding explicit after applicant acceptance", async () => {
+it("shows manual funding after applicant acceptance without redundant preselection panels", async () => {
   configureMockOpenBountyWithApplicantForBuyer(false);
   vi.stubEnv("VITE_ESCROW_ENABLED", "true");
   vi.stubEnv("VITE_ESCROW_CREATION_ENABLED", "true");
@@ -144,7 +144,9 @@ it("makes manual escrow funding explicit after applicant acceptance", async () =
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
-  expect(screen.getByRole("complementary", { name: /escrow funding timing/i })).toHaveTextContent(/starts after you select an applicant.*tokens move only after you accept an applicant.*manual funding/i);
+  const detail = (await screen.findByRole("heading", { level: 2, name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
+  expect(within(detail).queryByRole("complementary", { name: /escrow funding timing/i })).not.toBeInTheDocument();
+  expect(detail.querySelector(".token-compatibility-gate")).not.toBeInTheDocument();
   await user.click(await screen.findByRole("button", { name: /^accept applicant$/i }));
 
   expect(await screen.findByRole("status")).toHaveTextContent(/applicant accepted.*create and fund escrow.*open the funding transaction/i);

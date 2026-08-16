@@ -1031,23 +1031,8 @@ li {
 
 .token-compatibility-status--inconclusive { background: #fff5d7; color: #715500; }
 
-.token-compatibility-gate {
-  background: #f3f8f5;
-  border: 1px solid #cfe0d6;
-  border-radius: 12px;
-  display: grid;
-  gap: 6px;
-  margin-bottom: 14px;
-  padding: 12px;
-}
-
-.token-compatibility-gate > span { color: #4f5f57; }
-.token-compatibility-gate > label,
 .token-compatibility-confirmation { align-items: flex-start; display: flex; gap: 9px; line-height: 1.4; }
-.token-compatibility-gate input,
 .token-compatibility-confirmation input { flex: 0 0 auto; height: 16px; margin: 2px 0 0; min-height: 0; width: 16px; }
-.token-compatibility-gate--incompatible,
-.token-compatibility-gate--implementation_changed { background: #fff2ef; border-color: #e8afa6; }
 .token-reinspect-button { justify-self: start; width: fit-content; }
 
 .token-accounting-note {
@@ -3353,7 +3338,6 @@ textarea {
 
 .escrow-lifecycle-controls > .form-hint { margin: 0; overflow-wrap: anywhere; }
 
-.preselection-funding-guidance,
 .escrow-funding-ready {
   background: #f1f8f4;
   border: 1px solid #9dc8b9;
@@ -3362,19 +3346,8 @@ textarea {
   padding: 13px;
 }
 
-.preselection-funding-guidance {
-  align-items: flex-start;
-  display: grid;
-  gap: 10px;
-  grid-template-columns: auto minmax(0, 1fr);
-}
-
-.preselection-funding-guidance > svg { color: #0f6b57; }
-.preselection-funding-guidance > div,
 .escrow-funding-ready { display: grid; gap: 7px; }
-.preselection-funding-guidance strong,
 .escrow-funding-ready strong { color: #173c35; }
-.preselection-funding-guidance p,
 .escrow-funding-ready p { color: #4f5f57; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
 .escrow-funding-ready > button { justify-self: start; max-width: 100%; white-space: normal; }
 

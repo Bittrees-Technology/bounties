@@ -2285,15 +2285,9 @@ export default function App() {
 
   function lifecycle(order: MarketplaceOrder) {
     if (order.status === "open") {
-      const compatibility = order.tokenRecord ? tokenCompatibilityStatus(order.tokenRecord) : "inconclusive";
       return (
         <section className="lifecycle-panel">
           {!isBuyer(order) ? proposalForm(order) : null}
-          {isBuyer(order) && order.tokenRecord ? <aside className={`token-compatibility-gate token-compatibility-gate--${compatibility}`}>
-            <strong>{tokenCompatibilityLabel(order.tokenRecord)}</strong>
-            <span>{tokenCompatibilityCopy(order.tokenRecord)}</span>
-            {tokenCompatibilityBlocksFunding(order.tokenRecord) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
-          </aside> : null}
           <div className="proposal-list">
             <h5>Applicants</h5>
             {order.proposals?.length ? (
@@ -2583,15 +2577,6 @@ export default function App() {
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
           {providerNextAction(order)}
           {providerSubmissionGuidance(order)}
-          {isBuyer(order) && order.status === "open" && !order.providerAddress ? (
-            <aside className="preselection-funding-guidance" aria-label="Escrow funding timing">
-              <WalletCards size={20} aria-hidden="true" />
-              <div>
-                <strong>Escrow funding starts after you select an applicant</strong>
-                <p>The onchain escrow commits to the chosen labor-provider wallet, so tokens move only after you accept an applicant. {order.fundOnApplicantAcceptance === false ? "This earlier listing uses manual funding: accept an applicant first, then use “Create and fund escrow” on this page." : "When you accept an applicant, Bounties will open the wallet approval and funding flow automatically."}</p>
-              </div>
-            </aside>
-          ) : null}
           {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
           {lifecycle(order)}
           {reviews(order)}
