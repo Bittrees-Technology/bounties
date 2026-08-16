@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig, resolveDefaultPaymentChainId, supportedChainIds } from "./config";
+import { activeChainId, assets, CHAIN_INTEGRATION_ENABLED, chains, getAssetConfig, getChainConfig, marketplaceChainIds, resolveDefaultPaymentChainId, supportedChainIds } from "./config";
 
 describe("chain config", () => {
   it("stays hard-disabled for live settlement until launch gates pass", () => {
     expect(CHAIN_INTEGRATION_ENABLED).toBe(false);
   });
 
-  it("defaults the active chain to Base Sepolia", () => {
+  it("lets the isolated test harness select its legacy fixture chain", () => {
     expect(activeChainId).toBe(84532);
     expect(chains[activeChainId].isTestnet).toBe(true);
   });
@@ -26,6 +26,7 @@ describe("chain config", () => {
 
   it("looks up configs by id and falls back to undefined for unsupported values", () => {
     expect(supportedChainIds).toHaveLength(6);
+    expect(marketplaceChainIds).toEqual([1, 8453, 4663]);
     expect(getChainConfig(1)?.name).toBe("Ethereum");
     expect(getChainConfig(11155111)?.name).toBe("Ethereum Sepolia");
     expect(getChainConfig(8453)?.name).toBe("Base");

@@ -107,29 +107,34 @@ describe("escrow deployment replacement routing", () => {
       .toThrow("ESCROW_CONTRACT_MISMATCH");
   });
 
-  it("keeps predecessor escrow records out of every user-facing snapshot collection", () => {
-    vi.stubEnv("CHAIN_11155111_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
+  it("keeps testnet and predecessor escrow records out of every user-facing snapshot collection", () => {
+    vi.stubEnv("CHAIN_1_BOUNTY_ESCROW_ADDRESS", "0x2222222222222222222222222222222222222222");
     const current = {
       id: "current-bounty",
-      chain_id: 11155111,
-      escrow: { chain_id: 11155111, contract_address: "0x2222222222222222222222222222222222222222" }
+      chain_id: 1,
+      escrow: { chain_id: 1, contract_address: "0x2222222222222222222222222222222222222222" }
     };
     const predecessor = {
       id: "predecessor-bounty",
-      chain_id: 11155111,
-      escrow: { chain_id: 11155111, contract_address: "0x4444444444444444444444444444444444444444" }
+      chain_id: 1,
+      escrow: { chain_id: 1, contract_address: "0x4444444444444444444444444444444444444444" }
     };
     const archivedCurrent = {
       id: "archived-current-bounty",
-      chain_id: 11155111,
+      chain_id: 1,
       moderation_status: "hidden",
       moderation_reason: "Archived for the August 2026 marketplace reset",
-      escrow: { chain_id: 11155111, contract_address: "0x2222222222222222222222222222222222222222" }
+      escrow: { chain_id: 1, contract_address: "0x2222222222222222222222222222222222222222" }
     };
-    const draft = { id: "new-draft", chain_id: 11155111, escrow: null };
+    const draft = { id: "new-draft", chain_id: 1, escrow: null };
+    const testnet = { id: "testnet-bounty", chain_id: 11155111, escrow: null };
 
     expect(projectCurrentEscrowSnapshot({
-      bounties: [predecessor, archivedCurrent, current, draft],
+      bounties: [predecessor, archivedCurrent, testnet, current, draft],
+      tokens: [
+        { id: "mainnet-token", chain_id: 1 },
+        { id: "testnet-token", chain_id: 11155111 }
+      ],
       notifications: [
         { id: "old-note", entity_type: "bounty", entity_id: predecessor.id },
         { id: "archived-note", entity_type: "bounty", entity_id: archivedCurrent.id },
@@ -139,9 +144,13 @@ describe("escrow deployment replacement routing", () => {
         { id: "old-report", entity_type: "bounty", entity_id: predecessor.id },
         { id: "archived-report", entity_type: "bounty", entity_id: archivedCurrent.id }
       ],
-      moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
+      moderationReports: [
+        { id: "current-report", entity_type: "bounty", entity_id: current.id },
+        { id: "testnet-token-report", entity_type: "token", entity_id: "testnet-token" }
+      ]
     })).toEqual({
       bounties: [current, draft],
+      tokens: [{ id: "mainnet-token", chain_id: 1 }],
       notifications: [{ id: "current-note", entity_type: "bounty", entity_id: current.id }],
       myReports: [],
       moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
@@ -826,16 +835,16 @@ describe("profile report ownership boundary", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("app_report_content", expect.anything());
   });
 
-  it("accepts a receipt-verified 250 BIT token review payment and forwards its immutable proof", async () => {
+  it("accepts a receipt-verified 250 BIT mainnet token review payment and forwards its immutable proof", async () => {
     const transferInterface = new Interface(["event Transfer(address indexed from,address indexed to,uint256 value)"]);
     const transfer = transferInterface.encodeEventLog(transferInterface.getEvent("Transfer")!, [
       session.wallet_address,
       "0x594f3B031992C2d6855383b3755653D6Fde35F01",
       250n * 10n ** 18n
     ]);
-    vi.stubEnv("CHAIN_11155111_RPC_URL", "https://rpc.example.test");
-    vi.stubEnv("CHAIN_11155111_REQUIRED_CONFIRMATIONS", "2");
-    providerGetNetworkMock.mockResolvedValue({ chainId: 11155111n });
+    vi.stubEnv("CHAIN_1_RPC_URL", "https://rpc.example.test");
+    vi.stubEnv("CHAIN_1_REQUIRED_CONFIRMATIONS", "2");
+    providerGetNetworkMock.mockResolvedValue({ chainId: 1n });
     providerGetBlockNumberMock.mockResolvedValue(101);
     providerGetReceiptMock.mockResolvedValue({
       status: 1,
@@ -863,7 +872,7 @@ describe("profile report ownership boundary", () => {
           entityId: "10000000-0000-4000-8000-000000000010",
           reason: "Token/source verification review",
           tokenReportAction: "review",
-          paymentChainId: 11155111,
+          paymentChainId: 1,
           paymentTxHash: `0x${"77".repeat(32)}`
         })
       }
@@ -874,7 +883,7 @@ describe("profile report ownership boundary", () => {
       p_actor_id: session.account_id,
       p_token_id: "10000000-0000-4000-8000-000000000010",
       p_reason: "Token/source verification review",
-      p_payment_chain_id: 11155111,
+      p_payment_chain_id: 1,
       p_payment_tx_hash: `0x${"77".repeat(32)}`,
       p_payment_token_address: "0x57A447E4d5e18A9423408C365963A73F08B9d18C",
       p_payment_amount_base_units: "250000000000000000000"
@@ -939,7 +948,7 @@ describe("profile report ownership boundary", () => {
     expect(rpcMock).not.toHaveBeenCalledWith("app_report_paid_token_review", expect.anything());
   });
 
-  it("rejects token review payment networks other than Ethereum Sepolia or explicitly enabled mainnet", async () => {
+  it("rejects token review payment networks other than Ethereum mainnet", async () => {
     const response = await handleBountiesApi(new Request(
       "https://bounties.bittrees.org/api/bounties/reports",
       {

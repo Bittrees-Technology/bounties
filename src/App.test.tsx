@@ -502,12 +502,12 @@ describe("App", () => {
       entityId: "00000000-0000-4000-8000-000000000003",
       reason: "Token/source verification review: Check the verified source and transfer behavior",
       tokenReportAction: "review",
-      paymentChainId: 11155111,
+      paymentChainId: 1,
       paymentTxHash: `0x${"99".repeat(32)}`
     });
     expect(vi.mocked(window.ethereum!.request)).toHaveBeenCalledWith(expect.objectContaining({
       method: "wallet_switchEthereumChain",
-      params: [{ chainId: "0xaa36a7" }]
+      params: [{ chainId: "0x1" }]
     }));
     expect(vi.mocked(window.ethereum!.request)).toHaveBeenCalledWith(expect.objectContaining({
       method: "eth_sendTransaction",
@@ -558,7 +558,7 @@ describe("App", () => {
 
     const transactionLink = within(reviewControl).getByRole("link", { name: /view transaction/i });
     expect(within(reviewControl).getByText(paymentHash)).toBeInTheDocument();
-    expect(transactionLink).toHaveAttribute("href", `https://sepolia.etherscan.io/tx/${paymentHash}`);
+    expect(transactionLink).toHaveAttribute("href", `https://etherscan.io/tx/${paymentHash}`);
     await user.click(within(reviewControl).getByText(/payment submitted/i));
     expect(reviewControl.open).toBe(true);
     await user.click(within(reviewControl).getByText(/transaction hash/i));
@@ -608,7 +608,7 @@ describe("App", () => {
       entityId: "00000000-0000-4000-8000-000000000003",
       reason: "Token/source verification review: Please review the inconclusive automated result",
       tokenReportAction: "review",
-      paymentChainId: 11155111,
+      paymentChainId: 1,
       paymentTxHash: `0x${"99".repeat(32)}`
     });
   });

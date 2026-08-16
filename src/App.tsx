@@ -23,7 +23,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { CUSTOM_CLASSIFICATION_VALUE, isDraftValid, orderStatusLabel } from "./bountyModel";
-import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, PRE_ACCEPTANCE_CANCELLATION_ENABLED, resolveEscrowAddress, STAGED_MILESTONE_FUNDING_ENABLED, supportedChainIds } from "./chain/config";
+import { chains, defaultPaymentChainId, ESCROW_CREATION_ENABLED, PRE_ACCEPTANCE_CANCELLATION_ENABLED, resolveEscrowAddress, STAGED_MILESTONE_FUNDING_ENABLED, visibleMarketplaceChainIds } from "./chain/config";
 import { createViemEscrowAdapter, prepareEscrowWrite, resolveEscrowBundle } from "./chain/escrowAdapter";
 import { EscrowClientError } from "./chain/errors";
 import { formatUnits, keccak256, toHex } from "viem";
@@ -314,7 +314,7 @@ function readTokenReviewPayments(): Record<string, PendingTokenReviewPayment> {
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
       const payment = candidate as Partial<PendingTokenReviewPayment>;
       if (!payment.txHash || !/^0x[0-9a-fA-F]{64}$/.test(payment.txHash)) return [];
-      if (payment.chainId !== 1 && payment.chainId !== 11155111) return [];
+      if (payment.chainId !== 1) return [];
       const reason = typeof payment.reason === "string" && payment.reason.trim().startsWith(PAID_TOKEN_REVIEW_REASON)
         ? payment.reason.trim()
         : PAID_TOKEN_REVIEW_REASON;
@@ -3374,7 +3374,7 @@ export default function App() {
                     <label>
                       Payment network
                       <select aria-label="Payment network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>
-                        {supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}
+                        {visibleMarketplaceChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}
                       </select>
                     </label>
                     <label>
@@ -3428,7 +3428,7 @@ export default function App() {
                   <p className="custom-token-copy">Choose a supported network and enter the token contract address. Bounties will inspect that contract on the selected network before making it available.</p>
                   <div className="token-policy-notice"><ShieldCheck size={18} /><p><strong>Exact-accounting policy</strong><span>Read-only inspection does not certify transfer behavior. Fee-on-transfer, sender-taxed, and rebasing tokens are unsupported; escrow funding and payouts fail closed unless balance changes reconcile exactly. Token value, liquidity, redemption, issuer conduct, and legal status are not guaranteed.</span></p></div>
                   <form className="token-inspector-form" onSubmit={inspect}>
-                    <label>Token network<select aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{supportedChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
+                    <label>Token network<select aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{visibleMarketplaceChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => { setInspectAddress(event.target.value); setInspected(null); setTokenPolicyConfirmed(false); }} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
                     <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                     <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>

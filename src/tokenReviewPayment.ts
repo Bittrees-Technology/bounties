@@ -5,42 +5,24 @@ import { prepareEscrowWrite, type Eip1193Provider } from "./chain/escrowAdapter"
 export const TOKEN_REVIEW_FEE_DISPLAY = "250 BIT";
 export const TOKEN_REVIEW_FEE_BASE_UNITS = 250n * 10n ** 18n;
 export const TOKEN_REVIEW_TREASURY_ADDRESS = "0x594f3B031992C2d6855383b3755653D6Fde35F01" as const;
-export const TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS = "0x57A447E4d5e18A9423408C365963A73F08B9d18C" as const;
+export const TOKEN_REVIEW_MAINNET_BIT_ADDRESS = "0x57A447E4d5e18A9423408C365963A73F08B9d18C" as const;
 
 const transferAbi = parseAbi(["function transfer(address to,uint256 amount) returns (bool)"]);
 
 export type TokenReviewPaymentPolicy = {
-  chainId: 1 | 11155111;
-  networkName: "Ethereum" | "Ethereum Sepolia";
+  chainId: 1;
+  networkName: "Ethereum";
   tokenAddress: `0x${string}`;
   treasuryAddress: typeof TOKEN_REVIEW_TREASURY_ADDRESS;
   amountBaseUnits: bigint;
 };
 
-function configuredMainnetBitAddress(): `0x${string}` | null {
-  const enabled = import.meta.env.VITE_TOKEN_REVIEW_MAINNET_ENABLED === "true";
-  const configured = import.meta.env.VITE_TOKEN_REVIEW_BIT_1_ADDRESS;
-  if (!enabled || !configured) return null;
-  try {
-    return getAddress(configured) as `0x${string}`;
-  } catch {
-    return null;
-  }
-}
-
-/** Mainnet remains unavailable until operations explicitly enables its exact BIT deployment. */
+/** Paid reviews use the verified BIT deployment on Ethereum mainnet only. */
 export function tokenReviewPaymentPolicy(): TokenReviewPaymentPolicy {
-  const mainnetBitAddress = configuredMainnetBitAddress();
-  return mainnetBitAddress ? {
+  return {
     chainId: 1,
     networkName: "Ethereum",
-    tokenAddress: mainnetBitAddress,
-    treasuryAddress: TOKEN_REVIEW_TREASURY_ADDRESS,
-    amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS
-  } : {
-    chainId: 11155111,
-    networkName: "Ethereum Sepolia",
-    tokenAddress: TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS,
+    tokenAddress: getAddress(TOKEN_REVIEW_MAINNET_BIT_ADDRESS),
     treasuryAddress: TOKEN_REVIEW_TREASURY_ADDRESS,
     amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS
   };

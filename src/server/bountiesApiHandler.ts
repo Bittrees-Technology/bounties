@@ -27,7 +27,7 @@ const erc20TransferInterface = new Interface([
   "event Transfer(address indexed from,address indexed to,uint256 value)"
 ]);
 const TOKEN_REVIEW_TREASURY_ADDRESS = getAddress("0x594f3B031992C2d6855383b3755653D6Fde35F01");
-const TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS = getAddress("0x57A447E4d5e18A9423408C365963A73F08B9d18C");
+const TOKEN_REVIEW_MAINNET_BIT_ADDRESS = getAddress("0x57A447E4d5e18A9423408C365963A73F08B9d18C");
 const TOKEN_REVIEW_FEE_BASE_UNITS = 250n * 10n ** 18n;
 const bountyEscrowInterface = new Interface([
   "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout,uint64 settlementProposalExpiry,uint256 allocatedAmount,uint256 releasedAmount,uint32 milestoneCount,uint32 currentMilestone,bytes32 scheduleHash) bounty)",
@@ -129,6 +129,7 @@ const jsonHeaders = { "content-type": "application/json" };
 const mutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const jsonBodyLimitBytes = 256 * 1024;
 const supportedChainIds = new Set([1, 11155111, 8453, 84532, 4663, 46630]);
+const marketplaceChainIds = new Set([1, 8453, 4663]);
 const profileSearchFields = new Set(["all", "identity", "bio", "specialty"]);
 const marketplaceResetReason = "Archived for the August 2026 marketplace reset";
 type EnsProfileIdentity = { name: string | null; avatarUrl: string | null };
@@ -442,9 +443,9 @@ function zeroBasedIntegerField(body: Record<string, unknown>, field: string): nu
   return value;
 }
 
-function chainIdField(body: Record<string, unknown>, field = "chainId"): number {
+function marketplaceChainIdField(body: Record<string, unknown>, field = "chainId"): number {
   const chainId = numberField(body, field);
-  if (!supportedChainIds.has(chainId)) throw new ApiError("CHAIN_UNSUPPORTED", 400);
+  if (!marketplaceChainIds.has(chainId)) throw new ApiError("CHAIN_UNSUPPORTED", 400);
   return chainId;
 }
 
@@ -699,6 +700,8 @@ function isCurrentEscrowBounty(value: unknown): boolean {
   const bounty = objectRecord(value);
   if (!bounty) return false;
   if (bounty.moderation_status === "hidden" && bounty.moderation_reason === marketplaceResetReason) return false;
+  const bountyChainId = Number(bounty.chain_id);
+  if (!marketplaceChainIds.has(bountyChainId)) return false;
   const escrow = objectRecord(bounty.escrow);
   if (!escrow) return true;
 
@@ -730,16 +733,25 @@ export function projectCurrentEscrowSnapshot(snapshot: Record<string, unknown>):
     }
     return current;
   });
+  const retiredTokenIds = new Set<string>();
+  const tokens = Array.isArray(snapshot.tokens) ? snapshot.tokens.filter((value) => {
+    const token = objectRecord(value);
+    const current = token !== null && marketplaceChainIds.has(Number(token.chain_id));
+    if (!current && typeof token?.id === "string") retiredTokenIds.add(token.id);
+    return current;
+  }) : snapshot.tokens;
   const withoutRetiredBountyReferences = (value: unknown): boolean => {
     const record = objectRecord(value);
-    return record?.entity_type !== "bounty"
-      || typeof record.entity_id !== "string"
-      || !retiredBountyIds.has(record.entity_id);
+    if (typeof record?.entity_id !== "string") return true;
+    if (record.entity_type === "bounty") return !retiredBountyIds.has(record.entity_id);
+    if (record.entity_type === "token") return !retiredTokenIds.has(record.entity_id);
+    return true;
   };
 
   return {
     ...snapshot,
     bounties,
+    tokens,
     notifications: Array.isArray(snapshot.notifications)
       ? snapshot.notifications.filter(withoutRetiredBountyReferences)
       : snapshot.notifications,
@@ -760,17 +772,8 @@ function requiredConfirmations(chainId: number): number {
   return configured;
 }
 
-function tokenReviewPaymentPolicy(chainId: number): { chainId: 1 | 11155111; tokenAddress: string } {
-  if (chainId === 11155111) return { chainId, tokenAddress: TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS };
-  if (chainId === 1 && serverEnv("TOKEN_REVIEW_MAINNET_ENABLED") === "true") {
-    const configured = serverEnv("TOKEN_REVIEW_BIT_1_ADDRESS");
-    if (!configured) throw new ApiError("TOKEN_REVIEW_MAINNET_NOT_CONFIGURED", 503);
-    try {
-      return { chainId, tokenAddress: getAddress(configured) };
-    } catch {
-      throw new ApiError("TOKEN_REVIEW_MAINNET_NOT_CONFIGURED", 503);
-    }
-  }
+function tokenReviewPaymentPolicy(chainId: number): { chainId: 1; tokenAddress: string } {
+  if (chainId === 1) return { chainId, tokenAddress: TOKEN_REVIEW_MAINNET_BIT_ADDRESS };
   throw new ApiError("TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED", 400);
 }
 
@@ -849,7 +852,7 @@ async function withTimeout<T>(promise: Promise<T>, code: string, timeoutMs = 12_
 }
 
 async function inspectToken(session: Session, body: Record<string, unknown>) {
-  const chainId = chainIdField(body);
+  const chainId = marketplaceChainIdField(body);
   const checksumAddress = checkedAddress(requiredString(body, "contractAddress"), "INVALID_CONTRACT_ADDRESS");
   if (checksumAddress === "0x0000000000000000000000000000000000000000") {
     throw new ApiError("INVALID_CONTRACT_ADDRESS", 400);
@@ -1961,7 +1964,7 @@ async function handle(request: Request, action: string): Promise<Response> {
       p_description: requiredString(body, "description"),
       p_scope_source: requiredJsonObject(body, "scopeSource"),
       p_scope_hash: requiredString(body, "scopeHash"),
-      p_chain_id: chainIdField(body),
+      p_chain_id: marketplaceChainIdField(body),
       p_token_id: requiredUuid(body, "tokenId"),
       p_budget_base_units: baseUnitString(body, "budgetBaseUnits"),
       p_milestones: requiredJsonArray(body, "milestones")

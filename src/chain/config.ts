@@ -4,6 +4,18 @@ import type { AssetConfig, ChainConfig, CuratedTokenSymbol, SupportedAsset, Supp
 
 export const supportedChainIds = [1, 11155111, 8453, 84532, 4663, 46630] as const satisfies readonly SupportedChainId[];
 
+/** Public marketplace networks. Testnets remain known only so legacy records can be decoded safely. */
+export const marketplaceChainIds = [1, 8453, 4663] as const satisfies readonly SupportedChainId[];
+
+/**
+ * Test fixtures still exercise immutable testnet escrows. This switch is set only by
+ * Vitest; production builds do not expose it and remain mainnet-only.
+ */
+const includeLegacyTestnetsInUi = import.meta.env.VITE_TEST_ONLY_ENABLE_LEGACY_TESTNETS === "true";
+export const visibleMarketplaceChainIds: readonly SupportedChainId[] = includeLegacyTestnetsInUi
+  ? supportedChainIds
+  : marketplaceChainIds;
+
 const configuredEscrowAddresses: Record<SupportedChainId, string | undefined> = {
   1: import.meta.env.VITE_CHAIN_1_BOUNTY_ESCROW_ADDRESS,
   11155111: import.meta.env.VITE_CHAIN_11155111_BOUNTY_ESCROW_ADDRESS,
@@ -61,7 +73,7 @@ export const STAGED_MILESTONE_FUNDING_ENABLED =
  * Operations must set both the enable flag and a valid public deployment address. Missing or
  * malformed configuration remains fail-closed in every build.
  */
-export const CHAIN_INTEGRATION_ENABLED = globallyEnabled && supportedChainIds.some((chainId) => Boolean(configuredAddress(chainId)));
+export const CHAIN_INTEGRATION_ENABLED = globallyEnabled && visibleMarketplaceChainIds.some((chainId) => Boolean(configuredAddress(chainId)));
 
 export const chains: Record<SupportedChainId, ChainConfig> = {
   1: {
@@ -187,13 +199,16 @@ export const curatedTokenSymbols: readonly CuratedTokenSymbol[] = ["WETH", "BTRE
 
 /** Configured settlement network; disabled until a verified contract address is supplied. */
 const requestedDefaultChainId = Number(import.meta.env.VITE_DEFAULT_CHAIN_ID);
-export const activeChainId: SupportedChainId = supportedChainIds.includes(requestedDefaultChainId as SupportedChainId)
+export const activeChainId: SupportedChainId = marketplaceChainIds.includes(requestedDefaultChainId as (typeof marketplaceChainIds)[number])
   ? requestedDefaultChainId as SupportedChainId
-  : 84532;
+  : includeLegacyTestnetsInUi && supportedChainIds.includes(requestedDefaultChainId as SupportedChainId)
+    ? requestedDefaultChainId as SupportedChainId
+    : 1;
 
 export function resolveDefaultPaymentChainId(value: unknown): SupportedChainId {
   const requestedChainId = Number(value);
-  return supportedChainIds.includes(requestedChainId as SupportedChainId)
+  return (marketplaceChainIds as readonly number[]).includes(requestedChainId)
+    || includeLegacyTestnetsInUi && (supportedChainIds as readonly number[]).includes(requestedChainId)
     ? requestedChainId as SupportedChainId
     : 1;
 }

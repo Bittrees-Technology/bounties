@@ -3,7 +3,7 @@ import { decodeFunctionData, parseAbi } from "viem";
 import {
   submitTokenReviewPayment,
   TOKEN_REVIEW_FEE_BASE_UNITS,
-  TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS,
+  TOKEN_REVIEW_MAINNET_BIT_ADDRESS,
   TOKEN_REVIEW_TREASURY_ADDRESS,
   tokenReviewPaymentPolicy
 } from "./tokenReviewPayment";
@@ -14,18 +14,18 @@ const transferAbi = parseAbi(["function transfer(address to,uint256 amount) retu
 afterEach(() => vi.unstubAllEnvs());
 
 describe("token moderator-review payments", () => {
-  it("defaults to the exact 250 BIT Ethereum Sepolia policy", () => {
+  it("uses the exact 250 BIT Ethereum mainnet policy", () => {
     expect(tokenReviewPaymentPolicy()).toEqual({
-      chainId: 11155111,
-      networkName: "Ethereum Sepolia",
-      tokenAddress: TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS,
+      chainId: 1,
+      networkName: "Ethereum",
+      tokenAddress: TOKEN_REVIEW_MAINNET_BIT_ADDRESS,
       treasuryAddress: TOKEN_REVIEW_TREASURY_ADDRESS,
       amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS
     });
   });
 
-  it("switches to Sepolia and submits the exact treasury transfer", async () => {
-    let chainId = "0x1";
+  it("uses Ethereum mainnet and submits the exact treasury transfer", async () => {
+    let chainId = "0x2105";
     const calls: Array<{ method: string; params?: unknown[] | Record<string, unknown> }> = [];
     const provider = {
       request: vi.fn(async (request: { method: string; params?: unknown[] | Record<string, unknown> }) => {
@@ -44,20 +44,11 @@ describe("token moderator-review payments", () => {
     await expect(submitTokenReviewPayment(provider, wallet)).resolves.toBe(`0x${"12".repeat(32)}`);
     const send = calls.find((call) => call.method === "eth_sendTransaction")!;
     const transaction = (send.params as Array<{ to: string; data: `0x${string}` }>)[0];
-    expect(transaction.to).toBe(TOKEN_REVIEW_SEPOLIA_BIT_ADDRESS);
+    expect(transaction.to).toBe(TOKEN_REVIEW_MAINNET_BIT_ADDRESS);
     expect(decodeFunctionData({ abi: transferAbi, data: transaction.data })).toEqual({
       functionName: "transfer",
       args: [TOKEN_REVIEW_TREASURY_ADDRESS, TOKEN_REVIEW_FEE_BASE_UNITS]
     });
   });
 
-  it("enables Ethereum mainnet only with its dedicated flag and valid BIT address", () => {
-    vi.stubEnv("VITE_TOKEN_REVIEW_MAINNET_ENABLED", "true");
-    vi.stubEnv("VITE_TOKEN_REVIEW_BIT_1_ADDRESS", "0x2222222222222222222222222222222222222222");
-    expect(tokenReviewPaymentPolicy()).toMatchObject({
-      chainId: 1,
-      networkName: "Ethereum",
-      tokenAddress: "0x2222222222222222222222222222222222222222"
-    });
-  });
 });
