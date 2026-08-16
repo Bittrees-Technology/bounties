@@ -1,7 +1,7 @@
 {
   "name": "Bounties",
   "short_name": "Bounties",
-  "description": "Wallet-first tokenized bounties with proposals, delivery evidence, and ERC20 escrow.",
+  "description": "Token-funded bounties with clear scopes, milestone payments, delivery evidence, wallet profiles, and ERC20 escrow.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -12,7 +12,19 @@
       "src": "/favicon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }

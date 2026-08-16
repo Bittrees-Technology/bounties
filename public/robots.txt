@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /moderator
 
 Sitemap: https://bounties.bittrees.org/sitemap.xml

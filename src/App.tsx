@@ -2848,7 +2848,7 @@ export default function App() {
               <header className="landing-hero">
                 <div className="landing-hero-copy">
                   <h1><span>Fund work</span>{" "}<span>Deliver results</span></h1>
-                  <p>Create or complete bounties with clear terms, milestones, and payment records.</p>
+                  <p>Create or complete token-funded bounties with clear terms, milestones, and verifiable payment records.</p>
                   <div className="landing-actions">
                     <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
                     <a className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
@@ -2893,7 +2893,7 @@ export default function App() {
               </section>
 
               <section className="landing-value-section" aria-labelledby="landing-value-title">
-                <div className="landing-section-heading"><p className="eyebrow">Useful context, kept together</p><h2 id="landing-value-title">Make decisions with the important details in view.</h2><p>Bounties is designed to reduce ambiguity without taking control away from the participants doing the work.</p></div>
+                <div className="landing-section-heading"><p className="eyebrow">Why Bounties</p><h2 id="landing-value-title">A clearer marketplace for token-funded work</h2><p>Keep the scope, payment structure, delivery evidence, and participant reputation together without giving the platform control over escrowed funds.</p></div>
                 <div className="landing-feature-grid">
                   <article><FileCheck2 /><h3>Milestone clarity</h3><p>Allocate payment to specific deliverables and dates so larger projects can move forward in accountable stages.</p></article>
                   <article><Search /><h3>Token transparency</h3><p>Choose standard payment options or inspect another ERC20 contract and open its block-explorer record before using it.</p></article>

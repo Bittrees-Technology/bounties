@@ -5,32 +5,134 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       name="description"
-      content="Create token-funded bounties, compare proposals, submit delivery evidence, and coordinate ERC20 escrow with a connected wallet."
+      content="Create and complete token-funded bounties with clear scopes, milestone payments, proposals, delivery evidence, wallet profiles, and ERC20 escrow."
     />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="author" content="Bittrees Technology" />
+    <meta name="application-name" content="Bounties" />
     <meta name="theme-color" content="#173c35" />
     <link rel="canonical" href="https://bounties.bittrees.org/" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/site.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Bounties" />
+    <meta property="og:site_name" content="Bounties" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:title" content="Bounties | Token-Funded Work with ERC20 Escrow" />
     <meta
       property="og:description"
-      content="Wallet-first bounties with proposals, delivery evidence, and ERC20 escrow records."
+      content="A wallet-first marketplace for scoped work, proposals, milestone payments, delivery evidence, and inspectable ERC20 escrow."
     />
     <meta property="og:url" content="https://bounties.bittrees.org/" />
-    <meta property="og:image" content="https://bounties.bittrees.org/social-preview.svg" />
+    <meta property="og:image" content="https://bounties.bittrees.org/social-preview.png" />
+    <meta property="og:image:secure_url" content="https://bounties.bittrees.org/social-preview.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Bounties — token-funded work with clear terms, milestones, and ERC20 escrow" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Bounties" />
+    <meta name="twitter:title" content="Bounties | Token-Funded Work with ERC20 Escrow" />
     <meta
       name="twitter:description"
-      content="Create scoped work, compare proposals, submit delivery evidence, and coordinate ERC20 escrow."
+      content="Create and complete bounties with clear terms, milestone payments, delivery evidence, wallet profiles, and ERC20 escrow."
     />
-    <meta name="twitter:image" content="https://bounties.bittrees.org/social-preview.svg" />
-    <title>Bounties | Wallet-first tokenized work</title>
+    <meta name="twitter:image" content="https://bounties.bittrees.org/social-preview.png" />
+    <meta name="twitter:image:alt" content="Bounties — token-funded work with clear terms, milestones, and ERC20 escrow" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://bittrees.org/#organization",
+            "name": "Bittrees",
+            "url": "https://bittrees.org/",
+            "logo": "https://bounties.bittrees.org/icon-512.png",
+            "sameAs": ["https://github.com/Bittrees-Technology"]
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://bounties.bittrees.org/#website",
+            "url": "https://bounties.bittrees.org/",
+            "name": "Bounties",
+            "alternateName": "Bittrees Bounties",
+            "description": "A wallet-first marketplace for token-funded work with proposals, milestones, delivery evidence, profiles, and ERC20 escrow.",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://bittrees.org/#organization" }
+          },
+          {
+            "@type": "WebApplication",
+            "@id": "https://bounties.bittrees.org/#application",
+            "url": "https://bounties.bittrees.org/",
+            "name": "Bounties",
+            "description": "Create and complete token-funded bounties with clear scopes, milestone payments, proposals, delivery evidence, wallet profiles, and ERC20 escrow.",
+            "applicationCategory": "BusinessApplication",
+            "applicationSubCategory": "Token-funded work marketplace and ERC20 escrow interface",
+            "operatingSystem": "Any",
+            "isAccessibleForFree": true,
+            "browserRequirements": "Requires a modern web browser. A compatible Ethereum wallet is required for authenticated actions.",
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "publisher": { "@id": "https://bittrees.org/#organization" },
+            "creator": {
+              "@type": "Organization",
+              "name": "Bittrees Technology",
+              "url": "https://github.com/Bittrees-Technology"
+            }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://bounties.bittrees.org/#webpage",
+            "url": "https://bounties.bittrees.org/",
+            "name": "Bounties | Token-Funded Work with ERC20 Escrow",
+            "description": "Create and complete token-funded bounties with clear scopes, milestone payments, proposals, delivery evidence, wallet profiles, and ERC20 escrow.",
+            "isPartOf": { "@id": "https://bounties.bittrees.org/#website" },
+            "about": { "@id": "https://bounties.bittrees.org/#application" },
+            "primaryImageOfPage": {
+              "@type": "ImageObject",
+              "url": "https://bounties.bittrees.org/social-preview.png",
+              "width": 1200,
+              "height": 630
+            },
+            "inLanguage": "en"
+          }
+        ]
+      }
+    </script>
+    <title>Bounties | Token-Funded Work with ERC20 Escrow</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <noscript>
+        <main>
+          <header>
+            <p>Bounties by Bittrees</p>
+            <h1>Token-funded bounties with clear terms and ERC20 escrow</h1>
+            <p>Create or complete work with defined scopes, milestone payments, proposals, delivery evidence, and wallet-based profiles.</p>
+            <nav aria-label="Bounties product navigation">
+              <a href="/marketplace">Browse bounties</a>
+              <a href="/create">Create a bounty</a>
+              <a href="/profiles">Discover profiles</a>
+            </nav>
+          </header>
+          <section>
+            <h2>How Bounties works</h2>
+            <p>A capital provider publishes clear work terms and chooses a labor provider. The participants use an inspectable ERC20 escrow record to fund milestones, commit delivery evidence, review work, and release payment.</p>
+          </section>
+          <section>
+            <h2>Built for informed participation</h2>
+            <p>Review token contracts, scopes, timelines, milestones, applications, and role-specific reputation before participating. Browsing is public; a wallet is required only for authenticated actions.</p>
+          </section>
+          <footer>
+            <a href="/terms">Terms</a>
+            <a href="/acceptable-use">Acceptable Use</a>
+            <a href="/privacy">Privacy</a>
+          </footer>
+        </main>
+      </noscript>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
