@@ -3710,6 +3710,10 @@ textarea {
 .escrow-cancellation-form button { justify-self: start; }
 .escrow-cancellation-message { background: #f3f8f5; border-left: 3px solid #0f6b57; margin: 0; padding: 12px 14px; }
 .escrow-cancellation-message p { margin: 5px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.cancellation-transaction-record { display: grid; gap: 6px; min-width: 0; }
+.cancellation-transaction-record > span { color: #5a6862; font-size: .78rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.cancellation-transaction-record a { align-items: center; color: #0f6b57; display: flex; gap: 7px; min-width: 0; width: fit-content; }
+.cancellation-transaction-record code { font-size: .82rem; overflow-wrap: anywhere; word-break: break-all; }
 
 .escrow-work-guidance {
   align-items: start;

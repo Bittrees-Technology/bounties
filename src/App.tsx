@@ -2165,7 +2165,10 @@ export default function App() {
             <header className="settlement-completed-heading"><ShieldCheck size={24} aria-hidden="true" /><div><span>Canonical terminal record</span><h5>Escrow cancelled and refunded</h5><p>The cancellation completed before the labor provider accepted the bounty terms.</p></div></header>
             {observation?.cancellation_message ? <blockquote className="escrow-cancellation-message"><strong>Capital provider’s message</strong><p>{observation.cancellation_message}</p></blockquote> : null}
             <dl className="settlement-terminal-meta"><div><dt>Network</dt><dd>{chain.name}</dd></div><div><dt>Final onchain status</dt><dd><span className="terminal-status-badge">Cancelled</span></dd></div><div><dt>Final escrow balance</dt><dd>{finalEscrowBalance}</dd></div></dl>
-            {cancellationTransactionUrl ? <a className="settlement-receipt-link" href={cancellationTransactionUrl} target="_blank" rel="noreferrer noopener">View cancellation transaction <ExternalLink size={14} /></a> : null}
+            {cancellationTransactionUrl && cancellationTransactionHash ? <div className="cancellation-transaction-record">
+              <span>Cancellation transaction</span>
+              <a href={cancellationTransactionUrl} target="_blank" rel="noreferrer noopener"><code>{cancellationTransactionHash}</code><ExternalLink size={14} /></a>
+            </div> : <p className="form-hint settlement-link-unavailable">The cancellation transaction is still being indexed.</p>}
           </section>
         </section>
       );
@@ -2834,7 +2837,7 @@ export default function App() {
 
         {escrowControls(order)}
 
-        {order.escrowObservation && !["Settled", "PartiallyCompleted"].includes(order.escrowObservation.onchain_state ?? "") ? (
+        {order.escrowObservation && !["Settled", "PartiallyCompleted", "Cancelled", "Refunded", "Released"].includes(order.escrowObservation.onchain_state ?? "") ? (
           <div className="escrow-lifecycle-controls" role="group" aria-label="Escrow lifecycle controls">
             {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}

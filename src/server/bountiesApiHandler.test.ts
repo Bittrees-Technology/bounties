@@ -1570,6 +1570,74 @@ describe("canonical escrow state endpoint", () => {
     });
   });
 
+  it("retains the canonical cancellation transaction when no optional message was supplied", async () => {
+    const cancellationTxHash = `0x${"cd".repeat(32)}`;
+    const cancellationInterface = new Interface([
+      "function cancelBounty(uint256 bountyId)",
+      "event BountyCancelled(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 refundedAmount)"
+    ]);
+    const encodedEvent = cancellationInterface.encodeEventLog(
+      cancellationInterface.getEvent("BountyCancelled")!,
+      [10n, session.wallet_address, tokenAddress, 100n]
+    );
+    const call = cancellationInterface.encodeFunctionData("cancelBounty", [10n]);
+    contractGetBountyMock.mockResolvedValue({
+      requester: session.wallet_address,
+      provider: canonicalContext.providerWallet,
+      token: tokenAddress,
+      amount: 0n,
+      reviewDeadline: 0n,
+      state: 6n,
+      settlementProposer: zeroAddress,
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: 100n,
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash
+    });
+    providerGetReceiptMock.mockResolvedValue({
+      status: 1,
+      blockNumber: 90,
+      logs: [{ address: canonicalContext.contractAddress, topics: encodedEvent.topics, data: encodedEvent.data }]
+    });
+    providerGetTransactionMock.mockResolvedValue({
+      to: canonicalContext.contractAddress,
+      from: session.wallet_address,
+      data: call
+    });
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({ data: bountyProjection(), error: null });
+      if (name === "app_record_escrow_state" || name === "app_record_escrow_cancellation") {
+        return Promise.resolve({ data: args, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(new Request("https://bounties.bittrees.org/api/bounties/escrow/state", {
+      method: "POST",
+      headers: {
+        cookie: "bounties_session=opaque-session",
+        "content-type": "application/json",
+        origin: "https://bounties.bittrees.org",
+        "x-csrf-token": "opaque-csrf"
+      },
+      body: JSON.stringify({ bountyId, txHash: cancellationTxHash })
+    }), "escrow/state");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_cancellation", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_message: null,
+      p_message_hash: null,
+      p_transaction_hash: cancellationTxHash,
+      p_refunded_base_units: "100"
+    });
+  });
+
   it("discovers and preserves an existing exact settlement split from its unique canonical receipt", async () => {
     const encoded = settlementInterface.encodeEventLog(
       settlementInterface.getEvent("BountySettled")!,
