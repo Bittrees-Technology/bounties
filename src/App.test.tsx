@@ -154,6 +154,13 @@ describe("App", () => {
     expect(order.getByText(/Marketplace Ops/i)).toBeInTheDocument();
     expect(order.getByText(/250 USDC/i)).toBeInTheDocument();
     expect(order.getByText(/Open request/i)).toBeInTheDocument();
+    expect(order.getByRole("heading", { name: /^description$/i })).toBeInTheDocument();
+    expect(order.getByText(/^Marketplace$/i)).toBeInTheDocument();
+    expect(order.getByRole("heading", { name: /^resources provided$/i })).toBeInTheDocument();
+    expect(order.getByText(/Project brief and source files/i)).toBeInTheDocument();
+    expect(order.getByRole("heading", { name: /^acceptance criteria$/i })).toBeInTheDocument();
+    expect(order.getByText(/Delivery matches the approved scope/i)).toBeInTheDocument();
+    expect(order.queryByRole("heading", { name: /^participant reviews$/i })).not.toBeInTheDocument();
     expect(order.queryByText(/source_verification_unavailable/i)).not.toBeInTheDocument();
     expect(order.getByText(/source verification was not available during inspection/i)).toBeInTheDocument();
   });
@@ -165,8 +172,7 @@ describe("App", () => {
     const order = await publishBounty(user, "Report interaction boundary");
     const reportSummary = order.getByText(/report this listing/i);
     const reportControl = reportSummary.closest("details") as HTMLDetailsElement;
-    const reviewPanel = order.getByRole("heading", { name: /^participant reviews$/i }).closest("section") as HTMLElement;
-    expect(reviewPanel.compareDocumentPosition(reportControl) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(order.queryByRole("heading", { name: /^participant reviews$/i })).not.toBeInTheDocument();
 
     await user.click(reportSummary);
     expect(reportControl.open).toBe(true);
@@ -924,7 +930,10 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
 
     const order = within((await screen.findByRole("heading", { name: /linked bounty/i })).closest("article") as HTMLElement);
-    expect(order.getByRole("link", { name: /https:\/\/example\.com\/spec/i })).toHaveAttribute("href", "https://example.com/spec");
+    const terms = order.getByRole("region", { name: /bounty terms/i });
+    expect(within(terms).getByRole("link", { name: /https:\/\/example\.com\/spec/i })).toHaveAttribute("href", "https://example.com/spec");
+    expect(within(terms).getByRole("heading", { name: /resources provided/i })).toBeInTheDocument();
+    expect(within(terms).getByRole("heading", { name: /acceptance criteria/i })).toBeInTheDocument();
     expect(order.getByRole("link", { name: /chirpy/i })).toHaveAttribute("href", "https://chirpy.bittrees.org");
   });
 

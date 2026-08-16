@@ -1479,7 +1479,8 @@ export default function App() {
   const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
   const isProvider = (order: MarketplaceOrder) => order.providerId === session?.account.id;
   const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
-  const mayReview = (order: MarketplaceOrder) => isParticipant(order) && ["Released", "Settled", "PartiallyCompleted"].includes(order.escrowObservation?.onchain_state ?? "");
+  const bountyIsCompleted = (order: MarketplaceOrder) => ["Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "");
+  const mayReview = (order: MarketplaceOrder) => isParticipant(order) && bountyIsCompleted(order);
 
   async function readCanonicalEscrow(client: EscrowClient, ref: EscrowOrderRef): Promise<CanonicalEscrowFallback> {
     const escrow = await client.readEscrow(ref);
@@ -2219,7 +2220,7 @@ export default function App() {
     return (
       <section className="review-panel" aria-label={`Reviews for ${order.title}`}>
         <div className="review-heading"><Star size={17} /><h5>Participant reviews</h5></div>
-        {order.escrowObservation?.onchain_state === "Settled" && isParticipant(order) ? <p className="settlement-review-cue"><CheckCircle2 size={16} aria-hidden="true" /> Settlement is complete. Both parties can now review the work and payment experience.</p> : null}
+        {isParticipant(order) ? <p className="settlement-review-cue"><CheckCircle2 size={16} aria-hidden="true" /> This bounty is complete. Both parties can now review the work and payment experience.</p> : null}
         {participantReviews.length ? participantReviews.map((review) => (
           <article id={`review-${review.id}`} className={`review-row ${review.moderation_status === "hidden" ? "content-hidden" : ""}`} key={review.id}>
             <div>
@@ -2255,9 +2256,6 @@ export default function App() {
             <label>{isBuyer(order) ? "Comment on the work delivered (optional)" : "Comment on the payment experience (optional)"}<textarea name="body" maxLength={2000} /></label>
             <button type="submit">Publish review</button>
           </form>
-        ) : null}
-        {isParticipant(order) && order.escrowObservation && !mayReview(order) ? (
-          <p className="form-hint">Reviews unlock only after the API re-verifies a Released, Settled, or Partially completed onchain escrow state.</p>
         ) : null}
       </section>
     );
@@ -2628,7 +2626,20 @@ export default function App() {
             <div><span className="scope">{workTypeLabel(order.scope)} · {order.category}</span><h2>{order.title}</h2></div>
             {fundingSummary(order)}
           </div>
-          <p className="bounty-description">{linkedDescription(order.project)}</p>
+          <section className="bounty-terms" aria-label="Bounty terms">
+            <article className="bounty-term bounty-term--description">
+              <div className="bounty-term-heading"><ClipboardList size={18} aria-hidden="true" /><h3>Description</h3></div>
+              <p className="bounty-description">{linkedDescription(order.project)}</p>
+            </article>
+            <article className="bounty-term">
+              <div className="bounty-term-heading"><BriefcaseBusiness size={18} aria-hidden="true" /><h3>Resources provided</h3></div>
+              {order.support.length ? <ul>{order.support.map((resource, index) => <li key={`${resource}-${index}`}>{linkedDescription(resource)}</li>)}</ul> : <p className="bounty-term-empty">No additional resources were provided.</p>}
+            </article>
+            <article className="bounty-term">
+              <div className="bounty-term-heading"><FileCheck2 size={18} aria-hidden="true" /><h3>Acceptance criteria</h3></div>
+              {order.criteria.length ? <ul>{order.criteria.map((criterion) => <li key={criterion.id}><CheckCircle2 size={15} aria-hidden="true" />{linkedDescription(criterion.label)}</li>)}</ul> : <p className="bounty-term-empty">No additional acceptance criteria were provided.</p>}
+            </article>
+          </section>
           <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
           <div className="participant-links">
             {isBuyer(order) && wallet ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={wallet} currentWallet={wallet} knownIdentity={session?.account.display_name} onOpenProfile={openProfile} /></span> : null}
@@ -2651,7 +2662,7 @@ export default function App() {
           {providerSubmissionGuidance(order)}
           {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
           {lifecycle(order)}
-          {reviews(order)}
+          {bountyIsCompleted(order) ? reviews(order) : null}
           <div className="content-actions bounty-report-action">{reportForm("bounty", order.id)}</div>
         </article>
       </>

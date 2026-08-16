@@ -1892,6 +1892,32 @@ li {
   white-space: pre-wrap;
 }
 
+.bounty-terms {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bounty-term {
+  background: #f6faf8;
+  border: 1px solid #d6e4dc;
+  border-radius: 14px;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.bounty-term--description { grid-column: 1 / -1; }
+.bounty-term-heading { align-items: center; color: #0f6b57; display: flex; gap: 8px; }
+.bounty-term-heading h3 { color: #17201c; font-family: "Fraunces", Georgia, serif; font-size: 1.05rem; margin: 0; }
+.bounty-term p { margin: 0; }
+.bounty-term ul { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.bounty-term li { align-items: flex-start; color: #46564e; display: flex; gap: 7px; line-height: 1.5; overflow-wrap: anywhere; }
+.bounty-term li > svg { color: #0f6b57; flex: 0 0 auto; margin-top: 3px; }
+.bounty-term a { color: #0f6b57; display: inline-flex; font-weight: 750; gap: 3px; text-decoration: underline; text-underline-offset: 2px; }
+.bounty-term-empty { color: #5a6861; }
+
 .bounty-description a,
 .bounty-contact a {
   color: #0f6b57;
@@ -1927,6 +1953,8 @@ li {
   .columns, .form-grid, .proposal-form { grid-template-columns: 1fr; }
   .proposal-form .wide-field, .proposal-form button { grid-column: auto; }
   .bounty-card-header, .milestone-row, .proposal-row { display: grid; }
+  .bounty-terms { grid-template-columns: 1fr; }
+  .bounty-term--description { grid-column: auto; }
   .milestone-meta { justify-items: start; }
   .session-alert { align-items: flex-start; flex-wrap: wrap; }
   .session-alert button { margin-left: 0; }

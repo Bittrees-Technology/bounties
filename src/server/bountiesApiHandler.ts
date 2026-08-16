@@ -1961,7 +1961,7 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (action === "reviews" && method === "POST") {
     const bountyId = requiredUuid(body, "bountyId");
     const observed = await persistCanonicalEscrowState(session, bountyId);
-    if (!["Released", "Settled", "PartiallyCompleted"].includes(observed.onchain_state)) {
+    if (!["Released", "Settled"].includes(observed.onchain_state)) {
       throw new ApiError("TERMINAL_ESCROW_VERIFICATION_REQUIRED", 409);
     }
     const data = await callRpc("app_create_participant_review", {

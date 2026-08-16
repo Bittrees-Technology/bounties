@@ -349,7 +349,7 @@ it("supports a canonical non-file record and keeps exact file fingerprinting ava
   const settlement = order.getByRole("region", { name: /optional mutual settlement/i });
   const proofComposer = order.getByRole("form", { name: /delivery proof composer for phase two/i });
   const lifecycleControls = order.getByRole("group", { name: /escrow lifecycle controls/i });
-  const reviewPanel = order.getByRole("region", { name: /reviews for two-phase active milestone/i });
+  expect(order.queryByRole("region", { name: /reviews for two-phase active milestone/i })).not.toBeInTheDocument();
 
   const deliveryFormat = within(proofComposer).getByLabelText(/delivery format/i);
   expect(deliveryFormat).toHaveValue("description");
@@ -383,7 +383,6 @@ it("supports a canonical non-file record and keeps exact file fingerprinting ava
   expect(within(settlement).getByText(/settle by mutual agreement/i)).toBeInTheDocument();
   expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
   expect(within(lifecycleControls).getByRole("button", { name: /refresh canonical escrow state/i })).toBeInTheDocument();
-  expect(lifecycleControls.compareDocumentPosition(reviewPanel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const settlementInput = within(settlement).getByLabelText(/your amount \(USDC\)/i);
   const settlementButton = within(settlement).getByRole("button", { name: /propose settlement split/i });
   const splitEditor = within(settlement).getByRole("group", { name: /expected settlement outcome/i });
