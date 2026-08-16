@@ -116,6 +116,9 @@ export interface MarketplaceOrder {
   providerId?: string;
   tokenRecord?: import("./persistence/supabase").TokenRecord;
   escrowObservation?: import("./persistence/supabase").EscrowObservation;
+  cancellationMessage?: string;
+  cancellationMessageHash?: `0x${string}`;
+  cancellationTransactionHash?: `0x${string}`;
   escrowScheduleStatus?: "structured" | "requires_recreation";
   fundOnApplicantAcceptance?: boolean;
   milestoneFundingMode?: "full" | "staged";

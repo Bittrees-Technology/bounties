@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createHash } from "node:crypto";
 import { AbiCoder, Interface, keccak256, toUtf8Bytes } from "ethers";
 
 const {
@@ -11,6 +12,7 @@ const {
   providerGetNetworkMock,
   providerLookupAddressMock,
   providerGetReceiptMock,
+  providerGetTransactionMock,
   resolveSharedAuditAccessMock,
   resolveSharedModeratorMock,
   rpcMock
@@ -24,6 +26,7 @@ const {
   providerGetNetworkMock: vi.fn(),
   providerLookupAddressMock: vi.fn(),
   providerGetReceiptMock: vi.fn(),
+  providerGetTransactionMock: vi.fn(),
   resolveSharedAuditAccessMock: vi.fn().mockResolvedValue({
     status: "not_authorized",
     role: null,
@@ -44,6 +47,7 @@ vi.mock("ethers", async (importOriginal) => {
       getNetwork = providerGetNetworkMock;
       lookupAddress = providerLookupAddressMock;
       getTransactionReceipt = providerGetReceiptMock;
+      getTransaction = providerGetTransactionMock;
     },
     Contract: class {
       getBounty = contractGetBountyMock;
@@ -1436,6 +1440,7 @@ describe("canonical escrow state endpoint", () => {
     providerGetBlockNumberMock.mockReset();
     providerGetLogsMock.mockReset();
     providerGetReceiptMock.mockReset();
+    providerGetTransactionMock.mockReset();
     contractGetBountyMock.mockReset().mockResolvedValue({
       amount: 100n,
       reviewDeadline: 0n,
@@ -1491,6 +1496,78 @@ describe("canonical escrow state endpoint", () => {
       p_current_milestone_detail: expect.objectContaining({ state: "Pending", amount_base_units: "100" })
     }));
     expect(databaseFromMock).not.toHaveBeenCalled();
+  });
+
+  it("verifies and stores the same public cancellation message onchain and offchain", async () => {
+    const message = "The project scope changed before work began.";
+    const messageHash = `0x${createHash("sha256").update(message, "utf8").digest("hex")}`;
+    const cancellationTxHash = `0x${"cc".repeat(32)}`;
+    const cancellationInterface = new Interface([
+      "function cancelBounty(uint256 bountyId)",
+      "event BountyCancelled(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 refundedAmount)"
+    ]);
+    const encodedEvent = cancellationInterface.encodeEventLog(
+      cancellationInterface.getEvent("BountyCancelled")!,
+      [10n, session.wallet_address, tokenAddress, 100n]
+    );
+    const call = cancellationInterface.encodeFunctionData("cancelBounty", [10n]);
+    const suffix = AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [messageHash, message]);
+    contractGetBountyMock.mockResolvedValue({
+      requester: session.wallet_address,
+      provider: canonicalContext.providerWallet,
+      token: tokenAddress,
+      amount: 0n,
+      reviewDeadline: 0n,
+      state: 6n,
+      settlementProposer: zeroAddress,
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: 100n,
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash
+    });
+    providerGetBlockNumberMock.mockResolvedValue(101);
+    providerGetReceiptMock.mockResolvedValue({
+      status: 1,
+      blockNumber: 90,
+      logs: [{ address: canonicalContext.contractAddress, topics: encodedEvent.topics, data: encodedEvent.data }]
+    });
+    providerGetTransactionMock.mockResolvedValue({
+      to: canonicalContext.contractAddress,
+      from: session.wallet_address,
+      data: `${call}${suffix.slice(2)}`
+    });
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({ data: bountyProjection(), error: null });
+      if (name === "app_record_escrow_state" || name === "app_record_escrow_cancellation") {
+        return Promise.resolve({ data: args, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(new Request("https://bounties.bittrees.org/api/bounties/escrow/state", {
+      method: "POST",
+      headers: {
+        cookie: "bounties_session=opaque-session",
+        "content-type": "application/json",
+        origin: "https://bounties.bittrees.org",
+        "x-csrf-token": "opaque-csrf"
+      },
+      body: JSON.stringify({ bountyId, txHash: cancellationTxHash, cancellationMessage: message, cancellationMessageHash: messageHash })
+    }), "escrow/state");
+
+    expect(response.status).toBe(200);
+    expect(rpcMock).toHaveBeenCalledWith("app_record_escrow_cancellation", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_message: message,
+      p_message_hash: messageHash,
+      p_transaction_hash: cancellationTxHash,
+      p_refunded_base_units: "100"
+    });
   });
 
   it("discovers and preserves an existing exact settlement split from its unique canonical receipt", async () => {

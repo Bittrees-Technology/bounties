@@ -33,8 +33,10 @@ const bountyEscrowInterface = new Interface([
   "function getBounty(uint256 bountyId) view returns ((address requester,address provider,address token,uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint8 state,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,bytes32 acceptedTermsHash,bytes32 evidenceHash,bytes32 approvalHash,address settlementProposer,uint256 proposedProviderPayout,uint64 settlementProposalExpiry,uint256 allocatedAmount,uint256 releasedAmount,uint32 milestoneCount,uint32 currentMilestone,bytes32 scheduleHash) bounty)",
   "function getMilestone(uint256 bountyId,uint256 milestoneIndex) view returns ((uint256 amount,uint64 deliveryDeadline,uint64 reviewDeadline,uint64 revisionDeadline,uint8 state,bytes32 evidenceHash,bytes32 previousEvidenceHash,bytes32 approvalHash,bytes32 revisionReasonHash,bool revisionRequested) milestone)",
   "function fundedMilestoneCount(uint256 bountyId) view returns (uint32)",
+  "function cancelBounty(uint256 bountyId)",
   "event BountyCreated(uint256 indexed bountyId,address indexed requester,address indexed token,address provider,uint256 requestedAmount,bytes32 scopeHash,bytes32 proposalHash,bytes32 termsHash,uint64 deliveryDeadline)",
   "event BountyFunded(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 amount)",
+  "event BountyCancelled(uint256 indexed bountyId,address indexed requester,address indexed token,uint256 refundedAmount)",
   "event BountySettled(uint256 indexed bountyId,address indexed provider,address indexed requester,address token,address proposer,address acceptor,uint256 providerPayout,uint256 requesterRefund)",
   "event MilestoneRevisionRequested(uint256 indexed bountyId,uint256 indexed milestoneIndex,address indexed requester,bytes32 reasonHash,uint64 revisionDeadline)"
 ]);
@@ -76,6 +78,10 @@ type VerifiedSettlementReceipt = {
   transactionHash: string;
   providerPayoutBaseUnits: string;
   requesterRefundBaseUnits: string;
+};
+type VerifiedCancellationReceipt = {
+  transactionHash: string;
+  refundedBaseUnits: string;
 };
 type CanonicalMilestoneContext = {
   milestoneId: string;
@@ -1454,6 +1460,66 @@ async function verifySettlementReceipt(
   };
 }
 
+async function verifyCancellationReceipt(
+  session: Session,
+  bountyId: string,
+  txHash: string,
+  message: string,
+  messageHash: string
+): Promise<VerifiedCancellationReceipt> {
+  const computedHash = `0x${createHash("sha256").update(message, "utf8").digest("hex")}`;
+  if (computedHash !== messageHash.toLowerCase()) throw new ApiError("ESCROW_CANCELLATION_MESSAGE_HASH_MISMATCH", 400);
+
+  const source = await escrowStateSource(session, bountyId);
+  const providerUrl = configuredServerRpcUrl(source.chainId);
+  if (!providerUrl) throw new ApiError("ESCROW_RPC_UNAVAILABLE", 503);
+  const provider = new JsonRpcProvider(providerUrl);
+  const network = await withTimeout(provider.getNetwork(), "ESCROW_RPC_TIMEOUT");
+  if (Number(network.chainId) !== source.chainId) throw new ApiError("ESCROW_CHAIN_MISMATCH", 503);
+  const [receipt, transaction] = await Promise.all([
+    withTimeout(provider.getTransactionReceipt(txHash), "ESCROW_RPC_TIMEOUT"),
+    withTimeout(provider.getTransaction(txHash), "ESCROW_RPC_TIMEOUT")
+  ]);
+  if (!receipt || !transaction) throw new ApiError("ESCROW_RECEIPT_NOT_FOUND", 404);
+  if (receipt.status !== 1) throw new ApiError("ESCROW_TX_NOT_SUCCESSFUL", 400);
+  if (!transaction.to || getAddress(transaction.to) !== source.contractAddress) throw new ApiError("ESCROW_CONTRACT_MISMATCH", 400);
+
+  const call = bountyEscrowInterface.encodeFunctionData("cancelBounty", [BigInt(source.onchainBountyId)]);
+  const suffix = AbiCoder.defaultAbiCoder().encode(["bytes32", "string"], [messageHash, message]);
+  if (transaction.data.toLowerCase() !== `${call}${suffix.slice(2)}`.toLowerCase()) {
+    throw new ApiError("ESCROW_CANCELLATION_MESSAGE_MISMATCH", 400);
+  }
+
+  const cancelled = receipt.logs.flatMap((log) => {
+    try {
+      if (getAddress(log.address) !== source.contractAddress) return [];
+      const parsed = bountyEscrowInterface.parseLog({ topics: log.topics as string[], data: log.data });
+      if (parsed?.name !== "BountyCancelled") return [];
+      return [{
+        bountyId: parsed.args.bountyId.toString(),
+        requester: getAddress(String(parsed.args.requester)),
+        token: getAddress(String(parsed.args.token)),
+        refunded: BigInt(parsed.args.refundedAmount)
+      }];
+    } catch {
+      return [];
+    }
+  });
+  if (cancelled.length !== 1 || cancelled[0].bountyId !== source.onchainBountyId) {
+    throw new ApiError("ESCROW_CANCELLATION_EVENT_MISMATCH", 400);
+  }
+  requireSameAddress(cancelled[0].requester, transaction.from, "ESCROW_BUYER_MISMATCH");
+  const contract = new Contract(source.contractAddress, bountyEscrowInterface, provider);
+  const record = await withTimeout(
+    contract.getBounty(BigInt(source.onchainBountyId), { blockTag: receipt.blockNumber }),
+    "ESCROW_STATE_TIMEOUT"
+  ) as { requester: string; token: string; amount: bigint; state: bigint };
+  requireSameAddress(cancelled[0].requester, record.requester, "ESCROW_BUYER_MISMATCH");
+  requireSameAddress(cancelled[0].token, record.token, "ESCROW_TOKEN_MISMATCH");
+  if (record.state !== 6n || record.amount !== 0n) throw new ApiError("ESCROW_CANCELLATION_POST_STATE_INVALID", 409);
+  return { transactionHash: txHash.toLowerCase(), refundedBaseUnits: cancelled[0].refunded.toString() };
+}
+
 async function discoverSettlementReceipt(session: Session, bountyId: string): Promise<VerifiedSettlementReceipt> {
   const source = await escrowStateSource(session, bountyId);
   const providerUrl = configuredServerRpcUrl(source.chainId);
@@ -1556,8 +1622,19 @@ async function readCanonicalEscrowState(session: Session, bountyId: string) {
   };
 }
 
-async function persistCanonicalEscrowState(session: Session, bountyId: string, txHash?: string) {
+async function persistCanonicalEscrowState(
+  session: Session,
+  bountyId: string,
+  txHash?: string,
+  cancellation?: { message: string; messageHash: string }
+) {
   const observed = await readCanonicalEscrowState(session, bountyId);
+  if (cancellation && (!txHash || observed.onchainState !== "Cancelled")) {
+    throw new ApiError("ESCROW_CANCELLATION_POST_STATE_INVALID", 409);
+  }
+  const cancelled = cancellation && txHash
+    ? await verifyCancellationReceipt(session, bountyId, txHash, cancellation.message, cancellation.messageHash)
+    : null;
   const settlement = txHash
     ? await verifySettlementReceipt(session, bountyId, txHash)
     : observed.onchainState === "Settled" && !observed.source.settlementTransactionHash
@@ -1582,6 +1659,17 @@ async function persistCanonicalEscrowState(session: Session, bountyId: string, t
     p_schedule_hash: observed.scheduleHash,
     p_current_milestone_detail: observed.currentMilestoneDetail
   });
+  if (cancelled && cancellation) {
+    const cancellationRecord = await callRpc<Record<string, unknown>>("app_record_escrow_cancellation", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId,
+      p_message: cancellation.message,
+      p_message_hash: cancellation.messageHash,
+      p_transaction_hash: cancelled.transactionHash,
+      p_refunded_base_units: cancelled.refundedBaseUnits
+    });
+    return { ...record, ...cancellationRecord, onchain_state: observed.onchainState, current_milestone: observed.currentMilestone };
+  }
   if (settlement) {
     const settledRecord = await callRpc<Record<string, unknown>>("app_record_settlement_result", {
       p_actor_id: session.account_id,
@@ -1972,7 +2060,21 @@ async function handle(request: Request, action: string): Promise<Response> {
   if (action === "escrow/state" && method === "POST") {
     const bountyId = requiredUuid(body, "bountyId");
     const txHash = body.txHash === undefined ? undefined : transactionHash(body, "txHash");
-    return Response.json(await persistCanonicalEscrowState(session, bountyId, txHash), { headers });
+    const rawMessage = optionalString(body, "cancellationMessage");
+    const rawMessageHash = optionalString(body, "cancellationMessageHash");
+    if ((rawMessage === null) !== (rawMessageHash === null)) throw new ApiError("INVALID_ESCROW_CANCELLATION_MESSAGE", 400);
+    const message = rawMessage?.trim() ?? null;
+    const messageHash = rawMessageHash?.toLowerCase() ?? null;
+    if (message !== null && (!message || message.length > 500 || hasDisallowedPlainTextControl(message)
+      || !messageHash || !/^0x[0-9a-f]{64}$/.test(messageHash))) {
+      throw new ApiError("INVALID_ESCROW_CANCELLATION_MESSAGE", 400);
+    }
+    return Response.json(await persistCanonicalEscrowState(
+      session,
+      bountyId,
+      txHash,
+      message && messageHash ? { message, messageHash } : undefined
+    ), { headers });
   }
 
   if (action === "revisions" && method === "POST") {

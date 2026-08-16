@@ -1,4 +1,4 @@
-import { decodeFunctionResult, encodeFunctionData, formatUnits, parseAbi, toFunctionSelector } from "viem";
+import { concatHex, decodeFunctionResult, encodeFunctionData, formatUnits, parseAbi, toFunctionSelector } from "viem";
 import { BOUNTY_ESCROW_ABI, ESCROW_BOUNDARY_ABI } from "./abi";
 import { EscrowClientError } from "./errors";
 import { assertIntegrationEnabled } from "./guardrails";
@@ -6,6 +6,7 @@ import { hashMilestoneSchedule, hashMilestoneTerms } from "./hashCodec";
 import type {
   ChainConfig,
   ChecksumAddress,
+  EscrowCancellationInput,
   EscrowClient,
   EscrowDeliveryInput,
   EscrowEvent,
@@ -318,7 +319,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     args: readonly unknown[],
     funding?: EscrowFundingInput,
     confirmEoa = false,
-    creationTermsHash?: `0x${string}`
+    creationTermsHash?: `0x${string}`,
+    calldataSuffix?: `0x${string}`
   ): Promise<EscrowTxResult> {
     const { mode, provider, account } = await selectEscrowProvider(options, chainId);
     if (mode === "eoa") await switchProviderChain(provider, options.chain);
@@ -345,9 +347,10 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
         );
       }
     }
+    const encodedCall = encodeFunctionData({ abi: BOUNTY_ESCROW_ABI, functionName, args: args as never });
     const contractCall: WalletCall = {
       to: contractAddress,
-      data: encodeFunctionData({ abi: BOUNTY_ESCROW_ABI, functionName, args: args as never }),
+      data: calldataSuffix ? concatHex([encodedCall, calldataSuffix]) : encodedCall,
       value: "0x0"
     };
     let approvalCalls: WalletCall[] = [];
@@ -471,7 +474,8 @@ export function createViemEscrowAdapter(options: ViemEscrowAdapterOptions): Escr
     acceptSettlement: async (order, settlement) =>
       send("acceptSettlement", [requiredOnchainId(order), requiredSettlementPayout(settlement)]),
     cancelSettlementProposal: async (order) => send("cancelSettlementProposal", [requiredOnchainId(order)]),
-    cancelEscrow: async (order) => send("cancelBounty", [requiredOnchainId(order)]),
+    cancelEscrow: async (order, cancellation?: EscrowCancellationInput) =>
+      send("cancelBounty", [requiredOnchainId(order)], undefined, Boolean(cancellation), undefined, cancellation?.calldataSuffix),
     claimTimeoutRefund: async (order) => send("refundBounty", [requiredOnchainId(order)]),
     closeUnfundedBounty: async (order) => send("closeUnfundedBounty", [requiredOnchainId(order)]),
     readEscrow,

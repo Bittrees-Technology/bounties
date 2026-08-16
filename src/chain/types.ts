@@ -220,6 +220,11 @@ export interface EscrowRevisionInput {
   reasonHash: `0x${string}`;
 }
 
+export interface EscrowCancellationInput {
+  /** ABI-encoded bytes32 SHA-256 fingerprint plus public plain-text reason. */
+  calldataSuffix: `0x${string}`;
+}
+
 /**
  * Typed boundary between the marketplace UI and escrow settlement. Production construction remains
  * gated behind CHAIN_INTEGRATION_ENABLED; test doubles live only in direct test modules.
@@ -239,7 +244,7 @@ export interface EscrowClient {
   proposeSettlement(order: EscrowOrderRef, settlement: EscrowSettlementInput): Promise<EscrowTxResult>;
   acceptSettlement(order: EscrowOrderRef, settlement: EscrowSettlementInput): Promise<EscrowTxResult>;
   cancelSettlementProposal(order: EscrowOrderRef): Promise<EscrowTxResult>;
-  cancelEscrow(order: EscrowOrderRef): Promise<EscrowTxResult>;
+  cancelEscrow(order: EscrowOrderRef, cancellation?: EscrowCancellationInput): Promise<EscrowTxResult>;
   claimTimeoutRefund(order: EscrowOrderRef): Promise<EscrowTxResult>;
   closeUnfundedBounty(order: EscrowOrderRef): Promise<EscrowTxResult>;
   readEscrow(order: EscrowOrderRef): Promise<EscrowOnchainRecord>;

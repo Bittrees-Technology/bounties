@@ -3695,6 +3695,22 @@ textarea {
   grid-template-columns: minmax(190px, 1fr) auto;
 }
 
+.escrow-actions .escrow-cancellation-form {
+  align-items: start;
+  background: #fff9e8;
+  border: 1px solid #dccb91;
+  border-radius: 12px;
+  grid-template-columns: minmax(0, 1fr);
+  max-width: 680px;
+  padding: 14px;
+}
+.escrow-cancellation-form label { min-width: 0; width: 100%; }
+.escrow-cancellation-form textarea { box-sizing: border-box; min-height: 92px; min-width: 0; width: 100%; }
+.escrow-cancellation-form .form-hint { margin: 0; max-width: 62ch; }
+.escrow-cancellation-form button { justify-self: start; }
+.escrow-cancellation-message { background: #f3f8f5; border-left: 3px solid #0f6b57; margin: 0; padding: 12px 14px; }
+.escrow-cancellation-message p { margin: 5px 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+
 .escrow-work-guidance {
   align-items: start;
   background: #fff9e8;
@@ -4069,6 +4085,7 @@ textarea {
   .escrow-work-guidance a { grid-column: 1 / -1; justify-content: center; text-align: center; white-space: normal; width: 100%; }
   .escrow-settlement-form button,
   .escrow-settlement-panel > button { width: 100%; }
+  .escrow-cancellation-form button { width: 100%; }
   .escrow-lifecycle-controls > button { width: 100%; }
   .settlement-split-grid { grid-template-columns: minmax(0, 1fr); }
   .settlement-terminal-meta { grid-template-columns: minmax(0, 1fr); }

@@ -608,6 +608,22 @@ describe("escrow adapter provider support", () => {
     expect(eoaProvider.calls.some((call) => call.method === "eth_getTransactionReceipt")).toBe(true);
   });
 
+  it("appends a public cancellation record without changing the escrow function", async () => {
+    const eoaProvider = new RecordingProvider();
+    const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });
+    const calldataSuffix = `0x${"ab".repeat(96)}` as const;
+
+    await adapter.cancelEscrow(createOrder(), { calldataSuffix });
+
+    const send = eoaProvider.calls.find((call) => call.method === "eth_sendTransaction");
+    const transaction = (send?.params as Array<{ data: `0x${string}` }>)[0];
+    expect(decodeFunctionData({ abi: BOUNTY_ESCROW_ABI, data: transaction.data })).toEqual({
+      functionName: "cancelBounty",
+      args: [7n]
+    });
+    expect(transaction.data.endsWith(calldataSuffix.slice(2))).toBe(true);
+  });
+
   it("encodes exact bilateral settlement proposals and acceptance, including a zero payout", async () => {
     const eoaProvider = new RecordingProvider();
     const adapter = createViemEscrowAdapter({ chain, eoaProvider, preferSmartWallet: false, integrationEnabled: true });

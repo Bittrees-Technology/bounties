@@ -854,6 +854,28 @@ contract BountyEscrowTest is Test {
         escrow.cancelBounty(acceptedId);
     }
 
+    function testCancellationIgnoresAppendedPublicReasonCalldata() public {
+        uint256 amount = 250 ether;
+        uint64 deadline = uint64(block.timestamp + 2 days);
+        bytes32 scopeHash = _scopeHash(amount, deadline, METADATA_HASH, bytes32(uint256(152)));
+        vm.prank(requester);
+        uint256 bountyId = escrow.createBounty(address(token), amount, deadline, scopeHash, provider, PROPOSAL_HASH);
+        uint256 requesterBefore = token.balanceOf(requester);
+        bytes32 reasonHash = sha256(bytes("Scope changed after selection."));
+        bytes memory publicReason = abi.encode(reasonHash, "Scope changed after selection.");
+
+        vm.prank(requester);
+        (bool success,) = address(escrow).call(
+            bytes.concat(abi.encodeCall(escrow.cancelBounty, (bountyId)), publicReason)
+        );
+
+        assertTrue(success);
+        BountyEscrow.Bounty memory cancelled = escrow.getBounty(bountyId);
+        assertEq(uint256(cancelled.state), uint256(IBountyEscrow.State.Cancelled));
+        assertEq(cancelled.amount, 0);
+        assertEq(token.balanceOf(requester), requesterBefore + amount);
+    }
+
     function testFundedCancellationRefundFailureRollsBackStateAndLiability() public {
         RecipientBlockingERC20 blockingToken = new RecipientBlockingERC20();
         uint256 amount = 450 ether;

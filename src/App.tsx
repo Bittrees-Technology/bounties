@@ -87,6 +87,7 @@ import { SavedDeliveryDescription } from "./DeliveryDescription";
 import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFromBaseUnits, type ValidSettlementSplit } from "./settlementSplit";
 import { submitTokenReviewPayment, TOKEN_REVIEW_FEE_DISPLAY, tokenReviewPaymentPolicy } from "./tokenReviewPayment";
 import { FREE_TOKEN_SAFETY_REASONS, PAID_TOKEN_REVIEW_REASON } from "./tokenReportPolicy";
+import { buildEscrowCancellationMessage, MAX_CANCELLATION_MESSAGE_LENGTH } from "./cancellationMessage";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -1782,10 +1783,11 @@ export default function App() {
   async function submitEscrowTransaction(
     order: MarketplaceOrder,
     action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>,
-    observeCreation = false
+    observeCreation = false,
+    cancellation?: { message: string; messageHash: `0x${string}` }
   ) {
     await act(async () => {
-      await executeEscrowTransaction(order, action, observeCreation);
+      await executeEscrowTransaction(order, action, observeCreation, cancellation);
     });
   }
 
@@ -1948,7 +1950,8 @@ export default function App() {
   async function executeEscrowTransaction(
     order: MarketplaceOrder,
     action: (client: EscrowClient, ref: EscrowOrderRef) => Promise<{ txHash?: string }>,
-    observeCreation = false
+    observeCreation = false,
+    cancellation?: { message: string; messageHash: `0x${string}` }
   ) {
     const { client, ref } = escrowBoundary(order);
     const result = await action(client, ref);
@@ -1981,7 +1984,7 @@ export default function App() {
         // The server can still verify and persist the confirmed receipt.
       }
       try {
-        const refreshed = await refreshEscrowState(order.id, result.txHash);
+        const refreshed = await refreshEscrowState(order.id, result.txHash, cancellation);
         setSession((current) => current ? {
           ...current,
           orders: current.orders.map((candidate) => candidate.id === order.id && candidate.escrowObservation
@@ -1991,7 +1994,7 @@ export default function App() {
       } catch (caught) {
         // A direct canonical read is a safe temporary display fallback. The
         // selected-bounty reconciliation effect retries server persistence.
-        if (!canonical) throw caught;
+        if (!canonical || cancellation) throw caught;
       }
     }
     return result;
@@ -2151,6 +2154,23 @@ export default function App() {
       );
     }
 
+    if (state === "Cancelled") {
+      const cancellationTransactionHash = observation?.cancellation_transaction_hash;
+      const cancellationTransactionUrl = cancellationTransactionHash && /^0x[0-9a-fA-F]{64}$/.test(cancellationTransactionHash)
+        ? `${chain.blockExplorer}/tx/${cancellationTransactionHash}` : null;
+      return (
+        <section id={`escrow-actions-${order.id}`} className="escrow-actions escrow-actions-terminal" aria-label={`Wallet escrow actions for ${order.title}`}>
+          <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
+          <section className="settlement-completed-record" aria-label="Escrow cancelled and refunded">
+            <header className="settlement-completed-heading"><ShieldCheck size={24} aria-hidden="true" /><div><span>Canonical terminal record</span><h5>Escrow cancelled and refunded</h5><p>The cancellation completed before the labor provider accepted the bounty terms.</p></div></header>
+            {observation?.cancellation_message ? <blockquote className="escrow-cancellation-message"><strong>Capital provider’s message</strong><p>{observation.cancellation_message}</p></blockquote> : null}
+            <dl className="settlement-terminal-meta"><div><dt>Network</dt><dd>{chain.name}</dd></div><div><dt>Final onchain status</dt><dd><span className="terminal-status-badge">Cancelled</span></dd></div><div><dt>Final escrow balance</dt><dd>{finalEscrowBalance}</dd></div></dl>
+            {cancellationTransactionUrl ? <a className="settlement-receipt-link" href={cancellationTransactionUrl} target="_blank" rel="noreferrer noopener">View cancellation transaction <ExternalLink size={14} /></a> : null}
+          </section>
+        </section>
+      );
+    }
+
     return (
       <section id={`escrow-actions-${order.id}`} className="escrow-actions" aria-label={`Wallet escrow actions for ${order.title}`}>
         <div className="review-heading"><WalletCards size={17} /><h5>Wallet escrow</h5></div>
@@ -2239,10 +2259,29 @@ export default function App() {
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && !evidenceCommitmentMatches ? <p className="commitment-warning" role="alert">Delivery evidence does not match the current onchain milestone. Refresh canonical escrow state before reviewing or approving this work.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && !derivedApprovalHash ? <p className="commitment-warning" role="alert">The canonical approval commitment is not ready. Refresh this bounty before approving the milestone.</p> : null}
         {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>{releaseLabel}</button> : null}
-        {(state === "Created" || state === "Funded") && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? (
-          <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>
-            {state === "Funded" ? "Cancel and refund escrow" : "Cancel escrow"}
-          </button>
+        {state === "Created" && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? (
+          <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel escrow</button>
+        ) : null}
+        {state === "Funded" && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? (
+          <form className="escrow-cancellation-form" onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            void act(async () => {
+              const cancellation = await buildEscrowCancellationMessage(String(form.get("cancellationMessage") ?? ""));
+              await executeEscrowTransaction(
+                order,
+                (client, ref) => client.cancelEscrow(ref, cancellation ? { calldataSuffix: cancellation.calldataSuffix } : undefined),
+                false,
+                cancellation ? { message: cancellation.message, messageHash: cancellation.messageHash } : undefined
+              );
+            }, "Escrow cancelled and refunded.");
+          }}>
+            <label>Cancellation message (optional)
+              <textarea name="cancellationMessage" maxLength={MAX_CANCELLATION_MESSAGE_LENGTH} placeholder="Briefly explain why the funded bounty is being cancelled." />
+            </label>
+            <span className="form-hint">If entered, this message is saved with the bounty and permanently included in the public cancellation transaction.</span>
+            <button className="secondary-button" type="submit">Cancel and refund escrow</button>
+          </form>
         ) : null}
         {timeoutReady ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
         {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled", "PartiallyCompleted"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
