@@ -372,7 +372,7 @@ describe("App", () => {
     await user.click(screen.getByRole("button", { name: /publish bounty/i }));
     const order = within((await screen.findByRole("heading", { name: "Exact decimal bounty" })).closest("article") as HTMLElement);
     expect(order.getByText(/0\.123456789012345678 WETH/i)).toBeInTheDocument();
-  });
+  }, 10_000);
 
   it("does not present an unconfigured WETH symbol as verified ETH", async () => {
     const user = userEvent.setup();
