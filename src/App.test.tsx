@@ -45,6 +45,7 @@ async function publishBounty(user: ReturnType<typeof userEvent.setup>, title = "
 
 describe("App", () => {
   it("separates marketplace and creation while requiring wallet auth only for actions", async () => {
+    configureMockOpenBountyForAnotherWallet();
     const user = userEvent.setup();
     render(<App />);
 
@@ -101,9 +102,16 @@ describe("App", () => {
     expect(screen.getByRole("navigation", { name: /^primary navigation$/i })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^marketplace$/i })).toHaveAttribute("aria-current", "page");
     expect(screen.queryByRole("heading", { name: /how the escrow works/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/connect your wallet to view live bounties/i)).toBeInTheDocument();
-    expect(screen.getByText(/connecting does not authorize a transaction or token spending/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /connect to marketplace/i })).toBeInTheDocument();
+    expect(await screen.findByText(/browse without connecting/i)).toBeInTheDocument();
+    expect(screen.getByText(/connect a wallet only when you are ready to apply/i)).toBeInTheDocument();
+    const publicBountyCard = (await screen.findByRole("heading", { name: /open role-free application/i })).closest("article") as HTMLElement;
+    expect(within(publicBountyCard).getByText(/0 applications/i)).toBeInTheDocument();
+    await user.click(within(publicBountyCard).getByRole("link", { name: /view bounty/i }));
+    expect(await screen.findByRole("heading", { level: 1, name: /^bounty details$/i })).toBeInTheDocument();
+    expect(screen.getByText(/confirm the gasless application flow/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect wallet to apply/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/your application/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/report this listing/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/illustrative examples/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/review a product onboarding flow/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /escrow docs/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md"));

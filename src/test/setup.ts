@@ -643,7 +643,20 @@ beforeEach(() => {
 
     const publicProfileRead = String(init?.method ?? "GET").toUpperCase() === "GET"
       && (url.includes("/api/bounties/profiles/search") || /\/api\/bounties\/profiles\/0x[0-9a-f]{40}$/i.test(url));
-    if (!authenticated && url.includes("/api/bounties") && !publicProfileRead) return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
+    const publicMarketplaceRead = String(init?.method ?? "GET").toUpperCase() === "GET"
+      && url.endsWith("/api/bounties/public/marketplace");
+    if (!authenticated && url.includes("/api/bounties") && !publicProfileRead && !publicMarketplaceRead) return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });
+    if (publicMarketplaceRead) return Response.json({
+      tokens,
+      bounties: bounties.map((bounty) => {
+        const proposals = Array.isArray(bounty.proposals) ? bounty.proposals as Array<Record<string, unknown>> : [];
+        return {
+          ...bounty,
+          application_count: proposals.length,
+          proposals: proposals.filter((proposal) => proposal.id === bounty.accepted_proposal_id)
+        };
+      })
+    });
     if (url.endsWith("/snapshot") && snapshotExpiresAfterEscrowRecord && escrowRecordPersisted) {
       authenticated = false;
       return Response.json({ code: "SESSION_EXPIRED" }, { status: 401 });

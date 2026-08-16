@@ -42,6 +42,7 @@ import {
   decideContentReport,
   inspectToken,
   loadMarketplace,
+  loadPublicMarketplace,
   loadMyProfile,
   loadPublicProfile,
   markNotificationRead,
@@ -57,6 +58,7 @@ import {
   toBase,
   updateMyProfile,
   type MarketplaceSnapshot,
+  type PublicMarketplaceSnapshot,
   type ModerationDecision,
   type ModerationReport,
   type Notification,
@@ -708,6 +710,7 @@ function moderationAuditRoleLabel(role: MarketplaceSnapshot["auditRole"]): strin
 export default function App() {
   const initialProfileSearch = useRef(profileSearchSelectionFromLocation()).current;
   const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
+  const [publicMarketplace, setPublicMarketplace] = useState<PublicMarketplaceSnapshot>({ tokens: [], orders: [] });
   const [draft, setDraft] = useState(emptyDraft);
   const [milestoneSchedule, setMilestoneSchedule] = useState(() => [{ title: "Delivery", amount: "250", deliveryDeadline: emptyDraft.deliveryDeadline }]);
   const [loading, setLoading] = useState(false);
@@ -772,6 +775,7 @@ export default function App() {
   const [settlementDraftByOrder, setSettlementDraftByOrder] = useState<Record<string, string>>({});
   const initialProfileSearchHydrated = useRef(false);
   const initialMarketplaceStatusResolved = useRef(false);
+  const browseOrders = session?.orders ?? publicMarketplace.orders;
 
   const resetProfileEditorDraft = useCallback(() => {
     const customWorkTypes = uniqueProfileSelections((publicProfile?.work_types ?? []).filter((value) => !standardWorkTypeValues.has(value)));
@@ -842,10 +846,10 @@ export default function App() {
   }, [escrowCreationLocks, session]);
 
   useEffect(() => {
-    if (initialMarketplaceStatusResolved.current || !session?.orders.length) return;
+    if (initialMarketplaceStatusResolved.current || !browseOrders.length) return;
     initialMarketplaceStatusResolved.current = true;
-    if (!session.orders.some((order) => bountyStatusGroup(order) === "open")) setMarketplaceStatus("");
-  }, [session]);
+    if (!browseOrders.some((order) => bountyStatusGroup(order) === "open")) setMarketplaceStatus("");
+  }, [browseOrders]);
 
   const availableTokens = useMemo(() => session?.tokens ?? [], [session]);
   const selectedToken = availableTokens.find((token) => token.id === draft.token);
@@ -1207,6 +1211,7 @@ export default function App() {
       setError(null);
       const next = applyCanonicalEscrowFallbacks(await loadMarketplace());
       setSession(next);
+      setPublicMarketplace({ tokens: next.tokens, orders: next.orders });
       setExpired(false);
       setDraft((current) => {
         if (current.token && next.tokens.some((token) => token.id === current.token && token.moderation_status !== "hidden")) return current;
@@ -1217,7 +1222,13 @@ export default function App() {
       const message = caught instanceof Error ? caught.message : "Unable to load the marketplace.";
       if (allowDisconnected) {
         setSession(null);
-        setError(null);
+        try {
+          setPublicMarketplace(await loadPublicMarketplace());
+          setError(null);
+        } catch (publicError) {
+          setPublicMarketplace({ tokens: [], orders: [] });
+          setError(publicError instanceof Error ? publicError.message : "Unable to load the marketplace.");
+        }
         setExpired(false);
       } else {
         setError(message);
@@ -2364,6 +2375,7 @@ export default function App() {
   }
 
   function reportForm(entityType: ReportableEntity, entityId: string, tokenRecord?: TokenRecord) {
+    if (!wallet) return null;
     const tokenReport = entityType === "token";
     const paymentPolicy = tokenReviewPaymentPolicy();
     const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
@@ -2668,6 +2680,15 @@ export default function App() {
 
   function lifecycle(order: MarketplaceOrder) {
     if (order.status === "open") {
+      if (!wallet) return (
+        <section className="lifecycle-panel public-bounty-lifecycle">
+          <div className="public-bounty-connect">
+            <div><strong>Interested in this bounty?</strong><span>Connect a wallet to submit an application. Browsing remains public.</span></div>
+            <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet to apply</button>
+          </div>
+          <p className="public-application-count">{order.applicationCount ?? 0} application{(order.applicationCount ?? 0) === 1 ? "" : "s"}</p>
+        </section>
+      );
       return (
         <section className="lifecycle-panel">
           {!isBuyer(order) ? proposalForm(order) : null}
@@ -3016,7 +3037,7 @@ export default function App() {
           <span>Due {formatDeadline(order.dueDate)}</span>
           <span>{chain?.name ?? "Supported network"}</span>
           <span>{order.milestones?.length ?? 1} milestone{(order.milestones?.length ?? 1) === 1 ? "" : "s"}</span>
-          <span>{order.proposals?.length ?? 0} application{(order.proposals?.length ?? 0) === 1 ? "" : "s"}</span>
+          <span>{order.applicationCount ?? order.proposals?.length ?? 0} application{(order.applicationCount ?? order.proposals?.length ?? 0) === 1 ? "" : "s"}</span>
         </div>
         <a className="bounty-directory-view-action" href={bountyPath(order.id)} onClick={(event) => openBounty(event, order.id)}>View bounty <ChevronRight size={16} aria-hidden="true" /></a>
       </article>
@@ -3123,7 +3144,7 @@ export default function App() {
     () => orderAndFilterProfiles(displayedProfiles, profileDirectoryOrder, profileActivityWindow),
     [displayedProfiles, profileActivityWindow, profileDirectoryOrder]
   );
-  const selectedBounty = selectedBountyId ? session?.orders.find((order) => order.id === selectedBountyId) ?? null : null;
+  const selectedBounty = selectedBountyId ? browseOrders.find((order) => order.id === selectedBountyId) ?? null : null;
   const selectedCanonicalBountyId = selectedBounty?.escrowObservation && isParticipant(selectedBounty) ? selectedBounty.id : null;
   const selectedCanonicalRefreshKey = selectedCanonicalBountyId
     ? [
@@ -3163,17 +3184,17 @@ export default function App() {
     })();
     return () => { cancelled = true; };
   }, [selectedCanonicalBountyId, selectedCanonicalRefreshKey]);
-  const marketplaceOrders = useMemo(() => filterAndOrderBounties(session?.orders ?? [], {
+  const marketplaceOrders = useMemo(() => filterAndOrderBounties(browseOrders, {
     query: marketplaceQuery,
     workType: marketplaceWorkType,
     category: marketplaceCategory,
     status: marketplaceStatus,
     chainId: marketplaceChain,
     order: marketplaceOrder
-  }), [marketplaceCategory, marketplaceChain, marketplaceOrder, marketplaceQuery, marketplaceStatus, marketplaceWorkType, session?.orders]);
-  const marketplaceWorkTypes = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.scope))).sort((left, right) => workTypeLabel(left).localeCompare(workTypeLabel(right))), [session?.orders]);
-  const marketplaceCategories = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.category))).sort((left, right) => left.localeCompare(right)), [session?.orders]);
-  const marketplaceChains = useMemo(() => Array.from(new Set((session?.orders ?? []).map((order) => order.tokenRecord?.chain_id).filter((chainId): chainId is number => Boolean(chainId)))).sort((left, right) => (chains[left as SupportedChainId]?.name ?? "").localeCompare(chains[right as SupportedChainId]?.name ?? "")), [session?.orders]);
+  }), [browseOrders, marketplaceCategory, marketplaceChain, marketplaceOrder, marketplaceQuery, marketplaceStatus, marketplaceWorkType]);
+  const marketplaceWorkTypes = useMemo(() => Array.from(new Set(browseOrders.map((order) => order.scope))).sort((left, right) => workTypeLabel(left).localeCompare(workTypeLabel(right))), [browseOrders]);
+  const marketplaceCategories = useMemo(() => Array.from(new Set(browseOrders.map((order) => order.category))).sort((left, right) => left.localeCompare(right)), [browseOrders]);
+  const marketplaceChains = useMemo(() => Array.from(new Set(browseOrders.map((order) => order.tokenRecord?.chain_id).filter((chainId): chainId is number => Boolean(chainId)))).sort((left, right) => (chains[left as SupportedChainId]?.name ?? "").localeCompare(chains[right as SupportedChainId]?.name ?? "")), [browseOrders]);
 
   return (
     <main>
@@ -3436,20 +3457,12 @@ export default function App() {
 
                 {visiblePage === "marketplace" ? <section className="page-stack">
                 <section id="orders" className="panel queue marketplace-page">
-                  {!wallet ? (
-                    <div className="marketplace-access-state">
-                      <WalletCards size={28} aria-hidden="true" />
-                      <div className="marketplace-access-copy">
-                        <strong>Connect your wallet to view live bounties.</strong>
-                        <span>Review current opportunities, token contracts, and application activity after signing in. Connecting does not authorize a transaction or token spending.</span>
-                      </div>
-                      <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect to marketplace</button>
-                    </div>
-                  ) : selectedBountyId ? (
+                  {selectedBountyId ? (
                     selectedBounty ? bountyDetail(selectedBounty) : <div className="empty-state-panel"><Search /><strong>Bounty not found</strong><span>This bounty is unavailable or no longer visible.</span><button type="button" onClick={closeBountyDetail}>Back to marketplace</button></div>
-                  ) : session?.orders.length ? (
+                  ) : browseOrders.length ? (
                     <>
                       <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace directory</h2></div>
+                      {!wallet ? <div className="marketplace-public-note"><div><strong>Browse without connecting</strong><span>Connect a wallet only when you are ready to apply or take part in a bounty.</span></div><button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button></div> : null}
                       <div className="bounty-directory-filters">
                         <label className="bounty-keyword-field">Keywords<input value={marketplaceQuery} onChange={(event) => setMarketplaceQuery(event.target.value)} placeholder="Title, description, token, or requester" /></label>
                         <label>Work type<select value={marketplaceWorkType} onChange={(event) => setMarketplaceWorkType(event.target.value)}><option value="">Any work type</option>{marketplaceWorkTypes.map((scope) => <option key={scope} value={scope}>{workTypeLabel(scope)}</option>)}</select></label>

@@ -1520,6 +1520,43 @@ li {
   line-height: 1.5;
 }
 
+.marketplace-public-note,
+.public-bounty-connect {
+  align-items: center;
+  background: #eef7f2;
+  border: 1px solid #c9dfd2;
+  border-radius: 14px;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 12px 14px;
+}
+
+.marketplace-public-note > div,
+.public-bounty-connect > div {
+  display: grid;
+  gap: 3px;
+}
+
+.marketplace-public-note span,
+.public-bounty-connect span,
+.public-application-count {
+  color: #5a6862;
+  font-size: .86rem;
+}
+
+.marketplace-public-note button,
+.public-bounty-connect button {
+  flex: 0 0 auto;
+}
+
+.public-bounty-lifecycle {
+  display: grid;
+  gap: 10px;
+}
+
+.public-application-count { margin: 0; }
+
 .card-progress {
   gap: 6px;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4062,6 +4099,17 @@ textarea {
   .marketplace-access-state {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .marketplace-public-note,
+  .public-bounty-connect {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .marketplace-public-note button,
+  .public-bounty-connect button {
+    width: 100%;
   }
 
   .profile-directory-access {

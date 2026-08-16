@@ -69,6 +69,7 @@ import {
   deriveCanonicalEvidenceCommitments,
   handleBountiesApi,
   projectCurrentEscrowSnapshot,
+  projectPublicMarketplaceSnapshot,
   resolveEscrowRecordContractAddress
 } from "./bountiesApiHandler";
 
@@ -155,6 +156,64 @@ describe("escrow deployment replacement routing", () => {
       myReports: [],
       moderationReports: [{ id: "current-report", entity_type: "bounty", entity_id: current.id }]
     });
+  });
+});
+
+describe("public marketplace projection", () => {
+  const openBounty = {
+    id: "public-bounty",
+    chain_id: 1,
+    accepted_proposal_id: "accepted-application",
+    escrow: null,
+    proposals: [
+      { id: "private-application", provider_wallet_address: "0x2222222222222222222222222222222222222222", note: "Private delivery plan" },
+      { id: "accepted-application", provider_wallet_address: "0x3333333333333333333333333333333333333333", note: "Accepted delivery plan" }
+    ]
+  };
+
+  it("keeps aggregate application activity public without exposing unselected applications", () => {
+    expect(projectPublicMarketplaceSnapshot({
+      account: { id: "must-not-leak" },
+      tokens: [{ id: "mainnet-token", chain_id: 1 }],
+      bounties: [openBounty],
+      notifications: [{ id: "private-notification" }],
+      moderationReports: [{ id: "private-report" }]
+    })).toEqual({
+      tokens: [{ id: "mainnet-token", chain_id: 1 }],
+      bounties: [{
+        ...openBounty,
+        application_count: 2,
+        proposals: [openBounty.proposals[1]]
+      }]
+    });
+  });
+
+  it("serves the marketplace without resolving a wallet session", async () => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string) => {
+      if (name === "app_consume_anonymous_rate_limit") return Promise.resolve({ data: true, error: null });
+      if (name === "app_marketplace_snapshot") return Promise.resolve({ data: {
+        account: { id: "must-not-leak" },
+        tokens: [{ id: "mainnet-token", chain_id: 1 }],
+        bounties: [openBounty],
+        notifications: [{ id: "private-notification" }]
+      }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/public/marketplace"
+    ), "public/marketplace");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      tokens: [{ id: "mainnet-token" }],
+      bounties: [{ id: "public-bounty", application_count: 2 }]
+    });
+    expect(rpcMock).toHaveBeenCalledWith("app_marketplace_snapshot", { p_actor_id: null });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_resolve_wallet_session", expect.anything());
   });
 });
 

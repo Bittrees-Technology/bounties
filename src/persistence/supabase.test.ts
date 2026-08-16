@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { browsePublicProfiles, createBounty, createProposal, inspectToken, loadMarketplace, loadMyProfile, loadPublicProfile, mapBounty, recordEscrowObservation, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
+import { browsePublicProfiles, createBounty, createProposal, inspectToken, loadMarketplace, loadMyProfile, loadPublicMarketplace, loadPublicProfile, mapBounty, recordEscrowObservation, searchPublicProfiles, setMyProfileVisibility, submitEvidence, toBase, updateMyProfile, type BountyRow, type PublicWalletProfile, type TokenRecord } from "./supabase";
 import type { MarketplaceOrder, RequestDraft } from "../types";
 
 const token: TokenRecord = {
@@ -19,6 +19,16 @@ const token: TokenRecord = {
 };
 
 describe("Supabase marketplace mapping", () => {
+  it("loads the signed-out marketplace from its public read endpoint", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(Response.json({ tokens: [token], bounties: [] }));
+
+    await expect(loadPublicMarketplace()).resolves.toEqual({ tokens: [token], orders: [] });
+    expect(vi.mocked(fetch)).toHaveBeenLastCalledWith(
+      "/api/bounties/public/marketplace",
+      expect.objectContaining({ credentials: "include", method: "GET" })
+    );
+  });
+
   it("replaces internal proxy failures with a consumer-safe message", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(Response.json({ code: "Proxy misconfigured." }, { status: 500 }));
 

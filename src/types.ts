@@ -131,6 +131,7 @@ export interface MarketplaceOrder {
   support: string[];
   criteria: AcceptanceCriterion[];
   proposals?: Proposal[];
+  applicationCount?: number;
   milestones?: Milestone[];
   deliveryNote?: string;
   deliveryEvidence?: string;

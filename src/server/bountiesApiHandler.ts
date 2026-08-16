@@ -267,10 +267,10 @@ async function callRpc<T>(name: string, args: Record<string, unknown>): Promise<
   return data as T;
 }
 
-async function consumePublicDiscoveryLimit(request: Request, origin: URL): Promise<void> {
+async function consumePublicDiscoveryLimit(request: Request, origin: URL, action = "public_profile_discovery"): Promise<void> {
   await callRpc("app_consume_anonymous_rate_limit", {
     p_bucket_digest: await requestRateLimitDigest(request, origin),
-    p_action: "public_profile_discovery",
+    p_action: action,
     p_limit: 30,
     p_window_seconds: 600
   });
@@ -761,6 +761,52 @@ export function projectCurrentEscrowSnapshot(snapshot: Record<string, unknown>):
     moderationReports: Array.isArray(snapshot.moderationReports)
       ? snapshot.moderationReports.filter(withoutRetiredBountyReferences)
       : snapshot.moderationReports
+  };
+}
+
+/**
+ * Expose only public marketplace data to signed-out visitors. Application plans
+ * and unselected applicant wallets stay private; the aggregate count remains
+ * available for directory context and the accepted provider remains visible as
+ * part of the bounty's public participant record.
+ */
+export function projectPublicMarketplaceSnapshot(snapshot: Record<string, unknown>): Record<string, unknown> {
+  const current = projectCurrentEscrowSnapshot(snapshot);
+  const bounties = Array.isArray(current.bounties) ? current.bounties.flatMap((value) => {
+    const bounty = objectRecord(value);
+    if (!bounty) return [];
+    const proposals = Array.isArray(bounty.proposals) ? bounty.proposals : [];
+    const acceptedProposalId = typeof bounty.accepted_proposal_id === "string" ? bounty.accepted_proposal_id : null;
+    const acceptedProposal = acceptedProposalId
+      ? proposals.flatMap((proposal) => {
+          const record = objectRecord(proposal);
+          if (!record || record.id !== acceptedProposalId) return [];
+          const publicRecord = { ...record };
+          delete publicRecord.provider_id;
+          return [publicRecord];
+        })
+      : [];
+    const publicBounty = { ...bounty };
+    delete publicBounty.creator_id;
+    const projectedBounty: Record<string, unknown> = {
+      ...publicBounty,
+      application_count: proposals.length,
+      proposals: acceptedProposal
+    };
+    if (Array.isArray(bounty.reviews)) projectedBounty.reviews = bounty.reviews.flatMap((review) => {
+      const record = objectRecord(review);
+      if (!record) return [];
+      const publicRecord = { ...record };
+      delete publicRecord.author_id;
+      delete publicRecord.subject_id;
+      return [publicRecord];
+    });
+    return [projectedBounty];
+  }) : [];
+
+  return {
+    tokens: Array.isArray(current.tokens) ? current.tokens : [],
+    bounties
   };
 }
 
@@ -1866,6 +1912,12 @@ async function handle(request: Request, action: string): Promise<Response> {
       return enrichPublicProfile(record);
     })(), "PROFILE_LOAD_TIMEOUT", profileResponseBudgetMs);
     return Response.json(profile, { headers });
+  }
+
+  if (action === "public/marketplace" && method === "GET") {
+    await consumePublicDiscoveryLimit(request, requestOrigin, "public_marketplace_discovery");
+    const snapshot = await callRpc<Record<string, unknown>>("app_marketplace_snapshot", { p_actor_id: null });
+    return Response.json(projectPublicMarketplaceSnapshot(snapshot), { headers });
   }
 
   const requiresCsrf = mutationMethods.has(method);
