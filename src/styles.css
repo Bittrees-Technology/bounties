@@ -3283,6 +3283,13 @@ textarea {
   padding: 12px;
 }
 
+.report-row {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 16px;
+}
+
 .review-row > div:first-child,
 .report-row > div:first-child {
   display: grid;
@@ -3316,6 +3323,7 @@ textarea {
 .report-summary span {
   color: #5a6862;
   font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .moderation-safety-note {
@@ -3330,18 +3338,34 @@ textarea {
 
 .moderation-decision-form {
   display: grid;
-  flex: 1 1 520px;
   gap: 10px;
-  grid-template-columns: minmax(180px, 0.65fr) minmax(220px, 1fr) minmax(180px, 0.8fr) auto;
-  max-width: 980px;
+  grid-template-columns: minmax(160px, 0.85fr) minmax(220px, 1.25fr) minmax(180px, 1fr) minmax(140px, auto);
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .moderation-decision-form label {
+  display: grid;
+  gap: 7px;
   min-width: 0;
+}
+
+.moderation-decision-form :is(select, textarea) {
+  max-width: 100%;
+  min-width: 0;
+  width: 100%;
 }
 
 .moderation-decision-form textarea {
   min-height: 88px;
+}
+
+.moderation-decision-form button {
+  align-self: end;
+  min-height: 48px;
+  min-width: 140px;
+  white-space: normal;
 }
 
 .review-form {
@@ -3972,11 +3996,13 @@ textarea {
   .selected-token-card .report-control form,
   .compact-action-form,
   .review-form,
+  .moderation-decision-form,
   .escrow-actions form {
     grid-template-columns: 1fr;
   }
 
   .report-control form button { justify-self: start; max-width: 100%; white-space: normal; width: 100%; }
+  .moderation-decision-form button { width: 100%; }
 
   .milestone-meta {
     justify-items: start;
