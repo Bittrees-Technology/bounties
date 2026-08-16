@@ -83,6 +83,7 @@
     "configuredAt": "2026-08-15T23:55:00Z",
     "serverAddressVariablesUpdated": true,
     "clientAddressVariablesUpdated": true,
+    "preAcceptanceCancellationEnabled": true,
     "stagedMilestoneFundingEnabled": true,
     "legacyAddressVariablesConfigured": false
   },

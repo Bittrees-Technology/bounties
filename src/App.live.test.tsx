@@ -286,9 +286,17 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
 
-  expect(await screen.findByRole("button", { name: /cancel and refund before provider accepts terms/i })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: /^cancel and refund escrow$/i })).toBeInTheDocument();
   expect(window.localStorage.getItem("bounties.escrow-creation-locks.v1")).toBe("{}");
   expect(screen.queryByText(/updating bounties/i)).not.toBeInTheDocument();
+});
+
+it("offers cancellation for an unfunded created escrow before provider acceptance", async () => {
+  configureMockMilestoneEscrow("Created", "Pending");
+  const order = await renderConfiguredEscrow();
+
+  expect(order.getByRole("button", { name: /^cancel escrow$/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /cancel and refund escrow/i })).not.toBeInTheDocument();
 });
 
 it("surfaces terminal canonical mismatches, retains the lock, and stops automatic retries", async () => {

@@ -232,7 +232,7 @@ export function configureMockTokenCompatibility(symbol: string, status: TokenRec
 }
 
 export function configureMockMilestoneEscrow(
-  onchainState: "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved",
+  onchainState: "Created" | "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved",
   activeState: "Pending" | "Submitted" | "Approved",
   activeDeadline = "2099-12-31T23:59:59.999Z",
   integrity: "match" | "evidence_mismatch" | "approval_mismatch" = "match",
