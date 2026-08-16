@@ -2091,7 +2091,7 @@ export default function App() {
     );
     const activeReviewDeadline = deadlineTimestamp(observation?.current_milestone_detail?.review_deadline ?? observation?.current_milestone_review_deadline ?? observation?.review_deadline);
     const scheduleStatus = order.escrowScheduleStatus;
-    const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered" || state === "BuyerApproved";
+    const isSettlementState = state === "Funded" || state === "ProviderAccepted" || state === "Delivered";
     const settlementProposer = order.escrowObservation?.settlement_proposer;
     const proposedPayout = order.escrowObservation?.proposed_provider_payout_base_units;
     const remainingEscrowBaseUnits = order.escrowObservation?.remaining_base_units;

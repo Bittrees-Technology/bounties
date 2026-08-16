@@ -357,6 +357,7 @@ it("uses the exact active tranche for approval and release controls", async () =
   expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
   expect(order.getByText(/work was accepted and is ready for payment release/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /view submitted proof/i })).toHaveAttribute("href", "https://example.test/phase-two");
+  expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
   expect(order.queryByRole("button", { name: /release full payment/i })).not.toBeInTheDocument();
 });
 
@@ -367,6 +368,7 @@ it("shows the accepted delivery record to the labor provider without a second ac
   expect(order.getByText(/work was accepted and is ready for payment release/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /view submitted proof/i })).toHaveAttribute("href", "https://example.test/phase-two");
   expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
+  expect(order.queryByRole("region", { name: /optional mutual settlement/i })).not.toBeInTheDocument();
 });
 
 it("uses the active milestone deadline rather than the overall bounty deadline for timeout", async () => {
