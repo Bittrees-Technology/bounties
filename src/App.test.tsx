@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockAuditAccess, configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockModeratorTokenVerification, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
+import { configureMockAuditAccess, configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockModeratorTokenVerification, configureMockMyReports, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -179,6 +179,33 @@ describe("App", () => {
     expect(within(tokenCard).queryByText(/automated checks could not prove/i)).not.toBeInTheDocument();
     expect(within(tokenCard).queryByText(/source verification was not available/i)).not.toBeInTheDocument();
     expect(within(tokenCard).queryByText(/review before use/i)).not.toBeInTheDocument();
+  });
+
+  it("shows verification results as concise requester activity", async () => {
+    configureMockMyReports([{
+      id: "00000000-0000-4000-8000-000000000891",
+      entity_type: "token",
+      entity_id: "00000000-0000-4000-8000-000000000003",
+      reason: "Token/source verification review",
+      request_kind: "verification_request",
+      status: "resolved",
+      decision: "no_action",
+      verification_outcome: "inconclusive",
+      moderator_response: "No transfer tax or hidden transfer logic was found.",
+      version: 2,
+      created_at: new Date().toISOString()
+    }]);
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    const activity = screen.getByRole("heading", { name: /^my requests$/i }).closest("section") as HTMLElement;
+
+    expect(within(activity).getByText(/^Token verification$/i)).toBeInTheDocument();
+    expect(within(activity).getByText(/^Inconclusive$/i)).toBeInTheDocument();
+    expect(within(activity).getByText(/^Moderator response$/i)).toBeInTheDocument();
+    expect(within(activity).getByText(/no transfer tax or hidden transfer logic was found/i)).toBeInTheDocument();
+    expect(within(activity).queryByText(/track token verification/i)).not.toBeInTheDocument();
+    expect(within(activity).queryByText(/no additional review details/i)).not.toBeInTheDocument();
   });
 
   it("closes an open listing report after a click outside its controls", async () => {
@@ -549,7 +576,7 @@ describe("App", () => {
     render(<App />);
     await connectWallet(user);
 
-    expect(await screen.findByText(/^Token verification request$/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Token verification$/i)).toBeInTheDocument();
     await user.click(screen.getByRole("link", { name: /^moderator$/i }));
     const moderatorPanel = screen.getByRole("heading", { level: 2, name: /^moderator panel$/i }).closest("section") as HTMLElement;
     expect(within(moderatorPanel).getByText(/^Token verification request ·/i)).toBeInTheDocument();

@@ -338,7 +338,14 @@ const isTokenVerificationRequest = (report: ModerationReport) => report.request_
   || (report.entity_type === "token" && report.reason.startsWith(PAID_TOKEN_REVIEW_REASON));
 const tokenVerificationDetails = (reason: string) => reason.startsWith(`${PAID_TOKEN_REVIEW_REASON}:`)
   ? reason.slice(PAID_TOKEN_REVIEW_REASON.length + 1).trim()
-  : "No additional review details were provided.";
+  : null;
+const tokenVerificationStatusLabel = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
+  ? "Verified for Bounties"
+  : outcome === "source_verified"
+    ? "Source verified"
+    : outcome === "incompatible"
+      ? "Not compatible"
+      : "Inconclusive";
 const tokenVerificationOutcomeLabel = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
   ? "Verified for Bounties"
   : outcome === "source_verified"
@@ -3401,21 +3408,22 @@ export default function App() {
 
               {visiblePage === "marketplace" && session?.myReports.length ? (
                 <section id="my-reports" className="panel my-reports-panel">
-                  <div className="section-heading"><Flag /><h2>My requests and reports</h2></div>
-                  <p>Track token verification requests separately from safety reports.</p>
+                  <div className="section-heading"><Flag /><h2>My requests</h2></div>
                   <div className="my-reports-list">
                     {session.myReports.map((report) => {
                       const verification = isTokenVerificationRequest(report);
+                      const verificationDetails = verification ? tokenVerificationDetails(report.reason) : null;
+                      const statusLabel = verification
+                        ? report.status === "open" ? "Pending" : tokenVerificationStatusLabel(report.verification_outcome)
+                        : report.status === "open" ? "Under review" : report.decision === "no_action" ? "No action needed" : report.decision === "hide" ? "Content hidden" : "Content restored";
                       return (
                         <article className={`my-report-row${verification ? " verification-request-row" : ""}`} key={report.id}>
-                          <div>
-                            <strong>{verification ? "Token verification request" : `${reportEntityLabel(report.entity_type)} safety report`}</strong>
-                            <span>{verification
-                              ? report.status === "open" ? "Verification pending" : tokenVerificationOutcomeLabel(report.verification_outcome)
-                              : report.status === "open" ? "Under review" : report.decision === "no_action" ? "Reviewed · no action" : report.decision === "hide" ? "Reviewed · hidden" : "Reviewed · restored"}</span>
-                          </div>
-                          <p>{verification ? tokenVerificationDetails(report.reason) : report.reason}</p>
-                          {report.moderator_response ? <blockquote><strong>{verification ? "Verification response" : "Moderator response"}</strong><span>{report.moderator_response}</span></blockquote> : null}
+                          <header>
+                            <strong>{verification ? "Token verification" : `${reportEntityLabel(report.entity_type)} report`}</strong>
+                            <span className="my-report-status">{statusLabel}</span>
+                          </header>
+                          {verificationDetails ? <p className="my-report-details"><strong>Request details</strong><span>{verificationDetails}</span></p> : !verification ? <p className="my-report-details"><strong>Report details</strong><span>{report.reason}</span></p> : null}
+                          {report.moderator_response ? <div className="my-report-response"><strong>Moderator response</strong><p>{report.moderator_response}</p></div> : null}
                         </article>
                       );
                     })}

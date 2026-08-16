@@ -3547,29 +3547,50 @@ textarea {
   padding: 14px;
 }
 
-.my-report-row > div {
+.my-report-row > header {
   align-items: center;
   display: flex;
   gap: 12px;
   justify-content: space-between;
 }
 
-.my-report-row span {
+.my-report-status {
+  background: #e2f1ea;
+  border-radius: 999px;
+  color: #0f6b57 !important;
+  font-weight: 750;
+  padding: 5px 9px;
+  white-space: nowrap;
+}
+
+.my-report-row span,
+.my-report-response p {
   color: #5a6862;
   font-size: 0.86rem;
 }
 
 .my-report-row p,
-.my-report-row blockquote {
+.my-report-row .my-report-response {
   margin: 0;
 }
 
-.my-report-row blockquote {
+.my-report-details {
+  display: grid;
+  gap: 3px;
+}
+
+.my-report-response {
   background: #eef7f2;
   border-left: 3px solid #0f6b57;
   display: grid;
   gap: 4px;
   padding: 10px 12px;
+}
+
+.my-report-response p { line-height: 1.45; }
+
+@media (max-width: 560px) {
+  .my-report-row > header { align-items: flex-start; flex-wrap: wrap; }
 }
 
 .escrow-actions {

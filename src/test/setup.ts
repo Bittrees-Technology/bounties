@@ -99,6 +99,10 @@ export function configureMockNotifications(notifications: Array<Record<string, u
   snapshotNotifications = notifications;
 }
 
+export function configureMockMyReports(reports: Array<Record<string, unknown>>) {
+  snapshotMyReports = reports;
+}
+
 export function configureMockOpenBountyForAnotherWallet() {
   const token = tokens.find((candidate) => candidate.symbol === "BIT")!;
   bounties = [{
