@@ -1641,8 +1641,8 @@ export default function App() {
     setDraft((current) => ({ ...current, token: value }));
   }
 
-  const isBuyer = (order: MarketplaceOrder) => order.creatorId === session?.account.id;
-  const isProvider = (order: MarketplaceOrder) => order.providerId === session?.account.id;
+  const isBuyer = (order: MarketplaceOrder) => Boolean(session && order.creatorId === session.account.id);
+  const isProvider = (order: MarketplaceOrder) => Boolean(session && order.providerId === session.account.id);
   const isParticipant = (order: MarketplaceOrder) => isBuyer(order) || isProvider(order);
   const bountyIsCompleted = (order: MarketplaceOrder) => ["Released", "Settled"].includes(order.escrowObservation?.onchain_state ?? "");
   const mayReview = (order: MarketplaceOrder) => isParticipant(order) && bountyIsCompleted(order);

@@ -112,6 +112,8 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /connect wallet to apply/i })).toBeInTheDocument();
     expect(screen.queryByLabelText(/your application/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/report this listing/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/you have been selected/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/cancel unfunded bounty/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/illustrative examples/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/review a product onboarding flow/i)).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /escrow docs/i })).toHaveAttribute("href", expect.stringContaining("contracts/README.md"));
