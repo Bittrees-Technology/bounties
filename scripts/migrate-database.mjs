@@ -100,7 +100,19 @@ try {
     }
   });
   process.stdout.write("Database migrations are current.\n");
-} catch {
+} catch (error) {
+  const databaseError = error && typeof error === "object"
+    ? {
+        code: error.code,
+        message: error.message,
+        detail: error.detail,
+        hint: error.hint,
+        schema: error.schema_name,
+        table: error.table_name,
+        constraint: error.constraint_name
+      }
+    : { message: "Unknown database migration error" };
+  process.stderr.write(`Database migration error ${JSON.stringify(databaseError)}\n`);
   throw new Error("Database migration failed; no partial migration was committed.");
 } finally {
   await sql.end({ timeout: 5 });
