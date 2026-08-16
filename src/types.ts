@@ -8,7 +8,7 @@ export type WorkScope =
   | "consultation"
   | "audit"
   | "retainer";
-export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid";
+export type OrderStatus = "draft" | "open" | "matched" | "escrowed" | "delivered" | "accepted" | "paid" | "cancelled";
 export type ServiceCategory =
   | "Engineering"
   | "Design"

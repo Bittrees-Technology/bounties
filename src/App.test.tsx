@@ -1009,6 +1009,25 @@ describe("App", () => {
     expect(order.getByRole("link", { name: /chirpy/i })).toHaveAttribute("href", "https://chirpy.bittrees.org");
   });
 
+  it("lets the capital provider cancel a published bounty before any applicant or escrow exists", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    const order = await publishBounty(user, "Cancel unfunded listing");
+
+    expect(order.getByText(/^open request$/i)).toBeInTheDocument();
+    await user.click(order.getByText(/^cancel unfunded bounty$/i));
+    expect(order.getByText(/no wallet transaction is needed/i)).toBeInTheDocument();
+    await user.click(order.getByRole("button", { name: /confirm cancellation/i }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(/bounty cancelled.*no escrow was created or funded/i);
+    const cancelledOrder = within((await screen.findByRole("heading", { name: /cancel unfunded listing/i })).closest("article") as HTMLElement);
+    expect(cancelledOrder.getAllByText(/^cancelled$/i).length).toBeGreaterThanOrEqual(2);
+    expect(cancelledOrder.queryByText(/^cancel unfunded bounty$/i)).not.toBeInTheDocument();
+    const cancelCall = vi.mocked(fetch).mock.calls.find(([input]) => String(input).endsWith("/api/bounties/bounties/cancel"));
+    expect(JSON.parse(String(cancelCall?.[1]?.body))).toEqual({ bountyId: "00000000-0000-4000-8000-000000000123" });
+  });
+
   it("removes manual escrow verification and records the wallet transaction automatically", async () => {
     const user = userEvent.setup();
     render(<App />);

@@ -172,7 +172,8 @@ export function orderStatusLabel(status: OrderStatus): string {
     escrowed: "Escrow staged",
     delivered: "Delivered for review",
     accepted: "Accepted",
-    paid: "Paid"
+    paid: "Paid",
+    cancelled: "Cancelled"
   };
   return labels[status];
 }

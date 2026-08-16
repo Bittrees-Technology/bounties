@@ -208,6 +208,43 @@ describe("canonical evidence integrity", () => {
   });
 });
 
+describe("unfunded bounty cancellation route", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_cancel_unfunded_bounty") return Promise.resolve({ data: { id: args.p_bounty_id, status: "cancelled" }, error: null });
+      return Promise.resolve({ data: null, error: null });
+    });
+  });
+
+  it("binds the cancellation to the authenticated actor and requested bounty", async () => {
+    const bountyId = "30000000-0000-4000-8000-000000000020";
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/bounties/cancel",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({ bountyId })
+      }
+    ), "bounties/cancel");
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ id: bountyId, status: "cancelled" });
+    expect(rpcMock).toHaveBeenCalledWith("app_cancel_unfunded_bounty", {
+      p_actor_id: session.account_id,
+      p_bounty_id: bountyId
+    });
+  });
+});
+
 describe("delivery content digest boundary", () => {
   beforeEach(() => {
     vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");

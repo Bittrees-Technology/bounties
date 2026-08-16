@@ -88,6 +88,9 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "TOKEN_BYTECODE_MISSING") return "No smart contract was found at that address on the selected network.";
   if (serverCode === "TOKEN_DECIMALS_UNAVAILABLE") return "That contract does not expose the ERC20 decimals information required by Bounties.";
   if (serverCode === "TOKEN_TOTAL_SUPPLY_UNAVAILABLE") return "That contract does not expose the ERC20 total supply function required for token inspection.";
+  if (serverCode === "BOUNTY_OWNER_REQUIRED") return "Only the capital provider who created this bounty can cancel it.";
+  if (serverCode === "BOUNTY_CANCELLATION_UNAVAILABLE") return "This bounty can no longer be cancelled because an applicant was accepted or its lifecycle advanced.";
+  if (serverCode === "BOUNTY_ESCROW_CANCELLATION_REQUIRED") return "This bounty already has an escrow record. Use the wallet escrow cancellation action instead.";
   if (serverCode === "INVALID_CONTENT_HASH") return "Enter the SHA-256 digest of the delivered bytes as 0x followed by 64 hexadecimal characters.";
   if (serverCode === "INVALID_EVIDENCE_DESCRIPTION") return "Keep the delivery description under 1,000 plain-text characters.";
   if (serverCode === "ENS_RPC_UNAVAILABLE") return "ENS search is not configured. Operations must add the Ethereum mainnet server-side RPC endpoint.";
@@ -303,7 +306,7 @@ export function toBase(amount: number | string, decimals: number): string {
   if (baseUnits <= 0n) throw new PersistenceError("Token amount must be at least one base unit.");
   return baseUnits.toString();
 }
-const status = (value: string): MarketplaceOrder["status"] => value === "accepted" ? "matched" : value === "funding_pending" || value === "funded" ? "escrowed" : value === "completed" ? "accepted" : "open";
+const status = (value: string): MarketplaceOrder["status"] => value === "accepted" ? "matched" : value === "funding_pending" || value === "funded" ? "escrowed" : value === "completed" ? "accepted" : value === "cancelled" || value === "archived" ? "cancelled" : "open";
 
 function mapApplicationSupportingMaterials(value: unknown): ApplicationSupportingMaterial[] {
   if (!Array.isArray(value)) return [];
@@ -346,7 +349,7 @@ export function mapBounty(row: BountyRow): MarketplaceOrder {
   const accepted = proposals.find(p => p.id === row.accepted_proposal_id);
   const milestones = (row.milestones ?? []).map((m) => {
     const evidence = m.evidence?.at(-1);
-    return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryDescription: evidence?.description ?? undefined, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryRevision: evidence?.revision, revisionReason: m.revision_request?.reason, revisionReasonHash: m.revision_request?.reason_hash, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
+    return { id: m.id, label: m.title, amount: fromBase(m.amount_base_units, row.token_decimals), amountBaseUnits: m.amount_base_units, status: m.status === "delivered" ? "delivered" as const : m.status === "accepted" ? "accepted" as const : m.status === "funded" ? "escrowed" as const : m.status === "cancelled" ? "cancelled" as const : "open" as const, criteria: (m.scope_source?.criteria ?? []).map((label, i) => ({ id: `${m.id}-${i}`, label, required: true })), deliveryEvidence: evidence?.uri, deliveryDescription: evidence?.description ?? undefined, deliveryEvidenceHash: evidence?.evidence_hash as `0x${string}` | undefined, deliveryContentHash: evidence?.content_hash as `0x${string}` | undefined, deliveryApprovalHash: evidence?.canonical_approval_hash as `0x${string}` | undefined, deliveryRevision: evidence?.revision, revisionReason: m.revision_request?.reason, revisionReasonHash: m.revision_request?.reason_hash, deliveryDeadline: m.delivery_deadline ?? m.scope_source?.deliveryDeadline };
   });
   const canonicalDeadline = milestones.at(-1)?.deliveryDeadline;
   return { id: row.id, creatorId: row.creator_id, persistenceStatus: row.status, acceptedProposalId: accepted?.id, title: row.title, scope: (source.scope as MarketplaceOrder["scope"]) ?? "task", scopeHash: row.scope_hash, category: (source.category as MarketplaceOrder["category"]) ?? "Engineering", budget: fromBase(row.budget_base_units, row.token_decimals), budgetDisplay: formatBase(row.budget_base_units, row.token_decimals), budgetBaseUnits: row.budget_base_units, token: row.token.symbol || row.token.checksum_address, tokenRecord: row.token, buyer: String(source.buyer ?? "Wallet buyer"), contactMethod: String(source.contactMethod ?? "Bounties notifications"), provider: accepted?.provider, providerAddress: accepted?.providerAddress, providerId: accepted?.providerId, proposalHash: accepted?.proposalHash, project: String(source.project ?? "Bounties"), support: Array.isArray(source.support) ? source.support as string[] : [], criteria: criteria.map((label, i) => ({ id: `${row.id}-${i}`, label, required: true })), proposals, milestones, status: status(row.status), escrowScheduleStatus: row.escrow_schedule_status ?? "requires_recreation", fundOnApplicantAcceptance: source.fundOnApplicantAcceptance !== false, milestoneFundingMode: source.milestoneFundingMode === "staged" ? "staged" : "full", dueDate: canonicalDeadline ?? (typeof source.deliveryDeadline === "string" ? source.deliveryDeadline : new Date(row.created_at).toISOString()), escrowObservation: row.escrow ?? undefined, moderationStatus: row.moderation_status ?? "visible", moderationReason: row.moderation_reason ?? undefined, reviews: row.reviews ?? [] };
@@ -456,6 +459,7 @@ export const createProposal = (order: MarketplaceOrder, note: string, material?:
   return request("/proposals", { method: "POST", body: JSON.stringify({ bountyId: order.id, note, proposedTotalBaseUnits: order.budgetBaseUnits ?? toBase(order.budget, order.tokenRecord!.decimals), applicationMaterials }) });
 };
 export const acceptProposal = async (bountyId: string, proposalId: string): Promise<MarketplaceOrder> => mapBounty(await request<BountyRow>("/proposals/accept", { method: "POST", body: JSON.stringify({ bountyId, proposalId }) }));
+export const cancelUnfundedBounty = async (bountyId: string): Promise<MarketplaceOrder> => mapBounty(await request<BountyRow>("/bounties/cancel", { method: "POST", body: JSON.stringify({ bountyId }) }));
 function hasDisallowedPlainTextControl(value: string): boolean {
   return [...value].some((character) => {
     const code = character.codePointAt(0) ?? 0;

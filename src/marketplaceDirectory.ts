@@ -17,7 +17,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 export function bountyStatusGroup(order: MarketplaceOrder): Exclude<BountyStatusFilter, ""> {
   const onchain = order.escrowObservation?.onchain_state;
   if (onchain === "Released" || onchain === "Settled" || onchain === "PartiallyCompleted" || order.status === "accepted" || order.status === "paid") return "completed";
-  if (onchain === "Cancelled" || onchain === "Refunded") return "closed";
+  if (onchain === "Cancelled" || onchain === "Refunded" || order.status === "cancelled") return "closed";
   if (onchain === "Delivered" || onchain === "BuyerApproved" || order.status === "delivered") return "review";
   if (order.status === "open" && !order.acceptedProposalId) return "open";
   return "active";

@@ -3190,6 +3190,25 @@ textarea {
   padding-top: 16px;
 }
 
+.cancel-unfunded-bounty {
+  border: 1px solid #d7b9af;
+  border-radius: 14px;
+  color: #793629;
+  padding: 12px 14px;
+}
+.cancel-unfunded-bounty summary {
+  cursor: pointer;
+  font-weight: 800;
+}
+.cancel-unfunded-bounty > div {
+  align-items: start;
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.cancel-unfunded-bounty p { margin: 0; }
+.cancel-unfunded-bounty button { justify-self: start; }
+
 .report-control summary {
   align-items: center;
   color: #5a6861;

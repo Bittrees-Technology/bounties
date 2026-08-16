@@ -1804,6 +1804,14 @@ async function handle(request: Request, action: string): Promise<Response> {
     return Response.json(data, { headers });
   }
 
+  if (action === "bounties/cancel" && method === "POST") {
+    const data = await callRpc("app_cancel_unfunded_bounty", {
+      p_actor_id: session.account_id,
+      p_bounty_id: requiredUuid(body, "bountyId")
+    });
+    return Response.json(data, { headers });
+  }
+
   if (action === "proposals" && method === "POST") {
     const data = await callRpc("app_create_proposal", {
       p_actor_id: session.account_id,

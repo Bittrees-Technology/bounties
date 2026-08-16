@@ -821,6 +821,22 @@ beforeEach(() => {
       bounties = [row];
       return Response.json(row);
     }
+    if (url.endsWith("/api/bounties/bounties/cancel")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { bountyId: string };
+      const bounty = bounties.find((candidate) => candidate.id === body.bountyId);
+      if (!bounty) return Response.json({ code: "BOUNTY_NOT_FOUND" }, { status: 404 });
+      if (bounty.creator_id !== "00000000-0000-4000-8000-000000000111") return Response.json({ code: "BOUNTY_OWNER_REQUIRED" }, { status: 403 });
+      if (bounty.status !== "open" || bounty.accepted_proposal_id) return Response.json({ code: "BOUNTY_CANCELLATION_UNAVAILABLE" }, { status: 409 });
+      if (bounty.escrow) return Response.json({ code: "BOUNTY_ESCROW_CANCELLATION_REQUIRED" }, { status: 409 });
+      bounty.status = "cancelled";
+      for (const proposal of bounty.proposals as Array<Record<string, unknown>>) {
+        if (proposal.status === "active") proposal.status = "rejected";
+      }
+      for (const milestone of bounty.milestones as Array<Record<string, unknown>>) {
+        if (milestone.status === "pending" || milestone.status === "assigned") milestone.status = "cancelled";
+      }
+      return Response.json(bounty);
+    }
     if (url.endsWith("/api/bounties/escrow")) {
       const outcome = escrowRecordOutcomeSequence.shift() ?? escrowRecordOutcome;
       if (outcome === "reverted") {

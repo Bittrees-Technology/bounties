@@ -34,6 +34,7 @@ import {
   acceptEvidence,
   acceptProposal,
   browsePublicProfiles,
+  cancelUnfundedBounty,
   createBounty,
   createParticipantReview,
   createReviewResponse,
@@ -2794,6 +2795,7 @@ export default function App() {
     const progress = milestoneFundingProgress(order);
     const funded = Boolean(observation && progress.everFunded > 0n);
     const stagedIncomplete = order.milestoneFundingMode === "staged" && progress.everFunded < progress.allocated;
+    const cancelled = order.status === "cancelled";
     const fundingLabel = observation?.onchain_state === "AwaitingFunding"
       ? "Next milestone unfunded"
       : stagedIncomplete ? "Partially funded" : "Funded";
@@ -2802,7 +2804,9 @@ export default function App() {
     return (
       <div className="bounty-funding-summary">
         <strong>{order.budgetDisplay ?? order.budget} {token?.symbol || "ERC20"}</strong>
-        {funded && transactionUrl ? (
+        {cancelled ? (
+          <span>Cancelled</span>
+        ) : funded && transactionUrl ? (
           <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label={`${fundingLabel} — view funding transaction`}>{fundingLabel} <ExternalLink size={12} /></a>
         ) : fundingPending ? (
           <a href={`#escrow-actions-${order.id}`} aria-label="Funding confirmation pending — view funding status">Confirmation pending</a>
@@ -2871,6 +2875,15 @@ export default function App() {
           </div> : null}
           {cardProgress(order)}
           <div className="status-line"><span>{displayedOrderStatus(order)}</span><span>{isBuyer(order) ? "You fund this bounty" : isProvider(order) ? "You deliver this bounty" : "Marketplace bounty"}</span></div>
+          {isBuyer(order) && order.persistenceStatus === "open" && !order.acceptedProposalId && !order.escrowObservation ? (
+            <details className="cancel-unfunded-bounty">
+              <summary>Cancel unfunded bounty</summary>
+              <div>
+                <p>This closes the listing and its applications. No wallet transaction is needed because no escrow has been created or funded.</p>
+                <button type="button" disabled={loading} onClick={() => void act(() => cancelUnfundedBounty(order.id), "Bounty cancelled. No escrow was created or funded.")}>Confirm cancellation</button>
+              </div>
+            </details>
+          ) : null}
           {providerNextAction(order)}
           {providerSubmissionGuidance(order)}
           {order.moderationStatus === "hidden" ? <p className="moderation-banner">Hidden from public marketplace · {order.moderationReason}</p> : null}
