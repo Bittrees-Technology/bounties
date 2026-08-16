@@ -1115,6 +1115,19 @@ li {
   justify-self: start;
 }
 
+.moderator-pending-review {
+  align-items: center;
+  background: #fff8e6;
+  border: 1px solid #dec77d;
+  border-radius: 12px;
+  color: #654f13;
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.moderator-pending-review svg { animation: spin 1s linear infinite; flex: 0 0 auto; }
+
 .token-safety-note {
   background: #eef7f3;
   border: 1px solid #c9ded5;

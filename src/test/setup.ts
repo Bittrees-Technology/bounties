@@ -45,6 +45,7 @@ let escrowRefreshOnchainState: "ProviderAccepted" | "Settled" | null = null;
 let escrowStateRefreshRejected = false;
 let snapshotExpiresAfterEscrowRecord = false;
 let escrowRecordPersisted = false;
+let tokenReportOutcome: "success" | "pending" = "success";
 type MockWalletEscrowState = "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved" | "Released" | "Cancelled" | "Refunded" | "Settled" | "AwaitingFunding" | "PartiallyCompleted";
 let walletEscrowStateReads: Array<MockWalletEscrowState | null> | null = null;
 let activeWalletEscrowState: MockWalletEscrowState | null = null;
@@ -86,6 +87,10 @@ export function configureMockWalletChain(chainId: `0x${string}`) {
 
 export function configureMockRoles(roles: Array<"buyer" | "provider">) {
   snapshotRoles = roles;
+}
+
+export function configureMockTokenReportOutcome(outcome: "success" | "pending") {
+  tokenReportOutcome = outcome;
 }
 
 export function configureMockNotifications(notifications: Array<Record<string, unknown>>) {
@@ -448,6 +453,7 @@ beforeEach(() => {
   escrowStateRefreshRejected = false;
   snapshotExpiresAfterEscrowRecord = false;
   escrowRecordPersisted = false;
+  tokenReportOutcome = "success";
   walletEscrowStateReads = null;
   activeWalletEscrowState = null;
   walletChainId = "0x14a34";
@@ -903,6 +909,7 @@ beforeEach(() => {
       return Response.json(bounty);
     }
     if (url.endsWith("/api/bounties/reports")) {
+      if (tokenReportOutcome === "pending") return Response.json({ code: "TOKEN_REVIEW_PAYMENT_PENDING" }, { status: 409 });
       const body = JSON.parse(String(init?.body ?? "{}")) as { entityType: string; entityId: string; reason: string };
       const report = {
         id: "00000000-0000-4000-8000-000000000555",
@@ -914,6 +921,7 @@ beforeEach(() => {
         created_at: new Date().toISOString()
       };
       snapshotMyReports = [report];
+      if (snapshotStaffRole) snapshotModerationReports = [report];
       return Response.json(report);
     }
     if (url.endsWith("/api/bounties/notifications/read")) {

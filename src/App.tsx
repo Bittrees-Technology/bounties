@@ -269,6 +269,7 @@ type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
+type PendingTokenReviewPayment = { txHash: string; reason: string; chainId: 1 | 11155111 };
 type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowMilestoneRecord | null };
 type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
@@ -296,12 +297,25 @@ function readEscrowCreationLocks(): Record<string, EscrowCreationLock> {
   }
 }
 
-function readTokenReviewPayments(): Record<string, string> {
+function readTokenReviewPayments(): Record<string, PendingTokenReviewPayment> {
   try {
     if (typeof window.localStorage?.getItem !== "function") return {};
     const value = JSON.parse(window.localStorage.getItem(TOKEN_REVIEW_PAYMENTS_KEY) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string" && /^0x[0-9a-fA-F]{64}$/.test(entry[1])));
+    const fallbackChainId = tokenReviewPaymentPolicy().chainId;
+    return Object.fromEntries(Object.entries(value).flatMap(([tokenId, candidate]) => {
+      if (typeof candidate === "string" && /^0x[0-9a-fA-F]{64}$/.test(candidate)) {
+        return [[tokenId, { txHash: candidate.toLowerCase(), reason: PAID_TOKEN_REVIEW_REASON, chainId: fallbackChainId }]];
+      }
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
+      const payment = candidate as Partial<PendingTokenReviewPayment>;
+      if (!payment.txHash || !/^0x[0-9a-fA-F]{64}$/.test(payment.txHash)) return [];
+      if (payment.chainId !== 1 && payment.chainId !== 11155111) return [];
+      const reason = typeof payment.reason === "string" && payment.reason.trim().startsWith(PAID_TOKEN_REVIEW_REASON)
+        ? payment.reason.trim()
+        : PAID_TOKEN_REVIEW_REASON;
+      return [[tokenId, { txHash: payment.txHash.toLowerCase(), reason, chainId: payment.chainId }]];
+    }));
   } catch {
     return {};
   }
@@ -653,7 +667,7 @@ export default function App() {
   const [tokenPolicyConfirmed, setTokenPolicyConfirmed] = useState(false);
   const [escrowTxHashes, setEscrowTxHashes] = useState<Record<string, string>>({});
   const [escrowCreationLocks, setEscrowCreationLocks] = useState<Record<string, EscrowCreationLock>>(readEscrowCreationLocks);
-  const [tokenReviewPayments, setTokenReviewPayments] = useState<Record<string, string>>(readTokenReviewPayments);
+  const [tokenReviewPayments, setTokenReviewPayments] = useState<Record<string, PendingTokenReviewPayment>>(readTokenReviewPayments);
   const [activePage, setActivePage] = useState<ProductPage>(() => pageFromPath(window.location.pathname));
   const [selectedProfileAddress, setSelectedProfileAddress] = useState<string | null>(() => profileAddressFromPath(window.location.pathname));
   const [publicProfile, setPublicProfile] = useState<PublicWalletProfile | null>(null);
@@ -688,6 +702,7 @@ export default function App() {
   const [marketplaceOrder, setMarketplaceOrder] = useState<BountyDirectoryOrder>("deadline-asc");
   const [marketplaceView, setMarketplaceView] = useState<"tiles" | "list">("tiles");
   const actionPending = useRef(false);
+  const tokenReviewReconciliationInFlight = useRef(false);
   const canonicalEscrowFallbacks = useRef(new Map<string, CanonicalEscrowFallback>());
   const escrowReconciliationTimers = useRef(new Map<string, number>());
   const escrowReconciliationInFlight = useRef(new Set<string>());
@@ -1152,10 +1167,10 @@ export default function App() {
     }
   }
 
-  function rememberTokenReviewPayment(tokenId: string, txHash?: string) {
+  function rememberTokenReviewPayment(tokenId: string, payment?: PendingTokenReviewPayment) {
     setTokenReviewPayments((current) => {
       const next = { ...current };
-      if (txHash) next[tokenId] = txHash;
+      if (payment) next[tokenId] = payment;
       else delete next[tokenId];
       try { window.localStorage.setItem(TOKEN_REVIEW_PAYMENTS_KEY, JSON.stringify(next)); } catch { /* In-memory state still prevents a duplicate during this session. */ }
       return next;
@@ -1170,13 +1185,14 @@ export default function App() {
       setLoading(true);
       setError(null);
       setNotice(null);
-      let txHash = tokenReviewPayments[tokenId];
-      if (!txHash) {
+      let pendingPayment = tokenReviewPayments[tokenId];
+      if (!pendingPayment) {
         if (!window.ethereum) throw new Error("Open Bounties in an Ethereum wallet to pay for this review request.");
-        txHash = await submitTokenReviewPayment(window.ethereum, session!.account.wallet_address, policy);
-        rememberTokenReviewPayment(tokenId, txHash);
+        const txHash = await submitTokenReviewPayment(window.ethereum, session!.account.wallet_address, policy);
+        pendingPayment = { txHash, reason, chainId: policy.chainId };
+        rememberTokenReviewPayment(tokenId, pendingPayment);
       }
-      await reportContent("token", tokenId, reason, { chainId: policy.chainId, txHash }, "review");
+      await reportContent("token", tokenId, pendingPayment.reason, { chainId: pendingPayment.chainId, txHash: pendingPayment.txHash }, "review");
       rememberTokenReviewPayment(tokenId);
       form.reset();
       await refresh();
@@ -1200,6 +1216,65 @@ export default function App() {
     // `refresh` intentionally runs once for session discovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!session?.account.id || !Object.keys(tokenReviewPayments).length) return;
+    let cancelled = false;
+    let retryTimer: number | null = null;
+    const retryableCodes = new Set([
+      "TOKEN_REVIEW_PAYMENT_PENDING",
+      "TOKEN_REVIEW_PAYMENT_RPC_UNAVAILABLE",
+      "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT",
+      "TOKEN_REVIEW_PAYMENT_CHAIN_MISMATCH"
+    ]);
+    const terminalCodes = new Set([
+      "TOKEN_REVIEW_PAYMENT_REVERTED",
+      "TOKEN_REVIEW_PAYMENT_MISMATCH",
+      "TOKEN_REVIEW_PAYMENT_ALREADY_USED"
+    ]);
+
+    const reconcile = async () => {
+      if (cancelled || tokenReviewReconciliationInFlight.current) return;
+      if (actionPending.current) {
+        retryTimer = window.setTimeout(() => void reconcile(), 1_000);
+        return;
+      }
+      tokenReviewReconciliationInFlight.current = true;
+      let shouldRetry = false;
+      try {
+        for (const [tokenId, payment] of Object.entries(tokenReviewPayments)) {
+          if (cancelled) break;
+          try {
+            await reportContent("token", tokenId, payment.reason, { chainId: payment.chainId, txHash: payment.txHash }, "review");
+            if (cancelled) break;
+            rememberTokenReviewPayment(tokenId);
+            await refresh();
+            setNotice("Payment confirmed. The token/source verification request is now in the moderator queue.");
+          } catch (caught) {
+            const code = caught instanceof PersistenceError ? caught.serverCode ?? "" : "";
+            if (retryableCodes.has(code)) {
+              shouldRetry = true;
+              continue;
+            }
+            if (terminalCodes.has(code)) rememberTokenReviewPayment(tokenId);
+            if (!cancelled) setError(caught instanceof Error ? caught.message : "The token review payment could not be reconciled.");
+          }
+        }
+      } finally {
+        tokenReviewReconciliationInFlight.current = false;
+        if (shouldRetry && !cancelled) retryTimer = window.setTimeout(() => void reconcile(), 15_000);
+      }
+    };
+
+    void reconcile();
+    return () => {
+      cancelled = true;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
+    };
+    // Reconciliation intentionally follows authenticated session and durable
+    // pending-payment state; helpers use current component state on each pass.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.account.id, tokenReviewPayments]);
 
   useEffect(() => {
     if (activePage !== "profile" || !selectedProfileAddress || publicProfile || profileMessage) return;
@@ -2164,6 +2239,7 @@ export default function App() {
     const tokenReport = entityType === "token";
     const paymentPolicy = tokenReviewPaymentPolicy();
     const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
+    const paymentChain = chains[pendingPayment?.chainId ?? paymentPolicy.chainId];
     if (tokenReport) return (
       <div className="token-report-actions" aria-label="Token review and safety actions">
         <details className="report-control token-review-control">
@@ -2174,12 +2250,12 @@ export default function App() {
             const reason = details ? `${PAID_TOKEN_REVIEW_REASON}: ${details}` : PAID_TOKEN_REVIEW_REASON;
             void submitPaidTokenReview(entityId, reason, event.currentTarget);
           }}>
-            <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Retry to verify it without paying again.</span></> : null}</p>
+            <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentChain.name} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Confirmation and queue delivery are checked automatically.</span></> : null}</p>
             {pendingPayment ? (
               <p className="token-review-payment-reference" role="status">
                 <span>Transaction hash</span>
-                <code>{pendingPayment}</code>
-                <a href={`${chains[paymentPolicy.chainId].blockExplorer}/tx/${pendingPayment}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a>
+                <code>{pendingPayment.txHash}</code>
+                <a href={`${paymentChain.blockExplorer}/tx/${pendingPayment.txHash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a>
               </p>
             ) : null}
             <label>Review details (optional)<textarea name="details" maxLength={430} /></label>
@@ -3397,6 +3473,7 @@ export default function App() {
                   <p>Review reported listings, reviews, profiles, and tokens, choose a visibility decision, and respond to the reporter.</p>
                   <p className="moderation-safety-note"><ShieldCheck size={16} /> These actions change visibility on Bounties only. They do not affect escrow, payment, or blockchain records.</p>
                   <p>{session.staffRole} access · {session.moderationReports.length} open report{session.moderationReports.length === 1 ? "" : "s"}</p>
+                  {Object.keys(tokenReviewPayments).length ? <p className="moderator-pending-review" role="status"><Loader2 size={16} /> {Object.keys(tokenReviewPayments).length} paid token review payment{Object.keys(tokenReviewPayments).length === 1 ? " is" : "s are"} confirming. Confirmed requests are added here automatically.</p> : null}
                   {session.moderationReports.length ? session.moderationReports.map((report) => (
                     <article className="report-row" key={report.id}>
                       <div className="report-summary">

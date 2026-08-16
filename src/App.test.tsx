@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility } from "./test/setup";
+import { configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -496,6 +496,7 @@ describe("App", () => {
   });
 
   it("shows a pending token-review transaction and keeps the panel open for inside clicks", async () => {
+    configureMockTokenReportOutcome("pending");
     const paymentHash = `0x${"88".repeat(32)}`;
     window.localStorage.setItem("bounties.token-review-payments.v1", JSON.stringify({
       "00000000-0000-4000-8000-000000000003": paymentHash
@@ -520,6 +521,24 @@ describe("App", () => {
 
     await user.click(screen.getByRole("heading", { name: /^create a bounty$/i }));
     expect(reviewControl.open).toBe(false);
+  });
+
+  it("automatically reconciles a confirmed paid token review into the moderator queue", async () => {
+    configureMockStaff("moderator", []);
+    const paymentHash = `0x${"87".repeat(32)}`;
+    window.localStorage.setItem("bounties.token-review-payments.v1", JSON.stringify({
+      "00000000-0000-4000-8000-000000000003": paymentHash
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+
+    expect(await screen.findByText(/^Token\/source verification review$/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: /^moderator$/i }));
+    const moderatorPanel = screen.getByRole("heading", { level: 2, name: /^moderator panel$/i }).closest("section") as HTMLElement;
+    expect(within(moderatorPanel).getByText(/^Token\/source verification review$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/paid token review payment.*confirming/i)).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("bounties.token-review-payments.v1")).toBe("{}");
   });
 
   it("offers compatibility review from a bounty's payment-token details", async () => {
