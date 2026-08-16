@@ -1915,7 +1915,7 @@ async function handle(request: Request, action: string): Promise<Response> {
   }
 
   if (action === "public/marketplace" && method === "GET") {
-    await consumePublicDiscoveryLimit(request, requestOrigin, "public_marketplace_discovery");
+    await consumePublicDiscoveryLimit(request, requestOrigin);
     const snapshot = await callRpc<Record<string, unknown>>("app_marketplace_snapshot", { p_actor_id: null });
     return Response.json(projectPublicMarketplaceSnapshot(snapshot), { headers });
   }

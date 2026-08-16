@@ -212,6 +212,12 @@ describe("public marketplace projection", () => {
       tokens: [{ id: "mainnet-token" }],
       bounties: [{ id: "public-bounty", application_count: 2 }]
     });
+    expect(rpcMock).toHaveBeenCalledWith("app_consume_anonymous_rate_limit", {
+      p_bucket_digest: expect.stringMatching(/^[0-9a-f]{64}$/),
+      p_action: "public_profile_discovery",
+      p_limit: 30,
+      p_window_seconds: 600
+    });
     expect(rpcMock).toHaveBeenCalledWith("app_marketplace_snapshot", { p_actor_id: null });
     expect(rpcMock).not.toHaveBeenCalledWith("app_resolve_wallet_session", expect.anything());
   });
