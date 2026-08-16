@@ -865,9 +865,8 @@ contract BountyEscrowTest is Test {
         bytes memory publicReason = abi.encode(reasonHash, "Scope changed after selection.");
 
         vm.prank(requester);
-        (bool success,) = address(escrow).call(
-            bytes.concat(abi.encodeCall(escrow.cancelBounty, (bountyId)), publicReason)
-        );
+        (bool success,) =
+            address(escrow).call(bytes.concat(abi.encodeCall(escrow.cancelBounty, (bountyId)), publicReason));
 
         assertTrue(success);
         BountyEscrow.Bounty memory cancelled = escrow.getBounty(bountyId);
