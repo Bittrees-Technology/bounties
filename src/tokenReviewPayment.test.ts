@@ -17,7 +17,7 @@ describe("token moderator-review payments", () => {
   it("uses the exact 250 BIT Ethereum mainnet policy", () => {
     expect(tokenReviewPaymentPolicy()).toEqual({
       chainId: 1,
-      networkName: "Ethereum",
+      networkName: "Ethereum mainnet",
       tokenAddress: TOKEN_REVIEW_MAINNET_BIT_ADDRESS,
       treasuryAddress: TOKEN_REVIEW_TREASURY_ADDRESS,
       amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS

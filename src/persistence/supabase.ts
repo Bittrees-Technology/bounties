@@ -107,8 +107,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "TOKEN_REVIEW_PAYMENT_PENDING") return "The 250 BIT payment is still confirming. Use the same request again shortly; you will not be asked to pay twice.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_REVERTED") return "The 250 BIT payment reverted and the review request was not submitted.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_MISMATCH") return "That payment does not match the required 250 BIT review fee or Bounties recipient.";
-  if (serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED") return "Moderator review payments are available only on Ethereum Sepolia, or Ethereum mainnet after launch configuration.";
-  if (serverCode === "TOKEN_REVIEW_MAINNET_NOT_CONFIGURED") return "Ethereum mainnet review payments are not enabled yet.";
+  if (serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED") return "Moderator review payments are available only on Ethereum mainnet.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_RPC_UNAVAILABLE" || serverCode === "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT" || serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_MISMATCH") return "The review payment could not be verified right now. Retry with the same submitted payment shortly.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_ALREADY_USED") return "That payment has already been used for a moderator review request.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";

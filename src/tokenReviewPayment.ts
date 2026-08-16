@@ -11,7 +11,7 @@ const transferAbi = parseAbi(["function transfer(address to,uint256 amount) retu
 
 export type TokenReviewPaymentPolicy = {
   chainId: 1;
-  networkName: "Ethereum";
+  networkName: "Ethereum mainnet";
   tokenAddress: `0x${string}`;
   treasuryAddress: typeof TOKEN_REVIEW_TREASURY_ADDRESS;
   amountBaseUnits: bigint;
@@ -21,7 +21,7 @@ export type TokenReviewPaymentPolicy = {
 export function tokenReviewPaymentPolicy(): TokenReviewPaymentPolicy {
   return {
     chainId: 1,
-    networkName: "Ethereum",
+    networkName: "Ethereum mainnet",
     tokenAddress: getAddress(TOKEN_REVIEW_MAINNET_BIT_ADDRESS),
     treasuryAddress: TOKEN_REVIEW_TREASURY_ADDRESS,
     amountBaseUnits: TOKEN_REVIEW_FEE_BASE_UNITS

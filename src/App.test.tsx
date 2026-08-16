@@ -491,6 +491,7 @@ describe("App", () => {
     const selectedTokenCard = screen.getByText(/selected token/i).closest(".selected-token-card") as HTMLElement;
     const reviewControl = within(selectedTokenCard).getByText(/request token\/source verification review/i).closest("details") as HTMLElement;
     await user.click(within(reviewControl).getByText(/request token\/source verification review/i));
+    expect(reviewControl.querySelector(".token-review-fee")).toHaveTextContent(/250 BIT on Ethereum mainnet/i);
     expect(within(reviewControl).queryByLabelText(/review reason/i)).not.toBeInTheDocument();
     await user.type(within(reviewControl).getByLabelText(/review details/i), "Check the verified source and transfer behavior");
     await user.click(within(reviewControl).getByRole("button", { name: /request review/i }));
@@ -543,8 +544,12 @@ describe("App", () => {
   it("shows a pending token-review transaction and keeps the panel open for inside clicks", async () => {
     configureMockTokenReportOutcome("pending");
     const paymentHash = `0x${"88".repeat(32)}`;
-    window.localStorage.setItem("bounties.token-review-payments.v1", JSON.stringify({
-      "00000000-0000-4000-8000-000000000003": paymentHash
+    window.localStorage.setItem("bounties.token-review-payments.v2", JSON.stringify({
+      "00000000-0000-4000-8000-000000000003": {
+        txHash: paymentHash,
+        reason: "Token/source verification review",
+        chainId: 1
+      }
     }));
     const user = userEvent.setup();
     render(<App />);
@@ -571,8 +576,12 @@ describe("App", () => {
   it("automatically reconciles a confirmed paid token review into the moderator queue", async () => {
     configureMockStaff("moderator", []);
     const paymentHash = `0x${"87".repeat(32)}`;
-    window.localStorage.setItem("bounties.token-review-payments.v1", JSON.stringify({
-      "00000000-0000-4000-8000-000000000003": paymentHash
+    window.localStorage.setItem("bounties.token-review-payments.v2", JSON.stringify({
+      "00000000-0000-4000-8000-000000000003": {
+        txHash: paymentHash,
+        reason: "Token/source verification review",
+        chainId: 1
+      }
     }));
     const user = userEvent.setup();
     render(<App />);
@@ -584,7 +593,7 @@ describe("App", () => {
     expect(within(moderatorPanel).getByText(/^Token verification request ·/i)).toBeInTheDocument();
     expect(within(moderatorPanel).queryByText(/Token report/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/paid token review payment.*confirming/i)).not.toBeInTheDocument();
-    expect(window.localStorage.getItem("bounties.token-review-payments.v1")).toBe("{}");
+    expect(window.localStorage.getItem("bounties.token-review-payments.v2")).toBe("{}");
   });
 
   it("offers compatibility review from a bounty's payment-token details", async () => {

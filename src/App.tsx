@@ -273,11 +273,13 @@ type ProductPage = "home" | "marketplace" | "create" | "profile" | "moderator";
 type ReportableEntity = "bounty" | "review" | "profile" | "token";
 type ProfileSearchSelection = { query: string; workType: string; category: string };
 type EscrowCreationLock = { txHash?: string; bundleId?: string; createdAt: string };
-type PendingTokenReviewPayment = { txHash: string; reason: string; chainId: 1 | 11155111 };
+type PendingTokenReviewPayment = { txHash: string; reason: string; chainId: 1 };
 type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowMilestoneRecord | null };
 type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
-const TOKEN_REVIEW_PAYMENTS_KEY = "bounties.token-review-payments.v1";
+// Version 2 intentionally discards pre-mainnet review-payment receipts so a
+// Sepolia transaction can never be retried as an Ethereum mainnet payment.
+const TOKEN_REVIEW_PAYMENTS_KEY = "bounties.token-review-payments.v2";
 const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [2_000, 4_000, 6_000, 10_000, 20_000, 30_000, 60_000, 90_000] as const;
 const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled", "AwaitingFunding", "PartiallyCompleted"]);
 
@@ -306,11 +308,7 @@ function readTokenReviewPayments(): Record<string, PendingTokenReviewPayment> {
     if (typeof window.localStorage?.getItem !== "function") return {};
     const value = JSON.parse(window.localStorage.getItem(TOKEN_REVIEW_PAYMENTS_KEY) ?? "{}");
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    const fallbackChainId = tokenReviewPaymentPolicy().chainId;
     return Object.fromEntries(Object.entries(value).flatMap(([tokenId, candidate]) => {
-      if (typeof candidate === "string" && /^0x[0-9a-fA-F]{64}$/.test(candidate)) {
-        return [[tokenId, { txHash: candidate.toLowerCase(), reason: PAID_TOKEN_REVIEW_REASON, chainId: fallbackChainId }]];
-      }
       if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return [];
       const payment = candidate as Partial<PendingTokenReviewPayment>;
       if (!payment.txHash || !/^0x[0-9a-fA-F]{64}$/.test(payment.txHash)) return [];
@@ -2369,7 +2367,7 @@ export default function App() {
     const tokenReport = entityType === "token";
     const paymentPolicy = tokenReviewPaymentPolicy();
     const pendingPayment = tokenReport ? tokenReviewPayments[entityId] : undefined;
-    const paymentChain = chains[pendingPayment?.chainId ?? paymentPolicy.chainId];
+    const paymentChain = chains[paymentPolicy.chainId];
     if (tokenReport) return (
       <div className="token-report-actions" aria-label="Token review and safety actions">
         {!tokenRecord || !tokenIsModeratorVerified(tokenRecord) ? <details className="report-control token-review-control">
@@ -2380,7 +2378,7 @@ export default function App() {
             const reason = details ? `${PAID_TOKEN_REVIEW_REASON}: ${details}` : PAID_TOKEN_REVIEW_REASON;
             void submitPaidTokenReview(entityId, reason, event.currentTarget);
           }}>
-            <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentChain.name} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Confirmation and queue delivery are checked automatically.</span></> : null}</p>
+            <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Confirmation and queue delivery are checked automatically.</span></> : null}</p>
             {pendingPayment ? (
               <p className="token-review-payment-reference" role="status">
                 <span>Transaction hash</span>
