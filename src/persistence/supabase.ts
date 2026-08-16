@@ -110,6 +110,7 @@ function marketplaceErrorMessage(status: number, serverCode?: string): string {
   if (serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_UNSUPPORTED") return "Moderator review payments are available only on Ethereum mainnet.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_RPC_UNAVAILABLE" || serverCode === "TOKEN_REVIEW_PAYMENT_RPC_TIMEOUT" || serverCode === "TOKEN_REVIEW_PAYMENT_CHAIN_MISMATCH") return "The review payment could not be verified right now. Retry with the same submitted payment shortly.";
   if (serverCode === "TOKEN_REVIEW_PAYMENT_ALREADY_USED") return "That payment has already been used for a moderator review request.";
+  if (serverCode === "RATE_LIMITED") return "This request is temporarily paused and will retry automatically.";
   if (serverCode === "SELF_REPORT_NOT_ALLOWED") return "You cannot report your own profile. Use profile settings to edit or deactivate it.";
   if (serverCode === "BOUNTY_ALREADY_MATCHED") return "This bounty already has a selected applicant. Refresh to see its current status.";
   if (serverCode === "BOUNTY_NOT_OPEN") return "This bounty is no longer accepting applicant changes. Refresh to see its current status.";

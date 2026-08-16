@@ -953,6 +953,7 @@ describe("profile report ownership boundary", () => {
       p_payment_token_address: "0x57A447E4d5e18A9423408C365963A73F08B9d18C",
       p_payment_amount_base_units: "250000000000000000000"
     });
+    expect(rpcMock).not.toHaveBeenCalledWith("app_consume_rate_limit", expect.anything());
   });
 
   it("accepts a malicious-token safety flag without payment proof", async () => {

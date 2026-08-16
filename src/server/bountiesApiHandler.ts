@@ -2240,12 +2240,6 @@ async function handle(request: Request, action: string): Promise<Response> {
     if (reportedEntityType === "profile" && reportedEntityId.toLowerCase() === session.account_id.toLowerCase()) {
       throw new ApiError("SELF_REPORT_NOT_ALLOWED", 400);
     }
-    await callRpc("app_consume_rate_limit", {
-      p_actor_id: session.account_id,
-      p_action: "content_report",
-      p_limit: 20,
-      p_window_seconds: 3600
-    });
     const reason = requiredString(body, "reason");
     let data: unknown;
     if (reportedEntityType === "token") {
