@@ -1081,6 +1081,40 @@ li {
 
 .token-review-control form label { grid-column: 1 / -1; }
 
+.token-review-payment-reference {
+  background: #f7faf8;
+  border: 1px solid #c9ded5;
+  border-radius: 12px;
+  display: grid;
+  gap: 5px;
+  grid-column: 1 / -1;
+  margin: 0;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.token-review-payment-reference > span {
+  color: #5a6862;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.token-review-payment-reference code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.token-review-payment-reference a {
+  align-items: center;
+  color: #0f6b57;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 4px;
+  justify-self: start;
+}
+
 .token-safety-note {
   background: #eef7f3;
   border: 1px solid #c9ded5;

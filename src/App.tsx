@@ -1245,10 +1245,7 @@ export default function App() {
   useEffect(() => {
     const dismissReportsOutsideActiveControl = (event: PointerEvent) => {
       const target = event.target;
-      const activeControl = target instanceof Element
-        ? target.closest(".report-control summary, .report-control select, .report-control textarea, .report-control input, .report-control button")
-        : null;
-      const activeReport = activeControl?.closest(".report-control") ?? null;
+      const activeReport = target instanceof Element ? target.closest(".report-control") : null;
       document.querySelectorAll<HTMLDetailsElement>(".report-control[open]").forEach((report) => {
         if (report !== activeReport) report.open = false;
       });
@@ -2178,6 +2175,13 @@ export default function App() {
             void submitPaidTokenReview(entityId, reason, event.currentTarget);
           }}>
             <p className="token-review-fee"><strong>{TOKEN_REVIEW_FEE_DISPLAY}</strong> on {paymentPolicy.networkName} · paid to <strong>bounties.bittrees.eth</strong>{pendingPayment ? <><br /><span>Payment submitted. Retry to verify it without paying again.</span></> : null}</p>
+            {pendingPayment ? (
+              <p className="token-review-payment-reference" role="status">
+                <span>Transaction hash</span>
+                <code>{pendingPayment}</code>
+                <a href={`${chains[paymentPolicy.chainId].blockExplorer}/tx/${pendingPayment}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a>
+              </p>
+            ) : null}
             <label>Review details (optional)<textarea name="details" maxLength={430} /></label>
             <button type="submit">{pendingPayment ? "Verify payment and request review" : `Pay ${TOKEN_REVIEW_FEE_DISPLAY} and request review`}</button>
           </form>

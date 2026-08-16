@@ -183,9 +183,7 @@ describe("App", () => {
     expect(reportControl.open).toBe(true);
 
     await user.click(within(reportControl).getByText(/details \(optional\)/i));
-    expect(reportControl.open).toBe(false);
-
-    await user.click(reportSummary);
+    expect(reportControl.open).toBe(true);
     await user.click(order.getByText(/open request/i));
     expect(reportControl.open).toBe(false);
   });
@@ -495,6 +493,33 @@ describe("App", () => {
       tokenReportAction: "safety_flag"
     });
     expect(vi.mocked(window.ethereum!.request)).not.toHaveBeenCalledWith(expect.objectContaining({ method: "eth_sendTransaction" }));
+  });
+
+  it("shows a pending token-review transaction and keeps the panel open for inside clicks", async () => {
+    const paymentHash = `0x${"88".repeat(32)}`;
+    window.localStorage.setItem("bounties.token-review-payments.v1", JSON.stringify({
+      "00000000-0000-4000-8000-000000000003": paymentHash
+    }));
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    await openCreatePage(user);
+
+    await user.selectOptions(screen.getByLabelText(/payment token/i), screen.getByRole("option", { name: /^BIT · Base Sepolia/i }));
+    const selectedTokenCard = screen.getByText(/selected token/i).closest(".selected-token-card") as HTMLElement;
+    const reviewControl = within(selectedTokenCard).getByText(/request token\/source verification review/i).closest("details") as HTMLDetailsElement;
+    await user.click(within(reviewControl).getByText(/request token\/source verification review/i));
+
+    const transactionLink = within(reviewControl).getByRole("link", { name: /view transaction/i });
+    expect(within(reviewControl).getByText(paymentHash)).toBeInTheDocument();
+    expect(transactionLink).toHaveAttribute("href", `https://sepolia.etherscan.io/tx/${paymentHash}`);
+    await user.click(within(reviewControl).getByText(/payment submitted/i));
+    expect(reviewControl.open).toBe(true);
+    await user.click(within(reviewControl).getByText(/transaction hash/i));
+    expect(reviewControl.open).toBe(true);
+
+    await user.click(screen.getByRole("heading", { name: /^create a bounty$/i }));
+    expect(reviewControl.open).toBe(false);
   });
 
   it("offers compatibility review from a bounty's payment-token details", async () => {
