@@ -1,0 +1,113 @@
+{
+  "schemaVersion": 1,
+  "contract": "src/BountyEscrow.sol:BountyEscrow",
+  "sourceCommit": "cfe3caff55b87d15e140afe2aa7797b16ceeb643",
+  "compiler": {
+    "version": "0.8.24",
+    "evmVersion": "shanghai",
+    "optimizer": true,
+    "optimizerRuns": 200
+  },
+  "deployment": {
+    "method": "Safe 1.4.1 execTransaction to CreateCall 1.4.1 performCreate2",
+    "createCallAddress": "0x9b35Af71d77eaf8d7e40252370304687390A1A52",
+    "safeAddress": "0x594f3B031992C2d6855383b3755653D6Fde35F01",
+    "safeOwner": "0xE5350D96FC3161BF5c385843ec5ee24E8B465B2f",
+    "safeThreshold": 1,
+    "saltPhrase": "bounties-escrow-v3-staged-milestone-funding-2026-08-16",
+    "salt": "0x918c3fdb4d42e65565dbde9a67eb4d5b4cb3a2a905ffd1fa25b73be751dd3f4c",
+    "contractAddress": "0x45b64083d97947D5872464d8C1b6045f83D0193e",
+    "creationBytecodeBytes": 16804,
+    "runtimeBytecodeBytes": 16767,
+    "creationBytecodeKeccak256": "0xef774c502de5a2d80e4fb2af38af9f28d326562d08689fb0cd60cd0ea22abc97",
+    "runtimeBytecodeKeccak256": "0x1c994fba792bba77ac3e0d875d27f3cfd9ce95b8f078c487ab41f5dec63bfae9",
+    "runtimeAuthority": "none; the deployment Safe, owner, and CreateCall factory receive no escrow role"
+  },
+  "networks": [
+    {
+      "name": "Ethereum Mainnet",
+      "chainId": 1,
+      "transactionHash": "0x61abc444383c7cd08000ecc27e8b7197cff4b905cd3f4bbec92a3ca4aef41079",
+      "blockNumber": 25767891,
+      "deployedAt": "2026-08-16T13:22:35Z",
+      "gasUsed": "3772785",
+      "transactionFeeWei": "737383463773680",
+      "explorerUrl": "https://etherscan.io/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match"
+      },
+      "validation": {
+        "validatedAt": "2026-08-16T13:32:42Z",
+        "validatedThroughBlock": 25767941,
+        "receiptSucceeded": true,
+        "createEventObserved": true,
+        "runtimeBytecodeExactMatch": true,
+        "nextBountyId": 1,
+        "contractNonce": 1
+      }
+    },
+    {
+      "name": "Base Mainnet",
+      "chainId": 8453,
+      "transactionHash": "0x7ad8d1707627025eadc31bdc3be26e1ef9be18d3a665e0ea233b6dfee7d703ed",
+      "blockNumber": 50048612,
+      "deployedAt": "2026-08-16T13:22:51Z",
+      "gasUsed": "3935007",
+      "transactionFeeWei": "23610042000000",
+      "explorerUrl": "https://basescan.org/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match"
+      },
+      "validation": {
+        "validatedAt": "2026-08-16T13:32:42Z",
+        "validatedThroughBlock": 50048907,
+        "receiptSucceeded": true,
+        "createEventObserved": true,
+        "runtimeBytecodeExactMatch": true,
+        "nextBountyId": 1,
+        "contractNonce": 1
+      }
+    },
+    {
+      "name": "Robinhood Chain Mainnet",
+      "chainId": 4663,
+      "transactionHash": "0xfa569e1dff112fea79a97d77c4372c0c40822723b3a8a241a63b6ee2ad1c5917",
+      "blockNumber": 38008047,
+      "deployedAt": "2026-08-16T13:22:32Z",
+      "gasUsed": "3936269",
+      "transactionFeeWei": "81472895762000",
+      "explorerUrl": "https://robinhoodchain.blockscout.com/address/0x45b64083d97947D5872464d8C1b6045f83D0193e",
+      "sourceVerification": {
+        "provider": "Sourcify",
+        "match": "exact_match",
+        "jobId": "2ad64ba2-3d90-430a-86ce-d4f55fa02039"
+      },
+      "validation": {
+        "validatedAt": "2026-08-16T13:32:42Z",
+        "validatedThroughBlock": 38014117,
+        "receiptSucceeded": true,
+        "createEventObserved": true,
+        "runtimeBytecodeExactMatch": true,
+        "nextBountyId": 1,
+        "contractNonce": 1
+      }
+    }
+  ],
+  "applicationConfiguration": {
+    "environment": "Vercel production",
+    "mainnetContractAddressVariablesUpdated": false,
+    "mainnetEscrowActionsEnabled": false,
+    "status": "deployed and validated; application activation remains fail-closed pending a separate release decision"
+  },
+  "validationSummary": {
+    "runtimeBytecodeMatchesSourceCommitOnAllNetworks": true,
+    "sourceExactMatchOnAllNetworks": true,
+    "deploymentReceiptsSucceededOnAllNetworks": true,
+    "freshDeploymentStateOnAllNetworks": true,
+    "foundryTestsPassed": 72,
+    "foundryTestsFailed": 0,
+    "independentSecurityAudit": false
+  }
+}

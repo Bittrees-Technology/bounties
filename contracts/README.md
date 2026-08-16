@@ -21,6 +21,13 @@ retired from application configuration and remains recorded in
 deployment remains in [`deployments/testnet.json`](deployments/testnet.json) as
 incident evidence and is not a configured application target.
 
+The deterministic Ethereum, Base, and Robinhood Chain mainnet deployments use
+the same address and exact runtime bytecode. Their immutable receipts, validation
+blocks, hashes, Safe authority, and source-verification status are published in
+[`deployments/mainnet-v3.json`](deployments/mainnet-v3.json). Deployment does not
+by itself enable mainnet actions in the application; that remains a separate,
+fail-closed release decision.
+
 Native ETH is not accepted. Product surfaces that say ETH must pass a WETH ERC20
 address. Token symbols, decimals, names, and offchain prices are never read.
 

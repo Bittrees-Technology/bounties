@@ -1,9 +1,10 @@
 # Escrow production readiness
 
 Status: **the current source restores funded cancellation before provider
-acceptance and adds opt-in sequential milestone funding. Exact-match testnet-v3
-deployments are configured on all three approved test networks. Lifecycle soak,
-independent audit, and mainnet authorization remain NO-GO gates**.
+acceptance and adds opt-in sequential milestone funding. Exact-match v3
+deployments now exist on all three supported test networks and mainnets. Mainnet
+application activation remains fail-closed; lifecycle soak, independent audit,
+and the separate production release decision remain NO-GO gates**.
 
 The repository includes an original Foundry escrow implementation, deterministic and stateful invariant tests, a fail-closed wallet adapter, wallet-only persistence, and server-verified escrow observations. None of this constitutes an audit, legal approval, deployment authorization, or custody approval.
 
@@ -61,18 +62,23 @@ The repository includes an original Foundry escrow implementation, deterministic
    now targets only the exact-match v3 address; this enables testnet rehearsal,
    not mainnet or production-value approval.
 7. **Operations readiness** — alert on unexpected balances, failed transactions, receipt-reconciliation failures, and application rollback conditions; rehearse incident response and frontend rollback.
-8. **Production canary** — operator-approved deployment with clearly published risk limits and a documented observation period before widening use.
+8. **Production canary** — operator-approved application activation of the
+   validated deployment, with clearly published risk limits and a documented
+   observation period before widening use.
 
 The immutable receipts, exact-match verification jobs, Safe address,
 deterministic salt, and bytecode hashes for the current v3 release are in
 [`contracts/deployments/testnet-v3.json`](../contracts/deployments/testnet-v3.json).
+The separately deployed and validated mainnet records are in
+[`contracts/deployments/mainnet-v3.json`](../contracts/deployments/mainnet-v3.json).
 The preceding v2 release remains in
 [`contracts/deployments/testnet-v2.json`](../contracts/deployments/testnet-v2.json)
 and is retired from application configuration. Existing escrow records always
 remain bound to their persisted contract address. The original deployment remains
 in [`contracts/deployments/testnet.json`](../contracts/deployments/testnet.json)
-as retired incident evidence with zero BIT balance and liability. No mainnet
-address is set or authorized.
+as retired incident evidence with zero BIT balance and liability. The mainnet
+contract addresses are not yet set in the application environment and mainnet
+escrow actions remain disabled.
 
 ## Operator decisions still required
 
