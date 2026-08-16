@@ -3052,7 +3052,7 @@ export default function App() {
                     <legend>Payment milestones</legend>
                     <p className="form-hint">Add up to 32 deliverables. Amounts must total the budget, and deadlines must be at least 22 days apart.</p>
                     {milestoneSchedule.map((milestone, index) => (
-                      <div className="milestone-input-row" key={`${index}-${milestone.title}`}>
+                      <div className={`milestone-input-row${milestoneSchedule.length > 1 ? " milestone-input-row--removable" : ""}`} key={`${index}-${milestone.title}`}>
                         <span className="milestone-number">{index + 1}</span>
                         <label>Deliverable<input value={milestone.title} onChange={(event) => updateMilestone(index, "title", event.target.value)} placeholder="Completed deliverable" required /></label>
                         <label>Amount<input inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={milestone.amount} onChange={(event) => updateMilestone(index, "amount", event.target.value)} required /></label>

@@ -1049,11 +1049,21 @@ li {
 .selected-token-card .report-control {
   border-top: 1px solid #cfe0d6;
   margin-top: 4px;
+  max-width: 100%;
+  min-width: 0;
   padding-top: 10px;
+  width: 100%;
 }
 
 .selected-token-card .report-control form {
-  grid-template-columns: minmax(180px, .8fr) minmax(220px, 1.2fr) auto;
+  grid-template-columns: minmax(260px, .8fr) minmax(0, 1.2fr);
+}
+
+.selected-token-card .report-control form button {
+  grid-column: 1 / -1;
+  justify-self: end;
+  max-width: 100%;
+  white-space: normal;
 }
 
 .payment-token-note { margin-top: -2px; }
@@ -1096,9 +1106,20 @@ li {
   border-radius: 14px;
   display: grid;
   gap: 10px;
-  grid-template-columns: auto minmax(180px, 1.25fr) minmax(120px, .55fr) minmax(150px, .7fr) auto;
+  grid-template-columns: auto minmax(0, 1.2fr) minmax(100px, .5fr) minmax(210px, .8fr);
   min-width: 0;
+  overflow: hidden;
   padding: 12px;
+}
+
+.milestone-input-row--removable {
+  grid-template-columns: auto minmax(0, 1.15fr) minmax(100px, .5fr) minmax(190px, .8fr) auto;
+}
+
+.milestone-input-row label,
+.milestone-input-row input {
+  min-width: 0;
+  width: 100%;
 }
 
 .milestone-number {
@@ -3831,6 +3852,10 @@ textarea {
 
   .milestone-input-row {
     align-items: stretch;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .milestone-input-row--removable {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
