@@ -442,6 +442,27 @@ li {
   box-shadow: 0 0 0 2px rgba(15, 107, 87, 0.1);
 }
 
+.milestone-row.accepted-milestone {
+  background: #f8fcfa;
+}
+
+.accepted-work-status {
+  color: #0f6b57 !important;
+  font-weight: 750;
+}
+
+.delivery-proof-link a {
+  align-items: center;
+  display: inline-flex;
+  font-weight: 800;
+  gap: 4px;
+}
+
+.delivery-proof-fingerprint code {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .funded-escrow-summary {
   align-items: center;
   background: #0f6b57;

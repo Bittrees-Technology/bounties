@@ -207,7 +207,10 @@ it("keeps predecessor escrow actions bound to the record's verified contract", a
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   const order = within((await screen.findByRole("heading", { level: 2, name: /two-phase active milestone/i })).closest("article") as HTMLElement);
 
-  expect(order.getByRole("button", { name: /accept completed work/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
+  expect(order.getByText(/work was accepted and is ready for payment release/i)).toBeInTheDocument();
+  expect(order.getByRole("link", { name: /view submitted proof/i })).toHaveAttribute("href", "https://example.test/phase-two");
+  expect(order.getByRole("button", { name: /release phase two payment/i })).toBeInTheDocument();
 });
 
 it("hydrates a persisted creation lock and safely clears a reverted receipt", async () => {
@@ -351,8 +354,19 @@ it("uses the exact active tranche for approval and release controls", async () =
   const order = await renderConfiguredEscrow();
   expect(order.getByText(/active milestone 2 of 2: phase two/i)).toBeInTheDocument();
   expect(order.getByRole("button", { name: /release phase two payment/i })).toBeInTheDocument();
-  expect(order.getByRole("button", { name: /accept completed work/i })).toBeInTheDocument();
+  expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
+  expect(order.getByText(/work was accepted and is ready for payment release/i)).toBeInTheDocument();
+  expect(order.getByRole("link", { name: /view submitted proof/i })).toHaveAttribute("href", "https://example.test/phase-two");
   expect(order.queryByRole("button", { name: /release full payment/i })).not.toBeInTheDocument();
+});
+
+it("shows the accepted delivery record to the labor provider without a second acceptance step", async () => {
+  configureMockMilestoneEscrow("BuyerApproved", "Approved", "2099-12-31T23:59:59.999Z", "match", "provider");
+  const order = await renderConfiguredEscrow();
+
+  expect(order.getByText(/work was accepted and is ready for payment release/i)).toBeInTheDocument();
+  expect(order.getByRole("link", { name: /view submitted proof/i })).toHaveAttribute("href", "https://example.test/phase-two");
+  expect(order.queryByRole("button", { name: /accept completed work/i })).not.toBeInTheDocument();
 });
 
 it("uses the active milestone deadline rather than the overall bounty deadline for timeout", async () => {

@@ -31,7 +31,6 @@ import { buildCanonicalApprovalCommitment, buildCanonicalEvidenceCommitment, has
 import { standardTokenPresets } from "./chain/tokenPresets";
 import type { EscrowClient, EscrowMilestoneRecord, EscrowOnchainRecord, EscrowOnchainState, EscrowOrderRef, SupportedChainId } from "./chain/types";
 import {
-  acceptEvidence,
   acceptProposal,
   browsePublicProfiles,
   cancelUnfundedBounty,
@@ -689,10 +688,16 @@ function displayedOrderStatus(order: MarketplaceOrder): string {
   if (onchain === "Cancelled") return "Cancelled and refunded";
   if (onchain === "Refunded") return "Timeout refund completed";
   if (onchain === "Delivered") return "Delivered · seven-day review";
-  if (onchain === "BuyerApproved") return "Approved · ready to release";
+  if (onchain === "BuyerApproved") return "Work accepted · payment ready to release";
   if (onchain === "ProviderAccepted") return "Provider accepted onchain";
   if (onchain === "Funded" || onchain === "Created") return `Escrow ${onchain.toLowerCase()}`;
   return orderStatusLabel(order.status);
+}
+
+function displayedEscrowState(state?: string): string {
+  if (state === "BuyerApproved") return "Work accepted";
+  if (state === "ProviderAccepted") return "Provider accepted";
+  return state ?? "Confirmed";
 }
 
 function moderationAuditRoleLabel(role: MarketplaceSnapshot["auditRole"]): string {
@@ -2715,7 +2720,7 @@ export default function App() {
             <div>
               <span>{observation.onchain_state === "Settled" ? "Original escrow funded" : observation.onchain_state === "AwaitingFunding" ? "Current escrow balance" : "Funds escrowed"}</span>
               <strong>{escrowedAmount} {order.tokenRecord?.symbol || "ERC20"}</strong>
-              <small>{observation.onchain_state === "Settled" ? "Settlement completed" : "Confirmed"} on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {observation.onchain_state ?? observation.status}</small>
+              <small>{observation.onchain_state === "Settled" ? "Settlement completed" : "Confirmed"} on {chains[order.tokenRecord!.chain_id as SupportedChainId].name} · {displayedEscrowState(observation.onchain_state ?? observation.status)}</small>
             </div>
             <a href={escrowTransactionUrl} target="_blank" rel="noreferrer">View {observation.onchain_state === "Settled" ? "original " : ""}funding transaction <ExternalLink size={14} /></a>
           </aside>
@@ -2724,26 +2729,27 @@ export default function App() {
           const isActiveMilestone = currentMilestone !== null && index === currentMilestone;
           const derivedEvidenceHash = deriveMilestoneEvidenceHash(order, milestone, index);
           const evidenceMatches = Boolean(derivedEvidenceHash && milestone.deliveryEvidenceHash && observation?.current_milestone_detail?.evidence_hash) && derivedEvidenceHash!.toLowerCase() === milestone.deliveryEvidenceHash!.toLowerCase() && milestone.deliveryEvidenceHash!.toLowerCase() === observation!.current_milestone_detail!.evidence_hash.toLowerCase();
-          const derivedApprovalHash = deriveMilestoneApprovalHash(order, milestone, index, wallet);
-          const serverApprovalMatches = Boolean(derivedApprovalHash && milestone.deliveryApprovalHash) && derivedApprovalHash!.toLowerCase() === milestone.deliveryApprovalHash!.toLowerCase();
-          const approvalMatches = serverApprovalMatches && Boolean(observation?.current_milestone_detail?.approval_hash) && milestone.deliveryApprovalHash!.toLowerCase() === observation!.current_milestone_detail!.approval_hash.toLowerCase();
+          const workAcceptedOnchain = isActiveMilestone
+            && observation?.onchain_state === "BuyerApproved"
+            && observation.current_milestone_detail?.state === "Approved"
+            && evidenceMatches;
           const proofMethod = deliveryProofMethodByMilestone[milestone.id] ?? "web";
           const proofMethodDetails = deliveryProofMethodConfig(proofMethod);
           const fingerprintMode = deliveryFingerprintModeByMilestone[milestone.id] ?? "description";
           const fileHashState = deliveryFileHashByMilestone[milestone.id];
           const evidenceHref = milestone.deliveryEvidence ? safeDeliveryProofHref(milestone.deliveryEvidence) : null;
           return (
-          <div id={`delivery-${milestone.id}`} className={`milestone-row ${isActiveMilestone ? "active-milestone" : ""}`} key={milestone.id}>
+          <div id={`delivery-${milestone.id}`} className={`milestone-row ${isActiveMilestone ? "active-milestone" : ""} ${workAcceptedOnchain ? "accepted-milestone" : ""}`} key={milestone.id}>
             <div>
               <strong>{milestone.label}</strong>
-              {isActiveMilestone ? <span className="active-milestone-badge">Active milestone</span> : null}
-              <p>{orderStatusLabel(milestone.status)}</p>
-              {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>Due {formatDeadline(milestone.deliveryDeadline)}</p> : null}
+              {isActiveMilestone ? <span className="active-milestone-badge">{workAcceptedOnchain ? "Accepted" : "Active milestone"}</span> : null}
+              <p className={workAcceptedOnchain ? "accepted-work-status" : undefined}>{workAcceptedOnchain ? "Work was accepted and is ready for payment release." : orderStatusLabel(milestone.status)}</p>
+              {deadlineTimestamp(milestone.deliveryDeadline) !== null ? <p>{workAcceptedOnchain ? "Delivery deadline was" : "Due"} {formatDeadline(milestone.deliveryDeadline)}</p> : null}
               {milestone.deliveryEvidence ? (
                 <>
-                  <p>Evidence: {evidenceHref ? <a href={evidenceHref} target="_blank" rel="noreferrer noopener">{milestone.deliveryEvidence}</a> : <span>Stored reference is not a safe public proof link.</span>}</p>
-                  <SavedDeliveryDescription description={milestone.deliveryDescription} />
-                  {milestone.deliveryContentHash ? <p>Evidence fingerprint (SHA-256): <code>{milestone.deliveryContentHash}</code></p> : null}
+                  <p className="delivery-proof-link">{workAcceptedOnchain ? "Accepted proof" : "Evidence"}: {evidenceHref ? <a href={evidenceHref} target="_blank" rel="noreferrer noopener">{workAcceptedOnchain ? <>View submitted proof <ExternalLink size={13} aria-hidden="true" /></> : milestone.deliveryEvidence}</a> : <span>Stored reference is not a safe public proof link.</span>}</p>
+                  <SavedDeliveryDescription description={milestone.deliveryDescription} label={workAcceptedOnchain ? "Accepted delivery" : undefined} />
+                  {milestone.deliveryContentHash ? <p className="delivery-proof-fingerprint">Proof fingerprint (SHA-256): <code>{milestone.deliveryContentHash}</code></p> : null}
                 </>
               ) : null}
             </div>
@@ -2833,9 +2839,6 @@ export default function App() {
                   </fieldset>
                   <button>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit work evidence"}</button>
                 </form>
-              ) : null}
-              {isBuyer(order) && isActiveMilestone && milestone.status === "delivered" && observation?.current_milestone_detail?.state === "Approved" && observation?.onchain_state === "BuyerApproved" && evidenceMatches && approvalMatches ? (
-                <button onClick={() => void act(() => acceptEvidence(milestone.id))}>Accept completed work</button>
               ) : null}
             </div>
           </div>
