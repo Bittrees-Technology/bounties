@@ -1,4 +1,5 @@
 import { getAddress } from "viem";
+import { defaultRequiredConfirmations } from "./confirmationPolicy";
 import type { AssetConfig, ChainConfig, CuratedTokenSymbol, SupportedAsset, SupportedChainId } from "./types";
 
 export const supportedChainIds = [1, 11155111, 8453, 84532, 4663, 46630] as const satisfies readonly SupportedChainId[];
@@ -72,7 +73,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://ethereum-rpc.publicnode.com"],
     rpcUrlEnvVar: "CHAIN_1_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(1),
     escrowContractAddress: configuredAddress(1),
     enabled: globallyEnabled && Boolean(configuredAddress(1))
   },
@@ -85,7 +86,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://ethereum-sepolia-rpc.publicnode.com"],
     rpcUrlEnvVar: "CHAIN_11155111_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(11155111),
     escrowContractAddress: configuredAddress(11155111),
     enabled: globallyEnabled && Boolean(configuredAddress(11155111))
   },
@@ -98,7 +99,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://mainnet.base.org"],
     rpcUrlEnvVar: "CHAIN_8453_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(8453),
     escrowContractAddress: configuredAddress(8453),
     enabled: globallyEnabled && Boolean(configuredAddress(8453))
   },
@@ -111,7 +112,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://sepolia.base.org"],
     rpcUrlEnvVar: "CHAIN_84532_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(84532),
     escrowContractAddress: configuredAddress(84532),
     enabled: globallyEnabled && Boolean(configuredAddress(84532))
   },
@@ -124,7 +125,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://rpc.mainnet.chain.robinhood.com"],
     rpcUrlEnvVar: "CHAIN_4663_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(4663),
     escrowContractAddress: configuredAddress(4663),
     enabled: globallyEnabled && Boolean(configuredAddress(4663))
   },
@@ -137,7 +138,7 @@ export const chains: Record<SupportedChainId, ChainConfig> = {
     explorerContractPath: "/address/",
     walletRpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
     rpcUrlEnvVar: "CHAIN_46630_RPC_URL",
-    requiredConfirmations: 12,
+    requiredConfirmations: defaultRequiredConfirmations(46630),
     escrowContractAddress: configuredAddress(46630),
     enabled: globallyEnabled && Boolean(configuredAddress(46630))
   }

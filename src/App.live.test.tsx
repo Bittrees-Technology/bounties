@@ -274,7 +274,7 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   window.localStorage.setItem("bounties.escrow-creation-locks.v1", JSON.stringify({
     "00000000-0000-4000-8000-000000000421": { txHash: `0x${"99".repeat(32)}`, createdAt: new Date().toISOString() }
   }));
-  const retryDelays = new Set([4_000, 8_000, 16_000, 30_000, 60_000, 90_000]);
+  const retryDelays = new Set([2_000, 4_000, 6_000, 10_000, 20_000, 30_000, 60_000, 90_000]);
   const nativeSetTimeout = window.setTimeout.bind(window);
   vi.spyOn(window, "setTimeout").mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => (
     nativeSetTimeout(handler, retryDelays.has(Number(timeout)) ? 0 : timeout, ...args)

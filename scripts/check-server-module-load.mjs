@@ -8,6 +8,7 @@ const projectRoot = process.cwd();
 const temporaryRoot = await mkdtemp(join(projectRoot, "node_modules/.server-esm-load-"));
 const productionServerSources = [
   "src/chain/errors.ts",
+  "src/chain/confirmationPolicy.ts",
   "src/chain/hashCodec.ts",
   "src/deliveryProof.ts",
   "src/tokenReportPolicy.ts",

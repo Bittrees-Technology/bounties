@@ -278,7 +278,7 @@ type CanonicalEscrowFallback = { escrow: EscrowOnchainRecord; milestone: EscrowM
 type DeliveryFileHashState = { fileName: string; status: "hashing" | "ready" | "error"; message: string };
 const ESCROW_CREATION_LOCKS_KEY = "bounties.escrow-creation-locks.v1";
 const TOKEN_REVIEW_PAYMENTS_KEY = "bounties.token-review-payments.v1";
-const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [4_000, 8_000, 16_000, 30_000, 60_000, 90_000] as const;
+const ESCROW_CONFIRMATION_RETRY_DELAYS_MS = [2_000, 4_000, 6_000, 10_000, 20_000, 30_000, 60_000, 90_000] as const;
 const ACCEPTED_ESCROW_STATES = new Set<EscrowOnchainState>(["ProviderAccepted", "Delivered", "BuyerApproved", "Released", "Settled", "AwaitingFunding", "PartiallyCompleted"]);
 
 function canonicalTimestamp(seconds: bigint): string | null {
@@ -813,6 +813,27 @@ export default function App() {
     }
     // The scheduling helpers intentionally use refs; re-run only when hydrated
     // lock or canonical session state changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [escrowCreationLocks, session]);
+
+  useEffect(() => {
+    if (!session) return;
+    const reconcileWhenVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      for (const [orderId, lock] of Object.entries(escrowCreationLocks)) {
+        const observed = session.orders.some((order) => order.id === orderId && order.escrowObservation);
+        if (observed || escrowReconciliationInFlight.current.has(orderId)) continue;
+        cancelEscrowReconciliation(orderId);
+        void reconcileEscrowCreationInBackground(orderId, lock);
+      }
+    };
+    window.addEventListener("focus", reconcileWhenVisible);
+    document.addEventListener("visibilitychange", reconcileWhenVisible);
+    return () => {
+      window.removeEventListener("focus", reconcileWhenVisible);
+      document.removeEventListener("visibilitychange", reconcileWhenVisible);
+    };
+    // Reconcile against the latest hydrated lock and canonical session state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [escrowCreationLocks, session]);
 
@@ -2147,7 +2168,7 @@ export default function App() {
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && creationLock ? (
           <div className="escrow-creation-pending" role="status">
             <strong>Escrow creation submitted</strong>
-            <span>This bounty is locked against another funding attempt while its receipt is recorded.</span>
+            <span>This bounty is locked against another funding attempt while its receipt is confirmed. Bounties checks automatically.</span>
             {creationLock.txHash ? <a href={`${chain.blockExplorer}/tx/${creationLock.txHash}`} target="_blank" rel="noreferrer">View transaction <ExternalLink size={13} /></a> : <span>Wallet bundle submitted. Its transaction link will appear after the wallet confirms it.</span>}
             <button className="secondary-button" disabled={loading || escrowReconciliationChecking[order.id]} onClick={() => void reconcileEscrowCreation(order.id, creationLock)}>{escrowReconciliationChecking[order.id] ? "Checking funding confirmation…" : "Check funding confirmation"}</button>
           </div>

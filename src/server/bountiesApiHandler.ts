@@ -14,6 +14,7 @@ import { resolveSharedAuditAccess, resolveSharedModerator, type SharedAuditResol
 import { canonicalizeDeliveryProofUri, isDeliveryProofMethod, type DeliveryFingerprintMode, type DeliveryProofMethod } from "../deliveryProof.js";
 import { inspectTokenCompatibility, type PreviousTokenInspection } from "./tokenCompatibility.js";
 import { tokenReportReasonIsAllowed, type TokenReportAction } from "../tokenReportPolicy.js";
+import { defaultRequiredConfirmations } from "../chain/confirmationPolicy.js";
 
 const encoder = new TextEncoder();
 const erc20Abi = [
@@ -745,7 +746,7 @@ export function projectCurrentEscrowSnapshot(snapshot: Record<string, unknown>):
 }
 
 function requiredConfirmations(chainId: number): number {
-  const configured = Number(serverEnv(`CHAIN_${chainId}_REQUIRED_CONFIRMATIONS`) ?? "12");
+  const configured = Number(serverEnv(`CHAIN_${chainId}_REQUIRED_CONFIRMATIONS`) ?? defaultRequiredConfirmations(chainId));
   if (!Number.isSafeInteger(configured) || configured < 1 || configured > 10_000) {
     throw new ApiError("ESCROW_CONFIRMATION_CONFIG_INVALID", 500);
   }
