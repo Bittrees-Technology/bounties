@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import { AbiCoder, Interface, keccak256, toUtf8Bytes } from "ethers";
 
@@ -92,6 +92,7 @@ const canonicalContext = {
   requesterWallet: "0x1111111111111111111111111111111111111111" as const
 };
 const deliveredContentHash = `0x${"ab".repeat(32)}` as const;
+const emptyBytes32 = `0x${"00".repeat(32)}` as const;
 
 describe("escrow deployment replacement routing", () => {
   it("accepts the current and explicitly allowlisted predecessor contracts only", () => {
@@ -216,6 +217,141 @@ describe("canonical evidence integrity", () => {
 
     expect(commitments[0].evidence.evidenceHash).toBe(commitments[1].evidence.evidenceHash);
     expect(commitments[0].approval.approvalHash).toBe(commitments[1].approval.approvalHash);
+  });
+});
+
+describe("atomic delivery evidence context", () => {
+  beforeEach(() => {
+    vi.stubEnv("SUPABASE_URL", "https://example.supabase.co");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
+    vi.stubEnv("CHAIN_84532_RPC_URL", "https://rpc.example.test");
+    vi.stubEnv("CHAIN_84532_BOUNTY_ESCROW_ADDRESS", canonicalContext.contractAddress);
+    databaseFromMock.mockReset();
+    databaseFromMock.mockImplementation((table: string) => {
+      if (table !== "milestones") throw new Error(`Unexpected direct table read: ${table}`);
+      return {
+        select: () => ({
+          eq: () => ({
+            single: () => Promise.resolve({
+              data: { id: canonicalContext.milestoneId, bounty_id: canonicalContext.bountyId },
+              error: null
+            })
+          })
+        })
+      };
+    });
+    rpcMock.mockReset();
+    rpcMock.mockImplementation((name: string, args: Record<string, unknown>) => {
+      if (name === "app_resolve_wallet_session") return Promise.resolve({ data: [session], error: null });
+      if (name === "app_bounty_json") return Promise.resolve({
+        data: {
+          id: canonicalContext.bountyId,
+          chain_id: canonicalContext.chainId,
+          creator_id: "30000000-0000-4000-8000-000000000030",
+          accepted_proposal_id: "30000000-0000-4000-8000-000000000031",
+          proposals: [{
+            id: "30000000-0000-4000-8000-000000000031",
+            provider_id: session.account_id
+          }],
+          escrow: {
+            chain_id: canonicalContext.chainId,
+            contract_address: canonicalContext.contractAddress,
+            onchain_bounty_id: canonicalContext.onchainBountyId,
+            transaction_hash: `0x${"33".repeat(32)}`
+          }
+        },
+        error: null
+      });
+      if (name === "app_record_escrow_state") return Promise.resolve({ data: args, error: null });
+      if (name === "app_delivery_evidence_context") return Promise.resolve({
+        data: {
+          milestone_id: canonicalContext.milestoneId,
+          bounty_id: canonicalContext.bountyId,
+          ordinal: canonicalContext.ordinal,
+          chain_id: canonicalContext.chainId,
+          contract_address: canonicalContext.contractAddress,
+          onchain_bounty_id: canonicalContext.onchainBountyId,
+          scope_hash: canonicalContext.scopeHash,
+          terms_hash: canonicalContext.termsHash,
+          provider_wallet: canonicalContext.providerWallet,
+          requester_wallet: canonicalContext.requesterWallet,
+          recorded_current_milestone: canonicalContext.ordinal
+        },
+        error: null
+      });
+      if (name === "app_submit_canonical_delivery_evidence") {
+        return Promise.resolve({ data: { id: "30000000-0000-4000-8000-000000000040" }, error: null });
+      }
+      return Promise.resolve({ data: null, error: null });
+    });
+    providerGetNetworkMock.mockReset().mockResolvedValue({ chainId: BigInt(canonicalContext.chainId) });
+    contractGetBountyMock.mockReset().mockResolvedValue({
+      amount: 100n,
+      reviewDeadline: 0n,
+      state: 2n,
+      settlementProposer: "0x0000000000000000000000000000000000000000",
+      proposedProviderPayout: 0n,
+      settlementProposalExpiry: 0n,
+      allocatedAmount: 100n,
+      releasedAmount: 0n,
+      milestoneCount: 1n,
+      currentMilestone: 0n,
+      scheduleHash: `0x${"44".repeat(32)}`
+    });
+    contractGetMilestoneMock.mockReset().mockResolvedValue({
+      amount: 100n,
+      deliveryDeadline: 1_790_000_000n,
+      reviewDeadline: 0n,
+      revisionDeadline: 0n,
+      state: 0n,
+      evidenceHash: emptyBytes32,
+      previousEvidenceHash: emptyBytes32,
+      approvalHash: emptyBytes32,
+      revisionReasonHash: emptyBytes32,
+      revisionRequested: false
+    });
+  });
+
+  afterEach(() => {
+    databaseFromMock.mockReset();
+    providerGetNetworkMock.mockReset();
+    contractGetBountyMock.mockReset();
+    contractGetMilestoneMock.mockReset();
+  });
+
+  it("submits from one canonical context instead of independent relationship reads", async () => {
+    const response = await handleBountiesApi(new Request(
+      "https://bounties.bittrees.org/api/bounties/evidence",
+      {
+        method: "POST",
+        headers: {
+          cookie: "bounties_session=opaque-session",
+          "content-type": "application/json",
+          origin: "https://bounties.bittrees.org",
+          "x-csrf-token": "opaque-csrf"
+        },
+        body: JSON.stringify({
+          milestoneId: canonicalContext.milestoneId,
+          uri: "https://example.test/delivery",
+          proofMethod: "web",
+          fingerprintMode: "file",
+          contentHash: deliveredContentHash
+        })
+      }
+    ), "evidence");
+
+    expect(response.status).toBe(200);
+    expect(databaseFromMock).toHaveBeenCalledTimes(1);
+    expect(databaseFromMock).toHaveBeenCalledWith("milestones");
+    expect(rpcMock).toHaveBeenCalledWith("app_delivery_evidence_context", {
+      p_actor_id: session.account_id,
+      p_milestone_id: canonicalContext.milestoneId
+    });
+    expect(rpcMock).toHaveBeenCalledWith("app_submit_canonical_delivery_evidence", expect.objectContaining({
+      p_actor_id: session.account_id,
+      p_milestone_id: canonicalContext.milestoneId,
+      p_expected_current_milestone: 0
+    }));
   });
 });
 

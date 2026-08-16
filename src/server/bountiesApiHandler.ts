@@ -1750,36 +1750,45 @@ export function deriveCanonicalEvidenceCommitments(
 async function reconcileMilestone(session: Session, milestoneId: string): Promise<CanonicalMilestoneContext> {
   const db = rpcClient();
   const { data: milestone, error: milestoneError } = await db.from("milestones")
-    .select("id,bounty_id,ordinal,assigned_provider_id").eq("id", milestoneId).single();
+    .select("id,bounty_id").eq("id", milestoneId).single();
   if (milestoneError || !milestone) throw new ApiError("MILESTONE_NOT_FOUND", 400);
   const bountyId = String(milestone.bounty_id);
   const observed = await persistCanonicalEscrowState(session, bountyId);
-  const ordinal = Number(milestone.ordinal);
-  if (ordinal !== observed.current_milestone) throw new ApiError("CURRENT_MILESTONE_REQUIRED", 409);
-
-  const [{ data: bounty, error: bountyError }, { data: escrow, error: escrowError }] = await Promise.all([
-    db.from("bounties").select("id,chain_id,scope_hash,creator_id,accepted_proposal_id").eq("id", bountyId).single(),
-    db.from("escrow_records").select("chain_id,contract_address,onchain_bounty_id,terms_hash").eq("bounty_id", bountyId).single()
-  ]);
-  if (bountyError || !bounty || escrowError || !escrow) throw new ApiError("EVIDENCE_CONTEXT_INCOMPLETE", 409);
-  const { data: proposal, error: proposalError } = await db.from("proposals")
-    .select("provider_id").eq("id", String(bounty.accepted_proposal_id ?? "")).single();
-  if (proposalError || !proposal || proposal.provider_id !== milestone.assigned_provider_id) {
-    throw new ApiError("EVIDENCE_PROVIDER_MISMATCH", 409);
+  const context = await callRpc<{
+    milestone_id?: unknown;
+    bounty_id?: unknown;
+    ordinal?: unknown;
+    chain_id?: unknown;
+    contract_address?: unknown;
+    onchain_bounty_id?: unknown;
+    scope_hash?: unknown;
+    terms_hash?: unknown;
+    provider_wallet?: unknown;
+    requester_wallet?: unknown;
+    recorded_current_milestone?: unknown;
+  }>("app_delivery_evidence_context", {
+    p_actor_id: session.account_id,
+    p_milestone_id: milestoneId
+  });
+  const ordinal = Number(context.ordinal);
+  const recordedCurrentMilestone = Number(context.recorded_current_milestone);
+  if (!Number.isSafeInteger(ordinal)
+    || ordinal !== observed.current_milestone
+    || recordedCurrentMilestone !== observed.current_milestone) {
+    throw new ApiError("CURRENT_MILESTONE_REQUIRED", 409);
   }
-  const [{ data: provider, error: providerError }, { data: requester, error: requesterError }] = await Promise.all([
-    db.from("wallet_accounts").select("wallet_address").eq("id", String(proposal.provider_id)).single(),
-    db.from("wallet_accounts").select("wallet_address").eq("id", String(bounty.creator_id)).single()
-  ]);
-  if (providerError || !provider || requesterError || !requester) throw new ApiError("EVIDENCE_PARTICIPANTS_INCOMPLETE", 409);
+  if (String(context.milestone_id ?? "").toLowerCase() !== milestoneId.toLowerCase()
+    || String(context.bounty_id ?? "") !== bountyId) {
+    throw new ApiError("EVIDENCE_CONTEXT_INCOMPLETE", 409);
+  }
 
-  const chainId = Number(bounty.chain_id);
-  if (!supportedChainIds.has(chainId) || Number(escrow.chain_id) !== chainId) throw new ApiError("EVIDENCE_CHAIN_MISMATCH", 409);
-  const contractAddress = resolveEscrowRecordContractAddress(chainId, String(escrow.contract_address ?? "")) as `0x${string}`;
-  const onchainBountyId = String(escrow.onchain_bounty_id ?? "");
+  const chainId = Number(context.chain_id);
+  if (!supportedChainIds.has(chainId)) throw new ApiError("EVIDENCE_CHAIN_MISMATCH", 409);
+  const contractAddress = resolveEscrowRecordContractAddress(chainId, String(context.contract_address ?? "")) as `0x${string}`;
+  const onchainBountyId = String(context.onchain_bounty_id ?? "");
   if (!/^[1-9][0-9]*$/.test(onchainBountyId)) throw new ApiError("ESCROW_BOUNTY_ID_INVALID", 409);
-  const scopeHash = String(bounty.scope_hash ?? "").toLowerCase();
-  const termsHash = String(escrow.terms_hash ?? "").toLowerCase();
+  const scopeHash = String(context.scope_hash ?? "").toLowerCase();
+  const termsHash = String(context.terms_hash ?? "").toLowerCase();
   if (!/^0x[0-9a-f]{64}$/.test(scopeHash) || !/^0x[0-9a-f]{64}$/.test(termsHash)) {
     throw new ApiError("EVIDENCE_CONTEXT_HASH_INVALID", 409);
   }
@@ -1792,8 +1801,8 @@ async function reconcileMilestone(session: Session, milestoneId: string): Promis
     onchainBountyId,
     scopeHash: scopeHash as Bytes32Hex,
     termsHash: termsHash as Bytes32Hex,
-    providerWallet: getAddress(String(provider.wallet_address)) as `0x${string}`,
-    requesterWallet: getAddress(String(requester.wallet_address)) as `0x${string}`
+    providerWallet: getAddress(String(context.provider_wallet)) as `0x${string}`,
+    requesterWallet: getAddress(String(context.requester_wallet)) as `0x${string}`
   };
 }
 
