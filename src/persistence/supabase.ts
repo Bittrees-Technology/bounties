@@ -184,6 +184,7 @@ export async function signOut(): Promise<void> {
 
 export type Role = "buyer" | "provider";
 export type TokenCompatibilityStatus = "compatible" | "incompatible" | "inconclusive" | "implementation_changed";
+export type TokenModeratorVerificationOutcome = "verified" | "source_verified" | "inconclusive" | "incompatible";
 export type TokenRecord = {
   id: string; chain_id: number; contract_address: string; checksum_address: string; name: string | null;
   symbol: string | null; decimals: number; total_supply: string | null; explorer_url: string;
@@ -194,6 +195,9 @@ export type TokenRecord = {
   inspection_version?: string; proxy_kind?: string; implementation_address?: string | null;
   implementation_bytecode_hash?: string | null; transfer_validation_status?: "not_run" | "preflight_passed" | "funding_verified";
   moderation_status?: "visible" | "hidden"; moderation_reason?: string | null;
+  moderator_verification_outcome?: TokenModeratorVerificationOutcome | null;
+  moderator_verified_at?: string | null; moderator_verified_by?: string | null;
+  moderator_verification_response?: string | null;
 };
 export type Notification = {
   id: string;

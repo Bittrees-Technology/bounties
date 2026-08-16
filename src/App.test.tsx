@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { configureMockAuditAccess, configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
+import { configureMockAuditAccess, configureMockEscrowAddress, configureMockHiddenStandardToken, configureMockMilestoneEscrow, configureMockModeratorTokenVerification, configureMockNotifications, configureMockOpenBountyForAnotherWallet, configureMockOpenBountyWithApplicantForBuyer, configureMockProfileLegacySpecialty, configureMockProfileRoleBounties, configureMockRoles, configureMockStaff, configureMockTokenCompatibility, configureMockTokenReportOutcome } from "./test/setup";
 
 afterEach(() => cleanup());
 
@@ -163,6 +163,22 @@ describe("App", () => {
     expect(order.queryByRole("heading", { name: /^participant reviews$/i })).not.toBeInTheDocument();
     expect(order.queryByText(/source_verification_unavailable/i)).not.toBeInTheDocument();
     expect(order.getByText(/source verification was not available during inspection/i)).toBeInTheDocument();
+  });
+
+  it("replaces inconclusive automated messaging after a moderator verifies the token", async () => {
+    configureMockModeratorTokenVerification("USDC", "verified");
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    const order = await publishBounty(user, "Verified token bounty");
+    const tokenCard = order.getByText(/^payment token$/i).closest(".token-identity-card") as HTMLElement;
+
+    expect(within(tokenCard).getByText(/^Verified for Bounties$/i)).toBeInTheDocument();
+    expect(within(tokenCard).getByText(/^Moderator review completed\.$/i)).toBeInTheDocument();
+    expect(within(tokenCard).queryByText(/compatibility inconclusive/i)).not.toBeInTheDocument();
+    expect(within(tokenCard).queryByText(/automated checks could not prove/i)).not.toBeInTheDocument();
+    expect(within(tokenCard).queryByText(/source verification was not available/i)).not.toBeInTheDocument();
+    expect(within(tokenCard).queryByText(/review before use/i)).not.toBeInTheDocument();
   });
 
   it("closes an open listing report after a click outside its controls", async () => {

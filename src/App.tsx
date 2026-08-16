@@ -560,12 +560,24 @@ function tokenIdentityLabel(token: Pick<TokenRecord, "name" | "symbol">, detail 
   return name || symbol || "Unnamed ERC20";
 }
 
+type TokenCompatibilityPresentation = Pick<TokenRecord, "compatibility_status"> & Partial<Pick<TokenRecord, "moderator_verification_outcome">>;
+
 function tokenCompatibilityStatus(token: Pick<TokenRecord, "compatibility_status">): TokenCompatibilityStatus {
   return token.compatibility_status ?? "inconclusive";
 }
 
-function tokenCompatibilityLabel(token: Pick<TokenRecord, "compatibility_status">): string {
+function tokenIsModeratorVerified(token: TokenCompatibilityPresentation): boolean {
+  return token.moderator_verification_outcome === "verified"
+    && !["incompatible", "implementation_changed"].includes(tokenCompatibilityStatus(token));
+}
+
+function tokenCompatibilityPresentationStatus(token: TokenCompatibilityPresentation): TokenCompatibilityStatus {
+  return tokenIsModeratorVerified(token) ? "compatible" : tokenCompatibilityStatus(token);
+}
+
+function tokenCompatibilityLabel(token: TokenCompatibilityPresentation): string {
   const status = tokenCompatibilityStatus(token);
+  if (tokenIsModeratorVerified(token)) return "Verified for Bounties";
   if (status === "compatible") return "Compatible under inspection";
   if (status === "incompatible") return "Incompatible";
   if (status === "implementation_changed") return "Contract changed · reinspection required";
@@ -576,7 +588,7 @@ function tokenCompatibilityBlocksFunding(token: Pick<TokenRecord, "compatibility
   return ["incompatible", "implementation_changed"].includes(tokenCompatibilityStatus(token));
 }
 
-function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id" | "checksum_address"> & Partial<Pick<TokenRecord, "compatibility_status">>) {
+function tokenOptionLabel(token: Pick<TokenRecord, "symbol" | "name" | "chain_id" | "checksum_address"> & Partial<Pick<TokenRecord, "compatibility_status" | "moderator_verification_outcome">>) {
   const network = chains[token.chain_id as SupportedChainId]?.name ?? "Supported network";
   const symbol = token.symbol?.trim() ?? "";
   const name = token.name?.trim() ?? "";
@@ -607,13 +619,15 @@ const tokenRiskLabels: Record<string, string> = {
   implementation_changed: "The contract implementation changed since the previous inspection"
 };
 
-function meaningfulTokenRisks(token: Pick<TokenRecord, "risk_flags">): string[] {
+function meaningfulTokenRisks(token: Pick<TokenRecord, "risk_flags"> & TokenCompatibilityPresentation): string[] {
+  if (tokenIsModeratorVerified(token)) return [];
   return token.risk_flags
     .filter((flag) => flag !== "source_verification_unavailable")
     .map((flag) => tokenRiskLabels[flag] ?? flag.replaceAll("_", " "));
 }
 
-function tokenVerificationCopy(token: Pick<TokenRecord, "source_verification_status">): string {
+function tokenVerificationCopy(token: Pick<TokenRecord, "source_verification_status"> & TokenCompatibilityPresentation): string {
+  if (tokenIsModeratorVerified(token)) return "Moderator review completed.";
   return token.source_verification_status === "verified"
     ? "Explorer source code verified"
     : "Source verification was not available during inspection. Review the contract on the block explorer before using it.";
@@ -621,6 +635,7 @@ function tokenVerificationCopy(token: Pick<TokenRecord, "source_verification_sta
 
 function tokenCompatibilityCopy(token: TokenRecord): string {
   const status = tokenCompatibilityStatus(token);
+  if (tokenIsModeratorVerified(token)) return "Moderator review completed.";
   if (status === "compatible") return "Automated checks found no known exact-accounting conflict. The escrow still verifies exact balances during funding.";
   if (status === "incompatible") return "This token cannot be used for a new bounty or funding attempt.";
   if (status === "implementation_changed") return "The contract fingerprint changed. Inspect it again before using it.";
@@ -2137,7 +2152,7 @@ export default function App() {
           <section className="escrow-funding-ready" aria-label="Escrow ready to fund">
             <strong>Applicant selected · escrow not funded</strong>
             <p>{order.fundOnApplicantAcceptance === false ? "You selected manual funding, so your wallet has not been asked to transact yet." : "The automatic wallet flow did not finish, so funding is still available here."} Creating escrow may require an ERC20 approval followed by the escrow funding transaction.</p>
-            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(token)}`}>{tokenCompatibilityLabel(token)}</span>
+            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(token)}`}>{tokenCompatibilityLabel(token)}</span>
             <p>{tokenCompatibilityCopy(token)}</p>
             {tokenCompatibilityBlocksFunding(token) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(token)}>Reinspect token</button> : null}
             <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
@@ -2879,12 +2894,12 @@ export default function App() {
           </div>
           {order.tokenRecord ? <div className="token-identity-card">
             <div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div>
-            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span>
+            <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span>
             <small>{tokenCompatibilityCopy(order.tokenRecord)}</small>
             {tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
             <code>{order.tokenRecord.checksum_address}</code>
             <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>
-            <small>{tokenVerificationCopy(order.tokenRecord)}</small>
+            {!tokenIsModeratorVerified(order.tokenRecord) ? <small>{tokenVerificationCopy(order.tokenRecord)}</small> : null}
             {meaningfulTokenRisks(order.tokenRecord).length ? <small className="token-risk-note">Review before use: {meaningfulTokenRisks(order.tokenRecord).join("; ")}.</small> : null}
             {reportForm("token", order.tokenRecord.id)}
           </div> : null}
@@ -3295,7 +3310,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -3341,7 +3356,7 @@ export default function App() {
                     <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                     <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>
                   </form>
-                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityStatus(inspected)}`}>{tokenCompatibilityLabel(inspected)}</span><p>{tokenCompatibilityCopy(inspected)}</p><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p><p>{tokenVerificationCopy(inspected)}</p>{meaningfulTokenRisks(inspected).length ? <p>Review before use: {meaningfulTokenRisks(inspected).join("; ")}.</p> : <p>No automated contract warnings were found.</p>}<a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Bounties reinspects before funding, and the escrow contract rejects funding or payouts whose balance changes do not reconcile exactly.</p></article> : null}
+                  {inspected ? <article className="inspected-token-card"><h4>{tokenIdentityLabel(inspected, true)}</h4><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(inspected)}`}>{tokenCompatibilityLabel(inspected)}</span><p>{tokenCompatibilityCopy(inspected)}</p><code>{inspected.checksum_address}</code><p>{inspected.decimals} decimals · {chains[inspected.chain_id as SupportedChainId]?.name}</p>{!tokenIsModeratorVerified(inspected) ? <p>{tokenVerificationCopy(inspected)}</p> : null}{meaningfulTokenRisks(inspected).length ? <p>Review before use: {meaningfulTokenRisks(inspected).join("; ")}.</p> : !tokenIsModeratorVerified(inspected) ? <p>No automated contract warnings were found.</p> : null}<a href={inspected.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={14} /></a><p className="form-hint">Added as a payment candidate, not certified as safe or transfer-compatible. Bounties reinspects before funding, and the escrow contract rejects funding or payouts whose balance changes do not reconcile exactly.</p></article> : null}
                 </details> : null}
 
                 {visiblePage === "marketplace" ? <section className="page-stack">

@@ -247,6 +247,20 @@ export function configureMockTokenCompatibility(symbol: string, status: TokenRec
   });
 }
 
+export function configureMockModeratorTokenVerification(symbol: string, outcome: TokenRecord["moderator_verification_outcome"]) {
+  tokens = tokens.map((token) => token.symbol === symbol ? {
+    ...token,
+    moderator_verification_outcome: outcome,
+    moderator_verified_at: new Date().toISOString(),
+    moderator_verified_by: "00000000-0000-4000-8000-000000000111",
+    moderator_verification_response: "Moderator review completed."
+  } : token);
+  bounties = bounties.map((bounty) => {
+    const token = bounty.token as TokenRecord | undefined;
+    return token?.symbol === symbol ? { ...bounty, token: { ...token, moderator_verification_outcome: outcome } } : bounty;
+  });
+}
+
 export function configureMockMilestoneEscrow(
   onchainState: "Created" | "Funded" | "ProviderAccepted" | "Delivered" | "BuyerApproved",
   activeState: "Pending" | "Submitted" | "Approved",
@@ -779,6 +793,7 @@ beforeEach(() => {
       const previousToken = tokens.find((candidate) => candidate.chain_id === body.chainId && candidate.contract_address.toLowerCase() === normalizedAddress);
       const symbol = previousToken?.symbol ?? (normalizedAddress === "0x036cbd53842c5426634e7929541ec2318f3dcf7c" ? "USDC" : "WETH");
       const token = {
+        ...previousToken,
         id: previousToken?.id ?? "00000000-0000-4000-8000-000000000099",
         symbol,
         decimals: symbol === "USDC" ? 6 : 18,
@@ -791,6 +806,7 @@ beforeEach(() => {
         proxy_status: "unknown",
         source_verification_status: "unavailable",
         risk_flags: [],
+        compatibility_status: "compatible" as const,
         inspected_at: new Date().toISOString()
       };
       tokens = [...tokens.filter((candidate) => !(candidate.chain_id === body.chainId && candidate.contract_address.toLowerCase() === normalizedAddress)), token];
