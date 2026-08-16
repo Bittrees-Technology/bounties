@@ -2066,6 +2066,13 @@ export default function App() {
     const onchainApprovalHash = observation?.current_milestone_detail?.approval_hash;
     const evidenceSourceMatches = Boolean(derivedEvidenceHash && activeEvidenceHash)
       && derivedEvidenceHash!.toLowerCase() === activeEvidenceHash!.toLowerCase();
+    const evidenceReadyToSubmit = state === "ProviderAccepted"
+      && activeMilestoneState === "Pending"
+      && isProvider(order)
+      && Boolean(activeEvidenceHash)
+      && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1)
+      && (!previousEvidenceHash || activeEvidenceHash!.toLowerCase() !== previousEvidenceHash.toLowerCase())
+      && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash!.toLowerCase();
     const evidenceCommitmentMatches = evidenceSourceMatches && Boolean(onchainEvidenceHash)
       && activeEvidenceHash!.toLowerCase() === onchainEvidenceHash!.toLowerCase();
     const approvalSourceMatches = Boolean(derivedApprovalHash && expectedApprovalHash)
@@ -2181,11 +2188,11 @@ export default function App() {
           <aside className="escrow-work-guidance" aria-label="Work submission">
             <FileCheck2 size={20} aria-hidden="true" />
             <div>
-              <span>Current step</span>
-              <strong>{activeEvidenceHash ? `${revisionRequested ? "Revised work" : "Work evidence"} saved for ${activeMilestone.label}` : `${revisionRequested ? "Submit revised work" : "Submit work evidence"} for ${activeMilestone.label}`}</strong>
-              <p>{activeEvidenceHash ? "Review any validation notice below, then use the delivery action when it is available to commit this evidence onchain. Saving evidence alone does not submit it to the escrow contract." : "Use the active milestone form earlier on this page to add a public proof location and fingerprint either the delivered file or a canonical non-file delivery record. Saving evidence does not move funds."}</p>
+              <span>{activeEvidenceHash ? "Proof saved" : "Current step"}</span>
+              <strong>{activeEvidenceHash ? activeMilestone.label : `${revisionRequested ? "Submit revised work" : "Submit work evidence"} for ${activeMilestone.label}`}</strong>
+              <p>{activeEvidenceHash ? evidenceReadyToSubmit ? "Submit it onchain to send the completed work for review." : "Resolve the validation notice below before submitting it onchain." : "Add a public proof location and fingerprint for the completed work."}</p>
             </div>
-            {!activeEvidenceHash ? <a href={`#delivery-${activeMilestone.id}`}>Go to evidence form</a> : null}
+            {evidenceReadyToSubmit ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash! }))}>{revisionRequested ? "Submit revised work onchain" : "Submit work onchain"}</button> : !activeEvidenceHash ? <a href={`#delivery-${activeMilestone.id}`}>Go to evidence form</a> : null}
           </aside>
         ) : null}
         {!order.escrowObservation && isBuyer(order) && scheduleStatus !== "requires_recreation" && creationLock ? (
@@ -2238,7 +2245,6 @@ export default function App() {
             {activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now() && isParticipant(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.closeUnfundedBounty(ref))}>Close unfunded remaining work</button> : null}
           </section>
         ) : null}
-        {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && (!revisionRequested || (activeMilestone?.deliveryRevision ?? 0) > 1) && (!previousEvidenceHash || activeEvidenceHash.toLowerCase() !== previousEvidenceHash.toLowerCase()) && derivedEvidenceHash?.toLowerCase() === activeEvidenceHash.toLowerCase() ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.submitDelivery(ref, { evidenceHash: activeEvidenceHash }))}>Commit {revisionRequested ? "revised" : activeMilestone?.label ?? "current milestone"} evidence onchain</button> : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
         {state === "ProviderAccepted" && revisionRequested && activeEvidenceHash && previousEvidenceHash && activeEvidenceHash.toLowerCase() === previousEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">Revised work must use a new evidence commitment. Submit the revised location and exact delivered-bytes digest before committing it onchain.</p> : null}
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && derivedApprovalHash ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptDelivery({ ...ref, approvalHash: derivedApprovalHash }))}>Approve {activeMilestone.label} onchain</button> : null}
@@ -2864,9 +2870,7 @@ export default function App() {
     if (state === "Funded") {
       return <button className="submit-work-shortcut" disabled={loading} onClick={() => void acceptProviderTerms(order)}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
     }
-    if (state === "ProviderAccepted" && milestone?.deliveryEvidence) {
-      return <a className="submit-work-shortcut" href={`#escrow-actions-${order.id}`}><FileCheck2 size={16} />Commit submitted work onchain</a>;
-    }
+    if (state === "ProviderAccepted" && milestone?.deliveryEvidence) return null;
     if (state === "ProviderAccepted" && milestone) {
       return <a className="submit-work-shortcut" href={`#delivery-${milestone.id}`}><FileCheck2 size={16} />Submit proof of completed work</a>;
     }

@@ -3734,6 +3734,7 @@ textarea {
 .escrow-work-guidance p { overflow-wrap: anywhere; }
 .escrow-work-guidance p { color: #5a6862; font-size: .84rem; line-height: 1.45; margin: 0; }
 .escrow-work-guidance a { align-self: center; color: #0f6b57; font-size: .84rem; font-weight: 800; white-space: nowrap; }
+.escrow-work-guidance > button { align-self: center; white-space: nowrap; }
 
 .escrow-settlement-panel {
   background: #fff;
@@ -4086,7 +4087,8 @@ textarea {
   .work-submission-guidance { align-items: start; grid-template-columns: auto minmax(0, 1fr); }
   .work-submission-guidance a { grid-column: 1 / -1; white-space: normal; }
   .escrow-work-guidance { grid-template-columns: auto minmax(0, 1fr); }
-  .escrow-work-guidance a { grid-column: 1 / -1; justify-content: center; text-align: center; white-space: normal; width: 100%; }
+  .escrow-work-guidance a,
+  .escrow-work-guidance > button { grid-column: 1 / -1; justify-content: center; text-align: center; white-space: normal; width: 100%; }
   .escrow-settlement-form button,
   .escrow-settlement-panel > button { width: 100%; }
   .escrow-cancellation-form button { width: 100%; }

@@ -270,7 +270,8 @@ export function configureMockMilestoneEscrow(
   activeState: "Pending" | "Submitted" | "Approved",
   activeDeadline = "2099-12-31T23:59:59.999Z",
   integrity: "match" | "evidence_mismatch" | "approval_mismatch" = "match",
-  participant: "buyer" | "provider" = "buyer"
+  participant: "buyer" | "provider" = "buyer",
+  evidenceSaved = false
 ) {
   const token = tokens.find((candidate) => candidate.symbol === "USDC")!;
   const requesterId = participant === "buyer" ? "00000000-0000-4000-8000-000000000111" : "00000000-0000-4000-8000-000000000444";
@@ -316,7 +317,7 @@ export function configureMockMilestoneEscrow(
     token: { ...token, risk_flags: ["source_verification_unavailable"] },
     milestones: [
       { id: "00000000-0000-4000-8000-000000000323", ordinal: 0, title: "Phase one", amount_base_units: "100000000", delivery_deadline: "2099-11-30T23:59:59.999Z", status: "delivered", evidence: [{ id: "00000000-0000-4000-8000-000000000325", uri: "https://example.test/phase-one", content_hash: `0x${"22".repeat(32)}`, evidence_hash: `0x${"33".repeat(32)}`, revision: 1 }] },
-      { id: "00000000-0000-4000-8000-000000000324", ordinal: 1, title: "Phase two", amount_base_units: "150000000", delivery_deadline: activeDeadline, status: activeState === "Pending" ? "funded" : "delivered", evidence: activeState === "Pending" ? [] : [{ id: "00000000-0000-4000-8000-000000000326", uri: canonicalEvidence.normalizedUri, content_hash: canonicalEvidence.contentHash, evidence_hash: integrity === "evidence_mismatch" ? `0x${"aa".repeat(32)}` : canonicalEvidence.evidenceHash, canonical_approval_hash: integrity === "approval_mismatch" ? `0x${"cc".repeat(32)}` : canonicalApprovalHash, revision: 1 }] }
+      { id: "00000000-0000-4000-8000-000000000324", ordinal: 1, title: "Phase two", amount_base_units: "150000000", delivery_deadline: activeDeadline, status: activeState === "Pending" && !evidenceSaved ? "funded" : "delivered", evidence: activeState === "Pending" && !evidenceSaved ? [] : [{ id: "00000000-0000-4000-8000-000000000326", uri: canonicalEvidence.normalizedUri, content_hash: canonicalEvidence.contentHash, evidence_hash: integrity === "evidence_mismatch" ? `0x${"aa".repeat(32)}` : canonicalEvidence.evidenceHash, canonical_approval_hash: integrity === "approval_mismatch" ? `0x${"cc".repeat(32)}` : canonicalApprovalHash, revision: 1 }] }
     ],
     proposals: [{ id: "00000000-0000-4000-8000-000000000322", provider_id: providerId, provider_wallet_address: providerWallet, proposal_hash: `0x${"66".repeat(32)}`, note: "Two phases", proposed_total_base_units: "250000000", status: "accepted" }],
     escrow: {

@@ -361,6 +361,20 @@ it("uses the active milestone deadline rather than the overall bounty deadline f
   expect(order.getByRole("button", { name: /return missed-deadline funds to requester/i })).toBeInTheDocument();
 });
 
+it("shows one concise onchain submission action after work proof is saved", async () => {
+  configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider", true);
+  const order = await renderConfiguredEscrow();
+  const workGuidance = order.getByRole("complementary", { name: /work submission/i });
+
+  expect(within(workGuidance).getByText(/^proof saved$/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByText(/^phase two$/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByText(/submit it onchain to send the completed work for review/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByRole("button", { name: /^submit work onchain$/i })).toBeInTheDocument();
+  expect(order.getAllByRole("button", { name: /submit work onchain/i })).toHaveLength(1);
+  expect(order.queryByText(/commit submitted work onchain/i)).not.toBeInTheDocument();
+  expect(order.queryByText(/saving evidence alone does not submit/i)).not.toBeInTheDocument();
+});
+
 it("supports a canonical non-file record and keeps exact file fingerprinting available", async () => {
   configureMockMilestoneEscrow("ProviderAccepted", "Pending", "2099-12-31T23:59:59.999Z", "match", "provider");
   const user = userEvent.setup();
@@ -398,7 +412,7 @@ it("supports a canonical non-file record and keeps exact file fingerprinting ava
   expect(within(proofComposer).getByText(/only this one canonical location is included/i)).toBeInTheDocument();
   expect(order.getByRole("link", { name: /submit proof of completed work/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(workGuidance).getByText(/submit work evidence for phase two/i)).toBeInTheDocument();
-  expect(within(workGuidance).getByText(/active milestone form earlier on this page/i)).toBeInTheDocument();
+  expect(within(workGuidance).getByText(/add a public proof location and fingerprint/i)).toBeInTheDocument();
   expect(within(workGuidance).getByRole("link", { name: /go to evidence form/i })).toHaveAttribute("href", "#delivery-00000000-0000-4000-8000-000000000324");
   expect(within(settlement).getByText(/settle by mutual agreement/i)).toBeInTheDocument();
   expect(within(settlement).getByText(/moves no funds until the other party accepts/i)).toBeInTheDocument();
