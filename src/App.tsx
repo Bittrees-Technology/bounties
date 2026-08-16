@@ -345,21 +345,27 @@ const tokenVerificationStatusLabel = (outcome?: ModerationReport["verification_o
     ? "Source verified"
     : outcome === "incompatible"
       ? "Not compatible"
-      : "Inconclusive";
+      : outcome === "inconclusive"
+        ? "Inconclusive"
+        : "Review complete";
 const tokenVerificationOutcomeLabel = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
   ? "Verified for Bounties"
   : outcome === "source_verified"
     ? "Source verified · compatibility unconfirmed"
     : outcome === "incompatible"
       ? "Not compatible with Bounties escrow"
-      : "Verification inconclusive";
+      : outcome === "inconclusive"
+        ? "Verification inconclusive"
+        : "Review complete";
 const tokenVerificationOutcomeDescription = (outcome?: ModerationReport["verification_outcome"] | null) => outcome === "verified"
   ? "The moderator selected “Verified for Bounties” after reviewing the available token and source evidence. This records the review result at that time; it does not guarantee token value, liquidity, or future behavior."
   : outcome === "source_verified"
     ? "The contract source was verified on the block explorer, but compatibility with Bounties’ exact escrow accounting was not confirmed."
     : outcome === "incompatible"
       ? "The moderator determined that the token should not be used with Bounties escrow."
-      : "The available evidence was not sufficient to confirm compatibility with Bounties escrow.";
+      : outcome === "inconclusive"
+        ? "The available evidence was not sufficient to confirm compatibility with Bounties escrow."
+        : "The moderator review is complete. Reload to retrieve its recorded outcome.";
 
 const pageRoutes: Record<ProductPage, string> = {
   home: "/",

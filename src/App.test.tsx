@@ -220,6 +220,30 @@ describe("App", () => {
     expect(within(activity).queryByText(/no additional review details/i)).not.toBeInTheDocument();
   });
 
+  it("shows a verified requester outcome as verified instead of inconclusive", async () => {
+    configureMockMyReports([{
+      id: "00000000-0000-4000-8000-000000000892",
+      entity_type: "token",
+      entity_id: "00000000-0000-4000-8000-000000000003",
+      reason: "Token/source verification review",
+      request_kind: "verification_request",
+      status: "resolved",
+      decision: "no_action",
+      verification_outcome: "verified",
+      moderator_response: "The token was verified for Bounties.",
+      version: 2,
+      created_at: new Date().toISOString()
+    }]);
+    const user = userEvent.setup();
+    render(<App />);
+    await connectWallet(user);
+    const activity = screen.getByRole("heading", { name: /^my requests$/i }).closest("section") as HTMLElement;
+
+    expect(within(activity).getByText(/^Verified for Bounties$/i)).toBeInTheDocument();
+    expect(within(activity).queryByText(/^Inconclusive$/i)).not.toBeInTheDocument();
+    expect(within(activity).getByText(/the token was verified for Bounties/i)).toBeInTheDocument();
+  });
+
   it("closes an open listing report after a click outside its controls", async () => {
     const user = userEvent.setup();
     render(<App />);
