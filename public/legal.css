@@ -7,12 +7,12 @@
 
 * { box-sizing: border-box; }
 body { margin: 0; background: radial-gradient(circle at 12% 0%, #173253 0, #07111f 34rem); }
-main { width: min(860px, calc(100% - 2rem)); margin: 0 auto; padding: 3rem 0 5rem; }
-header, section { border: 1px solid #28415f; background: rgb(8 21 37 / 92%); border-radius: 18px; padding: clamp(1.25rem, 3vw, 2rem); margin-bottom: 1rem; }
+main { width: min(860px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 3rem; }
+header, section { border: 1px solid #28415f; background: rgb(8 21 37 / 92%); border-radius: 18px; padding: clamp(1.1rem, 2.4vw, 1.6rem); margin-bottom: .75rem; }
 h1, h2 { margin-top: 0; letter-spacing: -0.02em; }
 h1 { font-size: clamp(2rem, 5vw, 3.5rem); }
-h2 { margin-bottom: .65rem; color: #9bd5ff; }
-p, li { color: #c6d2e3; line-height: 1.65; }
+h2 { margin-bottom: .5rem; color: #9bd5ff; }
+p, li { color: #c6d2e3; line-height: 1.58; }
 a { color: #8ed6ff; }
 .eyebrow { color: #78e6c4; font-weight: 750; text-transform: uppercase; letter-spacing: .12em; font-size: .76rem; }
 .notice { border-left: 4px solid #f1b85b; padding-left: 1rem; color: #f4dba8; }
@@ -21,6 +21,6 @@ nav a { padding: .55rem .8rem; border: 1px solid #385470; border-radius: 999px; 
 footer { color: #8fa0b6; padding: 1rem .25rem; }
 
 @media (max-width: 560px) {
-  main { width: min(100% - 1rem, 860px); padding-top: .5rem; }
-  header, section { border-radius: 12px; }
+  main { width: min(100% - .75rem, 860px); padding: .4rem 0 1.5rem; }
+  header, section { border-radius: 12px; padding: 1rem; margin-bottom: .55rem; }
 }
