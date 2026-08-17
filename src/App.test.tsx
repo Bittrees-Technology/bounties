@@ -156,6 +156,32 @@ describe("App", () => {
     expect(deliveryDate).toHaveValue("2099-12-31T17:30");
   });
 
+  it("copies an existing bounty into a new editable draft without its history", async () => {
+    configureMockOpenBountyForAnotherWallet();
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
+    const bountyCard = (await screen.findByRole("heading", { name: /open role-free application/i })).closest("article") as HTMLElement;
+    await user.click(within(bountyCard).getByRole("link", { name: /view bounty/i }));
+    await user.click(screen.getByRole("button", { name: /^copy bounty$/i }));
+
+    expect(window.location.pathname).toBe("/create");
+    expect(screen.getByRole("heading", { level: 1, name: /^create a bounty$/i })).toBeInTheDocument();
+    expect(screen.getByText(/copying “open role-free application”/i)).toBeInTheDocument();
+    expect(screen.getByText(/publish as a separate bounty/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/bounty title/i)).toHaveValue("Open role-free application");
+    expect(screen.getByLabelText(/^description$/i)).toHaveValue("Confirm the gasless application flow");
+    expect(screen.getByLabelText(/work type/i)).toHaveValue("task");
+    expect(screen.getByLabelText(/category/i)).toHaveValue("Smart Contracts & Web3");
+    expect(screen.getByLabelText(/acceptance criteria/i)).toHaveValue("Submit a clear delivery plan");
+    expect(screen.getByLabelText(/contact alias/i)).toHaveValue("");
+    expect(screen.getByLabelText(/delivery date and time/i)).not.toHaveValue("2099-12-31T23:59");
+    expect(screen.queryByRole("heading", { name: /^applicants$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /^participant reviews$/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /connect wallet to publish/i })).toBeInTheDocument();
+  });
+
   it("connects a wallet and publishes a persisted bounty through the API boundary", async () => {
     const user = userEvent.setup();
     render(<App />);

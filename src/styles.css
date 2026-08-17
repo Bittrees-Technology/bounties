@@ -1415,6 +1415,34 @@ li {
 .bounty-directory-heading span,
 .bounty-detail-toolbar span { color: #5a6862; font-size: .82rem; }
 
+.bounty-detail-toolbar-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bounty-detail-toolbar-actions button {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+}
+
+.copied-bounty-notice {
+  align-items: flex-start;
+  background: #eef8f3;
+  border: 1px solid #b8d9cb;
+  border-radius: 14px;
+  color: #174c40;
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+}
+
+.copied-bounty-notice svg { flex: 0 0 auto; margin-top: 2px; }
+.copied-bounty-notice p { display: grid; gap: 3px; margin: 0; }
+.copied-bounty-notice span { color: #4f665e; font-size: .84rem; }
+
 .bounty-directory-grid {
   display: grid;
   gap: 12px;
@@ -4139,6 +4167,7 @@ textarea {
   .bounty-detail-toolbar { align-items: stretch; flex-direction: column; }
   .bounty-detail-toolbar button,
   .bounty-directory-card--list .bounty-directory-view-action { width: 100%; }
+  .bounty-detail-toolbar-actions { align-items: stretch; flex-direction: column; width: 100%; }
   .profile-role-bounty-row { grid-template-columns: minmax(0, 1fr) auto; }
   .profile-role-bounty-row > svg { display: none; }
   .profile-visibility-status { align-items: stretch; grid-template-columns: 1fr; }

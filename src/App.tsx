@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CheckCircle2,
   ClipboardList,
+  Copy,
   FileCheck2,
   EyeOff,
   ExternalLink,
@@ -101,6 +102,34 @@ const defaultDeliveryDeadline = () => {
   deadline.setSeconds(0, 0);
   return dateTimeInputValue(deadline);
 };
+
+const COPY_FIRST_DEADLINE_DAYS = 14;
+const COPY_MILESTONE_MINIMUM_GAP_DAYS = 22;
+
+function copiedMilestoneSchedule(order: MarketplaceOrder, now = new Date()) {
+  const sourceMilestones = order.milestones?.length
+    ? order.milestones
+    : [{ label: "Delivery", amount: order.budgetDisplay ?? order.budget, deliveryDeadline: order.dueDate }];
+  const firstDeadline = new Date(now.getTime() + COPY_FIRST_DEADLINE_DAYS * 24 * 60 * 60 * 1000);
+  firstDeadline.setSeconds(0, 0);
+  let nextDeadline = firstDeadline.getTime();
+
+  return sourceMilestones.map((milestone, index) => {
+    if (index > 0) {
+      const sourcePrevious = Date.parse(sourceMilestones[index - 1].deliveryDeadline ?? "");
+      const sourceCurrent = Date.parse(milestone.deliveryDeadline ?? "");
+      const sourceGap = Number.isFinite(sourcePrevious) && Number.isFinite(sourceCurrent)
+        ? sourceCurrent - sourcePrevious
+        : 0;
+      nextDeadline += Math.max(sourceGap, COPY_MILESTONE_MINIMUM_GAP_DAYS * 24 * 60 * 60 * 1000);
+    }
+    return {
+      title: milestone.label,
+      amount: String(milestone.amount),
+      deliveryDeadline: dateTimeInputValue(new Date(nextDeadline))
+    };
+  });
+}
 const emptyDraft: RequestDraft = {
   title: "",
   scope: "task",
@@ -718,6 +747,7 @@ export default function App() {
   const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
   const [publicMarketplace, setPublicMarketplace] = useState<PublicMarketplaceSnapshot>({ tokens: [], orders: [] });
   const [draft, setDraft] = useState(emptyDraft);
+  const [copiedFromBountyTitle, setCopiedFromBountyTitle] = useState<string | null>(null);
   const [milestoneSchedule, setMilestoneSchedule] = useState(() => [{ title: "Delivery", amount: "250", deliveryDeadline: emptyDraft.deliveryDeadline }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1544,6 +1574,7 @@ export default function App() {
       const created = await createBounty(scheduledDraft, refreshedToken);
       const resetDeadline = defaultDeliveryDeadline();
       setDraft((current) => ({ ...emptyDraft, token: current.token, deliveryDeadline: resetDeadline }));
+      setCopiedFromBountyTitle(null);
       setMilestoneSchedule([{ title: "Delivery", amount: "250", deliveryDeadline: resetDeadline }]);
       setSelectedBountyId(created.id);
       if (window.location.pathname !== bountyPath(created.id)) window.history.pushState({}, "", bountyPath(created.id));
@@ -1558,6 +1589,45 @@ export default function App() {
     if (field === "deliveryDeadline" && index === milestoneSchedule.length - 1) {
       setDraft((current) => ({ ...current, deliveryDeadline: value }));
     }
+  }
+
+  function copyBountyToDraft(order: MarketplaceOrder) {
+    const copiedSchedule = copiedMilestoneSchedule(order);
+    const standardScope = scopes.some((scope) => scope.value === order.scope);
+    const standardCategory = categories.some((category) => category.value === order.category);
+    const copiedToken = order.tokenRecord
+      ? availableTokens.find((token) => token.id === order.tokenRecord?.id
+        || (token.chain_id === order.tokenRecord?.chain_id && token.contract_address.toLowerCase() === order.tokenRecord.contract_address.toLowerCase()))
+      : undefined;
+
+    setDraft({
+      title: order.title,
+      scope: standardScope ? order.scope as WorkScope : CUSTOM_CLASSIFICATION_VALUE,
+      customScope: standardScope ? "" : order.scope,
+      category: standardCategory ? order.category as ServiceCategory : CUSTOM_CLASSIFICATION_VALUE,
+      customCategory: standardCategory ? "" : order.category,
+      project: order.project,
+      budget: order.budgetDisplay ?? String(order.budget),
+      token: copiedToken?.id ?? "",
+      buyer: isBuyer(order) ? order.buyer : session?.account.display_name?.trim() ?? "",
+      deliveryDeadline: copiedSchedule.at(-1)?.deliveryDeadline ?? defaultDeliveryDeadline(),
+      providerPreference: order.contactMethod || "Chirpy",
+      milestones: copiedSchedule.map((milestone) => milestone.title).join("\n"),
+      milestoneSchedule: copiedSchedule,
+      support: order.support.join("\n"),
+      criteria: order.criteria.map((criterion) => criterion.label).join("\n"),
+      fundOnApplicantAcceptance: true,
+      milestoneFundingMode: order.milestoneFundingMode === "staged" && copiedSchedule.length > 1 ? "staged" : "full"
+    });
+    setMilestoneSchedule(copiedSchedule);
+    if (order.tokenRecord) setInspectChain(String(order.tokenRecord.chain_id));
+    setCopiedFromBountyTitle(order.title);
+    setError(null);
+    setNotice("Bounty copied into a new editable draft. Review the refreshed dates, contact, payment token, and budget before publishing.");
+    setSelectedBountyId(null);
+    setActivePage("create");
+    if (window.location.pathname !== pageRoutes.create) window.history.pushState({}, "", pageRoutes.create);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function updateDeadline(value: string) {
@@ -2970,7 +3040,10 @@ export default function App() {
       <>
         <div className="bounty-detail-toolbar">
           <div><strong>Viewing a bounty</strong><span>Review the complete terms, progress, and participant actions.</span></div>
-          <button type="button" onClick={closeBountyDetail}>Back to marketplace</button>
+          <span className="bounty-detail-toolbar-actions">
+            <button className="secondary-button" type="button" onClick={() => copyBountyToDraft(order)}><Copy size={16} />Copy bounty</button>
+            <button type="button" onClick={closeBountyDetail}>Back to marketplace</button>
+          </span>
         </div>
         <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card bounty-detail-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`}>
           <div className="bounty-card-header">
@@ -3371,6 +3444,7 @@ export default function App() {
                 {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
                   <div className="section-heading"><ClipboardList /><h2>Bounty details</h2></div>
                   <p className="section-copy">Give applicants the information they need to deliver successfully.</p>
+                  {copiedFromBountyTitle ? <div className="copied-bounty-notice"><Copy size={18} aria-hidden="true" /><p><strong>Copying “{copiedFromBountyTitle}”</strong><span>The terms are editable and the milestone dates have been moved into the future. This will publish as a separate bounty.</span></p></div> : null}
                   <label>Bounty title<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="What do you need completed?" required /></label>
                   <div className="form-grid">
                     <div className="classification-field">
