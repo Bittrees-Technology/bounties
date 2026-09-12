@@ -214,7 +214,7 @@ function ensExplorerLink(profile: PublicWalletProfile, className?: string) {
 }
 
 function walletExplorerLink(walletAddress: string) {
-  return <a className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
+  return <a data-insights="view-wallet-on-etherscan" className="wallet-explorer-link" href={ethereumExplorerUrl(walletAddress)} target="_blank" rel="noreferrer noopener" aria-label="View wallet on Etherscan"><code>{short(walletAddress)}</code><ExternalLink size={13} aria-hidden="true" /></a>;
 }
 
 type OpenProfile = (address: string, resolvedProfile?: PublicWalletProfile) => void;
@@ -2304,8 +2304,8 @@ export default function App() {
             <p>{order.fundOnApplicantAcceptance === false ? "You selected manual funding, so your wallet has not been asked to transact yet." : "The automatic wallet flow did not finish, so funding is still available here."} Creating escrow may require an ERC20 approval followed by the escrow funding transaction.</p>
             <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(token)}`}>{tokenCompatibilityLabel(token)}</span>
             <p>{tokenCompatibilityCopy(token)}</p>
-            {tokenCompatibilityBlocksFunding(token) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(token)}>Reinspect token</button> : null}
-            <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+            {tokenCompatibilityBlocksFunding(token) ? <button data-insights="reinspect-token" className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(token)}>Reinspect token</button> : null}
+            <button data-insights="create-and-fund-escrow" disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
               const refreshedToken = await recheckToken(token);
               return client.createEscrow(ref, {
                 amountBaseUnits: initialEscrowFundingBaseUnits(order),
@@ -2323,18 +2323,18 @@ export default function App() {
               <div><dt>Remaining unfunded</dt><dd>{formatUnits(fundingProgress.unfunded, token.decimals)} {settlementSymbol}</dd></div>
             </dl>
             {isBuyer(order) && nextFundingTarget <= lastFundingTarget ? <div className="staged-funding-actions">
-              <button disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+              <button data-insights="fund-next-milestone" disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
                 const refreshedToken = await recheckToken(token);
                 const amount = fundingAmountThrough(nextFundingTarget);
                 return client.fundMilestones(ref, nextFundingTarget, { amountBaseUnits: amount.toString(), token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url } });
               })}>Fund next milestone</button>
-              {nextFundingTarget < lastFundingTarget ? <button className="secondary-button" disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
+              {nextFundingTarget < lastFundingTarget ? <button data-insights="fund-all-remaining-milestones" className="secondary-button" disabled={loading || tokenCompatibilityBlocksFunding(token)} onClick={() => void submitEscrowTransaction(order, async (client, ref) => {
                 const refreshedToken = await recheckToken(token);
                 const amount = fundingAmountThrough(lastFundingTarget);
                 return client.fundMilestones(ref, lastFundingTarget, { amountBaseUnits: amount.toString(), token: { chainId: chain.chainId, contractAddress: refreshedToken.checksum_address as `0x${string}`, symbol: refreshedToken.symbol ?? undefined, decimals: refreshedToken.decimals, explorerUrl: refreshedToken.explorer_url } });
               })}>Fund all remaining milestones</button> : null}
             </div> : <p className="form-hint">Waiting for the capital provider to fund the next committed milestone.</p>}
-            {activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now() && isParticipant(order) ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.closeUnfundedBounty(ref))}>Close unfunded remaining work</button> : null}
+            {activeDeliveryDeadline !== null && activeDeliveryDeadline <= Date.now() && isParticipant(order) ? <button data-insights="close-unfunded-remaining-work" className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.closeUnfundedBounty(ref))}>Close unfunded remaining work</button> : null}
           </section>
         ) : null}
         {state === "ProviderAccepted" && activeMilestoneState === "Pending" && isProvider(order) && activeEvidenceHash && derivedEvidenceHash?.toLowerCase() !== activeEvidenceHash.toLowerCase() ? <p className="commitment-warning" role="alert">The submitted evidence commitment could not be independently verified. Refresh this bounty before committing delivery onchain.</p> : null}
@@ -2353,7 +2353,7 @@ export default function App() {
             });
           }}>
             <label>Revision reason<textarea name="revisionReason" maxLength={500} required placeholder="Describe what must be corrected in this deliverable." /></label>
-            <button className="secondary-button" type="submit">Request one revision</button>
+            <button data-insights="request-one-revision" className="secondary-button" type="submit">Request one revision</button>
             <span className="form-hint">This records a reason hash onchain and gives the provider exactly seven days to resubmit. A second revision cannot be requested.</span>
           </form>
         ) : null}
@@ -2361,7 +2361,7 @@ export default function App() {
         {state === "Delivered" && activeMilestoneState === "Submitted" && activeMilestone && isBuyer(order) && evidenceCommitmentMatches && !derivedApprovalHash ? <p className="commitment-warning" role="alert">The canonical approval commitment is not ready. Refresh this bounty before approving the milestone.</p> : null}
         {reviewReady ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.releasePayment(ref))}>{releaseLabel}</button> : null}
         {state === "Created" && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? (
-          <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel escrow</button>
+          <button data-insights="cancel-escrow" className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelEscrow(ref))}>Cancel escrow</button>
         ) : null}
         {state === "Funded" && isBuyer(order) && PRE_ACCEPTANCE_CANCELLATION_ENABLED ? (
           <form className="escrow-cancellation-form" onSubmit={(event) => {
@@ -2381,10 +2381,10 @@ export default function App() {
               <textarea name="cancellationMessage" maxLength={MAX_CANCELLATION_MESSAGE_LENGTH} placeholder="Briefly explain why the funded bounty is being cancelled." />
             </label>
             <span className="form-hint">If entered, this message is saved with the bounty and permanently included in the public cancellation transaction.</span>
-            <button className="secondary-button" type="submit">Cancel and refund escrow</button>
+            <button data-insights="cancel-and-refund-escrow" className="secondary-button" type="submit">Cancel and refund escrow</button>
           </form>
         ) : null}
-        {timeoutReady ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
+        {timeoutReady ? <button data-insights="return-missed-deadline-funds-to-requester" className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.claimTimeoutRefund(ref))}>Return missed-deadline funds to requester</button> : null}
         {order.escrowObservation && currentMilestone === null && !["Released", "Cancelled", "Refunded", "Settled", "PartiallyCompleted"].includes(state ?? "") ? <p className="form-hint">Refresh canonical escrow state to identify the active milestone before taking a delivery action.</p> : null}
         {activeMilestone && milestoneCount ? <p className="form-hint">Active milestone {currentMilestone! + 1} of {milestoneCount}: {activeMilestone.label}</p> : null}
         {revisionRequested ? <p className="revision-status">{state === "ProviderAccepted" ? <>One revision was requested for this milestone. Revised work is due {activeDeliveryDeadline ? new Date(activeDeliveryDeadline).toLocaleString() : "at the recorded onchain deadline"}.</> : <>The revised work was submitted. A second revision cannot be requested.</>} {activeMilestone?.revisionReason && activeMilestone.revisionReasonHash?.toLowerCase() === revisionReasonHash?.toLowerCase() ? <>Requested changes: {activeMilestone.revisionReason}</> : revisionReasonHash ? <>Reason commitment: <code>{short(revisionReasonHash)}</code>.</> : null}</p> : null}
@@ -2434,7 +2434,7 @@ export default function App() {
               </div>
               <span className="form-hint" id={`settlement-help-${order.id}`}>{settlementPerspective === "labor" ? "Enter the amount you would receive. The capital provider receives the exact remainder." : "Enter the amount the labor provider would receive. You receive the exact remainder as the capital provider."} The total is the canonical remaining escrow after any released milestones.</span>
               <p className={`settlement-validation ${settlementSplit.status}`} id={`settlement-validation-${order.id}`} role={settlementSplit.status === "invalid" || settlementSplit.status === "unavailable" ? "alert" : undefined} aria-live="polite">{settlementSplit.status === "valid" && settlementPerspective ? <>Expected outcome: you receive <strong>{settlementPerspective === "capital" ? settlementSplit.capitalDisplay : settlementSplit.laborDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong>; the {settlementPerspective === "capital" ? "labor" : "capital"} provider receives <strong>{settlementPerspective === "capital" ? settlementSplit.laborDisplay : settlementSplit.capitalDisplay} / {settlementSplit.totalDisplay} {settlementSymbol}</strong>. Funds move only if they accept.</> : settlementSplit.status === "valid" ? "Exact split ready for the counterparty to review." : settlementSplit.message}</p>
-              <button type="submit" disabled={settlementSplit.status !== "valid"}>Propose settlement split</button>
+              <button data-insights="propose-settlement-split" type="submit" disabled={settlementSplit.status !== "valid"}>Propose settlement split</button>
             </form>
             {hasSettlementProposal ? (
               <aside className="current-settlement-proposal" aria-label="Current settlement proposal">
@@ -2443,8 +2443,8 @@ export default function App() {
                 <p className="form-hint">{settlementProposalActive ? canCancelSettlement ? <>The other party can accept this exact split before {new Date(settlementExpiry!).toLocaleString()}.</> : <>Review what you would receive, then accept or leave this proposal unchanged before {new Date(settlementExpiry!).toLocaleString()}.</> : <>This proposal has expired and cannot be accepted.</>}</p>
               </aside>
             ) : null}
-            {canAcceptSettlement ? <button onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedSettlementSplit.status === "valid" ? proposedSettlementSplit.laborBaseUnits : proposedPayout! }))}>Accept current exact split</button> : null}
-            {canCancelSettlement ? <button className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
+            {canAcceptSettlement ? <button data-insights="accept-current-exact-split" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.acceptSettlement(ref, { providerPayoutBaseUnits: proposedSettlementSplit.status === "valid" ? proposedSettlementSplit.laborBaseUnits : proposedPayout! }))}>Accept current exact split</button> : null}
+            {canCancelSettlement ? <button data-insights="cancel-my-settlement-proposal" className="secondary-button" onClick={() => void submitEscrowTransaction(order, (client, ref) => client.cancelSettlementProposal(ref))}>Cancel my settlement proposal</button> : null}
           </section>
         ) : null}
         {escrowTxHashes[order.id] ? <p className="escrow-transaction-link" role="status" aria-label="Escrow transaction status">Transaction submitted · <a href={`${chain.blockExplorer}/tx/${escrowTxHashes[order.id]}`} target="_blank" rel="noreferrer">View on block explorer <ExternalLink size={13} /></a>. Confirmation is recorded automatically.</p> : null}
@@ -2495,9 +2495,9 @@ export default function App() {
             }, "Safety flag sent to the moderator queue. No payment was required.");
           }}>
             <p className="token-safety-note">Safety flags are free and help protect marketplace participants.</p>
-            <label>Concern<select name="category" defaultValue={FREE_TOKEN_SAFETY_REASONS[0]} required>{FREE_TOKEN_SAFETY_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
+            <label>Concern<select data-insights="category" name="category" defaultValue={FREE_TOKEN_SAFETY_REASONS[0]} required>{FREE_TOKEN_SAFETY_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
             <label>Details (optional)<textarea name="details" maxLength={430} /></label>
-            <button type="submit">Submit free safety flag</button>
+            <button data-insights="submit-free-safety-flag" type="submit">Submit free safety flag</button>
           </form>
         </details>
       </div>
@@ -2518,7 +2518,7 @@ export default function App() {
         >
           <label>
             Concern
-            <select name="category" defaultValue="Fraud or misleading content" required>
+            <select data-insights="category" name="category" defaultValue="Fraud or misleading content" required>
               <option>Illegal or prohibited activity</option>
               <option>Fraud or misleading content</option>
               <option>Harassment or personal information</option>
@@ -2528,7 +2528,7 @@ export default function App() {
             </select>
           </label>
           <label>Details (optional)<textarea name="details" maxLength={430} /></label>
-          <button type="submit">Submit report</button>
+          <button data-insights="submit-report" type="submit">Submit report</button>
         </form>
       </details>
     );
@@ -2536,7 +2536,7 @@ export default function App() {
 
   function reportReference(report: ModerationReport, verification = false) {
     if (report.entity_type === "profile" && report.content?.wallet_address) {
-      return <button className="wallet-link" type="button" onClick={() => openProfile(report.content!.wallet_address!)}>View profile</button>;
+      return <button data-insights="view-profile" className="wallet-link" type="button" onClick={() => openProfile(report.content!.wallet_address!)}>View profile</button>;
     }
     if (report.entity_type === "token" && report.content?.explorer_url) {
       return <a href={report.content.explorer_url} target="_blank" rel="noreferrer noopener">Inspect token contract <ExternalLink size={12} /></a>;
@@ -2571,7 +2571,7 @@ export default function App() {
         >
           <label>
             Verification outcome
-            <select name="outcome" defaultValue="inconclusive" required>
+            <select data-insights="outcome" name="outcome" defaultValue="inconclusive" required>
               <option value="verified">Verified for Bounties</option>
               <option value="source_verified">Source verified · compatibility unconfirmed</option>
               <option value="inconclusive">Verification inconclusive</option>
@@ -2580,7 +2580,7 @@ export default function App() {
           </label>
           <label>Message to requester<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Summarize what was checked and explain the outcome." required /></label>
           <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
-          <button type="submit">Complete verification</button>
+          <button data-insights="complete-verification" type="submit">Complete verification</button>
         </form>
       </article>
     );
@@ -2613,7 +2613,7 @@ export default function App() {
         >
           <label>
             Visibility decision
-            <select name="decision" defaultValue="no_action" required>
+            <select data-insights="decision" name="decision" defaultValue="no_action" required>
               <option value="no_action">Keep visible — no action</option>
               <option value="hide">Hide from Bounties</option>
               <option value="restore">Restore on Bounties</option>
@@ -2621,7 +2621,7 @@ export default function App() {
           </label>
           <label>Message to reporter<textarea name="publicResponse" minLength={3} maxLength={1000} placeholder="Explain the outcome in clear, neutral language." required /></label>
           <label>Internal note (optional)<textarea name="internalNote" maxLength={2000} /></label>
-          <button type="submit">Resolve safety report</button>
+          <button data-insights="resolve-safety-report" type="submit">Resolve safety report</button>
         </form>
       </article>
     );
@@ -2644,14 +2644,14 @@ export default function App() {
               </span>
               <p>{review.moderation_status === "hidden" ? "Hidden from public view by moderation." : review.body?.trim() || "Rating submitted without a written comment."}</p>
               {review.response_body ? <blockquote className="review-response"><strong>Response from the rated participant</strong><span>{review.response_body}</span></blockquote> : null}
-              <button className="wallet-link" type="button" onClick={() => openProfile(review.subject_wallet_address)}>View rated wallet profile</button>
+              <button data-insights="view-rated-wallet-profile" className="wallet-link" type="button" onClick={() => openProfile(review.subject_wallet_address)}>View rated wallet profile</button>
             </div>
             <div className="review-actions">
               {review.subject_id === session?.account.id && !review.response_body ? <details className="review-response-control"><summary>Respond to this review</summary><form onSubmit={(event) => {
                 event.preventDefault();
                 const form = new FormData(event.currentTarget);
                 void act(() => createReviewResponse(review.id, String(form.get("response") ?? "")), "Your response is now shown with the review.");
-              }}><label>Your response<textarea name="response" minLength={3} maxLength={2000} required /></label><button type="submit">Publish response</button><span className="form-hint">Only the rated participant can respond, and each review accepts one response.</span></form></details> : null}
+              }}><label>Your response<textarea name="response" minLength={3} maxLength={2000} required /></label><button data-insights="publish-response" type="submit">Publish response</button><span className="form-hint">Only the rated participant can respond, and each review accepts one response.</span></form></details> : null}
               {reportForm("review", review.id)}
             </div>
           </article>
@@ -2665,9 +2665,9 @@ export default function App() {
               void act(() => createParticipantReview(order.id, Number(form.get("rating")), String(form.get("body") ?? "")));
             }}
           >
-            <label>{isBuyer(order) ? "Rate the labor provider" : "Rate the capital provider"}<select name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} star{rating === 1 ? "" : "s"}</option>)}</select></label>
+            <label>{isBuyer(order) ? "Rate the labor provider" : "Rate the capital provider"}<select data-insights="rating" name="rating" defaultValue="5">{[5, 4, 3, 2, 1].map((rating) => <option key={rating} value={rating}>{rating} star{rating === 1 ? "" : "s"}</option>)}</select></label>
             <label>{isBuyer(order) ? "Comment on the work delivered (optional)" : "Comment on the payment experience (optional)"}<textarea name="body" maxLength={2000} /></label>
-            <button type="submit">Publish review</button>
+            <button data-insights="publish-review" type="submit">Publish review</button>
           </form>
         ) : null}
       </section>
@@ -2702,7 +2702,7 @@ export default function App() {
             <p>Share a public example, portfolio item, repository, document, or onchain reference that supports your application.</p>
             <div className="delivery-proof-location-grid">
               <label>Supporting material type
-                <select name="applicationProofMethod" value={proofMethod} onChange={(event) => setApplicationProofMethodByOrder((current) => ({ ...current, [order.id]: event.target.value as DeliveryProofMethod }))}>
+                <select data-insights="applicationproofmethod" name="applicationProofMethod" value={proofMethod} onChange={(event) => setApplicationProofMethodByOrder((current) => ({ ...current, [order.id]: event.target.value as DeliveryProofMethod }))}>
                   {deliveryProofMethods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}
                 </select>
               </label>
@@ -2751,7 +2751,7 @@ export default function App() {
           </div>
         </details>
         <p className="form-hint">Submitting an application is gasless. Wallet approval is only required for later escrow actions if you are selected.</p>
-        <button type="submit">Apply for this bounty</button>
+        <button data-insights="apply-for-this-bounty" type="submit">Apply for this bounty</button>
       </form>
     );
   }
@@ -2762,7 +2762,7 @@ export default function App() {
         <section className="lifecycle-panel public-bounty-lifecycle">
           <div className="public-bounty-connect">
             <div><strong>Interested in this bounty?</strong><span>Connect a wallet to submit an application. Browsing remains public.</span></div>
-            <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet to apply</button>
+            <button data-insights="connect-wallet-to-apply" type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet to apply</button>
           </div>
           <p className="public-application-count">{order.applicationCount ?? 0} application{(order.applicationCount ?? 0) === 1 ? "" : "s"}</p>
         </section>
@@ -2874,7 +2874,7 @@ export default function App() {
                   <div className="delivery-submission-heading"><FileCheck2 size={19} /><div><strong>{observation.current_milestone_detail?.revision_requested ? "Submit revised work" : "Submit completed work"}</strong><span>Share one public proof location and fingerprint the delivered file or non-file work record.</span></div></div>
                   <div className="delivery-proof-location-grid">
                     <label>Proof location type
-                      <select name="proofMethod" value={proofMethod} onChange={(event) => setDeliveryProofMethodByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryProofMethod }))}>
+                      <select data-insights="proofmethod" name="proofMethod" value={proofMethod} onChange={(event) => setDeliveryProofMethodByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryProofMethod }))}>
                         {deliveryProofMethods.map((method) => <option value={method.value} key={method.value}>{method.label}</option>)}
                       </select>
                     </label>
@@ -2890,7 +2890,7 @@ export default function App() {
                   <fieldset className="delivery-digest-composer">
                     <legend>Evidence fingerprint</legend>
                     <label>Delivery format
-                      <select name="fingerprintMode" value={fingerprintMode} onChange={(event) => setDeliveryFingerprintModeByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryFingerprintMode }))}>
+                      <select data-insights="fingerprintmode" name="fingerprintMode" value={fingerprintMode} onChange={(event) => setDeliveryFingerprintModeByMilestone((current) => ({ ...current, [milestone.id]: event.target.value as DeliveryFingerprintMode }))}>
                         <option value="description">Non-file work</option>
                         <option value="file">File or archive</option>
                       </select>
@@ -2945,7 +2945,7 @@ export default function App() {
 
         {order.escrowObservation && !["Settled", "PartiallyCompleted", "Cancelled", "Refunded", "Released"].includes(order.escrowObservation.onchain_state ?? "") ? (
           <div className="escrow-lifecycle-controls" role="group" aria-label="Escrow lifecycle controls">
-            {isParticipant(order) ? <button onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
+            {isParticipant(order) ? <button data-insights="refresh-canonical-escrow-state" onClick={() => void act(() => refreshEscrowState(order.id))}><RefreshCw size={16} />Refresh canonical escrow state</button> : null}
             {order.escrowObservation.review_deadline ? <p className="form-hint">Seven-day review ends {formatDeadline(order.escrowObservation.review_deadline)}.</p> : null}
           </div>
         ) : null}
@@ -2968,7 +2968,7 @@ export default function App() {
     const currentMilestone = order.escrowObservation.current_milestone ?? 0;
     const milestone = order.milestones?.[currentMilestone];
     if (state === "Funded") {
-      return <button className="submit-work-shortcut" disabled={loading} onClick={() => void acceptProviderTerms(order)}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
+      return <button data-insights="accept-bounty-terms-to-begin-work" className="submit-work-shortcut" disabled={loading} onClick={() => void acceptProviderTerms(order)}><FileCheck2 size={16} />Accept bounty terms to begin work</button>;
     }
     if (state === "ProviderAccepted" && milestone?.deliveryEvidence) return null;
     if (state === "ProviderAccepted" && milestone) {
@@ -3013,9 +3013,9 @@ export default function App() {
         ) : funded && transactionUrl ? (
           <a href={transactionUrl} target="_blank" rel="noreferrer" aria-label={`${fundingLabel} — view funding transaction`}>{fundingLabel} <ExternalLink size={12} /></a>
         ) : fundingPending ? (
-          <a href={`#escrow-actions-${order.id}`} aria-label="Funding confirmation pending — view funding status">Confirmation pending</a>
+          <a data-insights="funding-confirmation-pending-view-funding-status" href={`#escrow-actions-${order.id}`} aria-label="Funding confirmation pending — view funding status">Confirmation pending</a>
         ) : (
-          <a href={`#escrow-actions-${order.id}`} aria-label="Unfunded — view funding status">Unfunded</a>
+          <a data-insights="unfunded-view-funding-status" href={`#escrow-actions-${order.id}`} aria-label="Unfunded — view funding status">Unfunded</a>
         )}
       </div>
     );
@@ -3041,8 +3041,8 @@ export default function App() {
         <div className="bounty-detail-toolbar">
           <div><strong>Viewing a bounty</strong><span>Review the complete terms, progress, and participant actions.</span></div>
           <span className="bounty-detail-toolbar-actions">
-            <button className="secondary-button" type="button" onClick={() => copyBountyToDraft(order)}><Copy size={16} />Copy bounty</button>
-            <button type="button" onClick={closeBountyDetail}>Back to marketplace</button>
+            <button data-insights="copy-bounty" className="secondary-button" type="button" onClick={() => copyBountyToDraft(order)}><Copy size={16} />Copy bounty</button>
+            <button data-insights="back-to-marketplace" type="button" onClick={closeBountyDetail}>Back to marketplace</button>
           </span>
         </div>
         <article id={`bounty-${order.id}`} tabIndex={-1} className={`order-card bounty-detail-card ${order.moderationStatus === "hidden" ? "content-hidden" : ""}`}>
@@ -3064,7 +3064,7 @@ export default function App() {
               {order.criteria.length ? <ul>{order.criteria.map((criterion) => <li key={criterion.id}><CheckCircle2 size={15} aria-hidden="true" />{linkedDescription(criterion.label)}</li>)}</ul> : <p className="bounty-term-empty">No additional acceptance criteria were provided.</p>}
             </article>
           </section>
-          <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
+          <p className="bounty-contact">Contact: {order.buyer} · Preferred method: {order.contactMethod === "Chirpy" ? <a data-insights="navigate-chirpybittreesorg/" href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> : order.contactMethod || "Bounties notifications"} · Delivery by {formatDeadline(order.dueDate)}</p>
           <div className="participant-links">
             {order.requesterAddress || (isBuyer(order) && wallet) ? <span><strong>Capital provider:</strong> <ProfileIdentityLink walletAddress={order.requesterAddress ?? wallet!} currentWallet={wallet} knownIdentity={(order.requesterAddress ?? wallet)?.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
             {order.providerAddress ? <span><strong>Labor provider:</strong> <ProfileIdentityLink walletAddress={order.providerAddress} currentWallet={wallet} knownIdentity={order.providerAddress.toLowerCase() === wallet?.toLowerCase() ? session?.account.display_name : null} onOpenProfile={openProfile} /></span> : null}
@@ -3073,7 +3073,7 @@ export default function App() {
             <div><span>Payment token</span><strong>{tokenIdentityLabel(order.tokenRecord, true)}</strong></div>
             <span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(order.tokenRecord)}`}>{tokenCompatibilityLabel(order.tokenRecord)}</span>
             <small>{tokenCompatibilityCopy(order.tokenRecord)}</small>
-            {tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
+            {tokenCompatibilityBlocksFunding(order.tokenRecord) && isBuyer(order) ? <button data-insights="reinspect-token" className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(order.tokenRecord!)}>Reinspect token</button> : null}
             <code>{order.tokenRecord.checksum_address}</code>
             <a href={order.tokenRecord.explorer_url} target="_blank" rel="noreferrer">View token contract <ExternalLink size={13} /></a>
             {!tokenIsModeratorVerified(order.tokenRecord) ? <small>{tokenVerificationCopy(order.tokenRecord)}</small> : null}
@@ -3087,7 +3087,7 @@ export default function App() {
               <summary>Cancel unfunded bounty</summary>
               <div>
                 <p>This closes the listing and its applications. No wallet transaction is needed because no escrow has been created or funded.</p>
-                <button type="button" disabled={loading} onClick={() => void act(() => cancelUnfundedBounty(order.id), "Bounty cancelled. No escrow was created or funded.")}>Confirm cancellation</button>
+                <button data-insights="confirm-cancellation" type="button" disabled={loading} onClick={() => void act(() => cancelUnfundedBounty(order.id), "Bounty cancelled. No escrow was created or funded.")}>Confirm cancellation</button>
               </div>
             </details>
           ) : null}
@@ -3178,7 +3178,7 @@ export default function App() {
               {profile.profile_bio ? <p className="profile-directory-bio">{profile.profile_bio}</p> : null}
             </div>
           </div>
-          {profileDirectoryView === "tiles" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
+          {profileDirectoryView === "tiles" ? <button data-insights="view-profile" className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
         </header>
         {hasSpecialties ? <div className="profile-directory-specialties profile-specialty-groups" aria-label={`${identity} specialties`}>
           {workTypes.length ? <div className="profile-specialty-group" aria-label="Work types"><strong>Work types</strong><div className="profile-specialty-values">{visibleWorkTypes.map((workType, index) => <a key={workType} href={profileSearchPath({ query: "", workType, category: "" })} onClick={(event) => openProfilesByPreference(event, "workType", workType)}>{workTypes[index]}</a>)}{hiddenWorkTypeCount ? <span className="profile-specialty-overflow">+{hiddenWorkTypeCount}</span> : null}</div></div> : null}
@@ -3190,7 +3190,7 @@ export default function App() {
           <div aria-label={`Labor provider: ${laborSummary}`}><UsersRound size={15} /><strong>Labor</strong><span>{laborSummary}</span></div>
           <span className="profile-directory-last-active">{profileLastCompletedLabel(profile)}</span>
         </div>
-        {profileDirectoryView === "list" ? <button className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
+        {profileDirectoryView === "list" ? <button data-insights="view-profile" className="profile-directory-view-action" type="button" aria-label={`View ${identity} profile`} onClick={() => openProfile(profile.wallet_address, profile)}>View profile</button> : null}
       </article>
     );
   }
@@ -3282,21 +3282,21 @@ export default function App() {
       <section className="workspace">
         <aside className={`sidebar ${visiblePage === "home" ? "sidebar-home" : ""}`}>
           <header className="sidebar-header" role="banner" aria-label="Bounties account controls">
-            <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "home")} aria-label="Bounties home">
+            <a data-insights="bounties-home" className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "home")} aria-label="Bounties home">
               <span className="brand-mark" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
               <span><span className="eyebrow">Token-funded work</span><span className="brand-wordmark">Bounties</span></span>
             </a>
             <div className="sidebar-account" aria-label="Account controls" id="account-controls">
               <div className={`account-actions ${wallet ? "connected-account-actions" : "disconnected-account-actions"}`}>
                 {wallet ? (
-                  <button ref={notificationButtonRef} className="compact-account-button notification-button" aria-label="Notifications" aria-controls="notification-popover" aria-expanded={notificationsOpen} aria-haspopup="true" onClick={() => setNotificationsOpen((open) => !open)}>
+                  <button data-insights="notifications" ref={notificationButtonRef} className="compact-account-button notification-button" aria-label="Notifications" aria-controls="notification-popover" aria-expanded={notificationsOpen} aria-haspopup="true" onClick={() => setNotificationsOpen((open) => !open)}>
                     <Bell size={17} /><span className="notification-count">{session?.notifications.filter((notification) => !notification.read_at).length ?? 0}</span>
                   </button>
                 ) : null}
                 {wallet ? (
                   <button className="compact-account-button" onClick={() => void disconnect()}><WalletCards size={17} /><span>{short(wallet)}</span><span className="visually-hidden"> · Disconnect</span></button>
                 ) : (
-                  <button className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
+                  <button data-insights="connect-wallet" className="compact-account-button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
                 )}
                 {notificationsOpen ? (
                   <div ref={notificationPopoverRef} className="notification-popover" id="notification-popover" role="region" aria-label="Notifications">
@@ -3332,11 +3332,11 @@ export default function App() {
           </header>
           {visiblePage !== "home" ? (
             <nav className="primary-nav" aria-label="Primary navigation">
-              <a href="/marketplace" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
-              <a href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
-              <a href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
-              {wallet ? <a href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
-              {hasModeratorWorkspaceAccess ? <a className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
+              <a data-insights="navigate-/marketplace" href="/marketplace" aria-current={visiblePage === "marketplace" ? "page" : undefined} onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={17} />Marketplace</a>
+              <a data-insights="navigate-/create" href="/create" aria-current={visiblePage === "create" ? "page" : undefined} onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={17} />Create bounty</a>
+              <a data-insights="navigate-/profiles" href="/profiles" aria-current={visiblePage === "profile" && !selectedProfileAddress ? "page" : undefined} onClick={(event) => handlePageLink(event, "profile")}><Search size={17} />Profiles</a>
+              {wallet ? <a data-insights="navigate-/profiles" href="/profiles" aria-current={visiblePage === "profile" && selectedProfileAddress?.toLowerCase() === wallet.toLowerCase() ? "page" : undefined} onClick={(event) => { if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); openProfile(wallet); }}><UserRound size={17} />My profile</a> : null}
+              {hasModeratorWorkspaceAccess ? <a data-insights="navigate-/moderator" className="moderator-nav" href="/moderator" aria-current={visiblePage === "moderator" ? "page" : undefined} onClick={(event) => handlePageLink(event, "moderator")}><EyeOff size={17} />Moderator</a> : null}
             </nav>
           ) : null}
         </aside>
@@ -3359,9 +3359,9 @@ export default function App() {
                   <h1><span>Fund work</span>{" "}<span>Deliver results</span></h1>
                   <p>Create or complete token-funded bounties with clear terms, milestones, and verifiable payment records.</p>
                   <div className="landing-actions">
-                    <a className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
-                    <a className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
-                    <a className="landing-secondary-action" href="/profiles" onClick={(event) => handlePageLink(event, "profile")}><Search size={18} />Profiles</a>
+                    <a data-insights="navigate-/marketplace" className="landing-primary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}><BriefcaseBusiness size={18} />Browse bounties</a>
+                    <a data-insights="navigate-/create" className="landing-secondary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}><PlusCircle size={18} />Create a bounty</a>
+                    <a data-insights="navigate-/profiles" className="landing-secondary-action" href="/profiles" onClick={(event) => handlePageLink(event, "profile")}><Search size={18} />Profiles</a>
                   </div>
                   <ul className="landing-assurances" aria-label="Product foundations">
                     <li><WalletCards size={16} />Wallet sign-in</li>
@@ -3398,7 +3398,7 @@ export default function App() {
                   <article><strong>Refunded</strong><span><b>Funded / ProviderAccepted</b> → Refunded</span><small>A missed active delivery or revision deadline returns all unreleased principal to the requester.</small></article>
                   <article><strong>Settled</strong><span><b>Funded / ProviderAccepted / Delivered / BuyerApproved</b> → Settled</span><small>Either party may propose an exact split; only the counterparty can accept it before expiry.</small></article>
                 </div>
-                <a className="workflow-docs-link" href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md#lifecycle" target="_blank" rel="noreferrer noopener">Read the escrow lifecycle <ExternalLink size={13} /></a>
+                <a data-insights="navigate-githubcom/bittrees-technology/bounties/blob/main/contracts/re" className="workflow-docs-link" href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md#lifecycle" target="_blank" rel="noreferrer noopener">Read the escrow lifecycle <ExternalLink size={13} /></a>
               </section>
 
               <section className="landing-value-section" aria-labelledby="landing-value-title">
@@ -3418,30 +3418,30 @@ export default function App() {
                   <p className="eyebrow">For capital providers</p>
                   <h2>Commission work with fewer assumptions.</h2>
                   <p>Define the outcome, compare plans, select a provider, and review evidence against terms everyone could see from the start.</p>
-                  <a href="/create" onClick={(event) => handlePageLink(event, "create")}>Create clear work terms <ExternalLink size={14} /></a>
+                  <a data-insights="navigate-/create" href="/create" onClick={(event) => handlePageLink(event, "create")}>Create clear work terms <ExternalLink size={14} /></a>
                 </article>
                 <article className="landing-participant-card labor-card">
                   <p className="eyebrow">For labor providers</p>
                   <h2>Find work you can evaluate before applying.</h2>
                   <p>Review scope, milestones, token contracts, and timelines before proposing how you would complete the bounty.</p>
-                  <a href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Explore available work <ExternalLink size={14} /></a>
+                  <a data-insights="navigate-/marketplace" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Explore available work <ExternalLink size={14} /></a>
                 </article>
               </section>
 
               <section className="landing-closing-cta">
                 <div><p className="eyebrow">Start with shared expectations</p><h2>Put the work, payment structure, and progress in one place.</h2></div>
-                <div className="landing-actions"><a className="landing-primary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}>Create a bounty</a><a className="landing-secondary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Browse marketplace</a></div>
+                <div className="landing-actions"><a data-insights="navigate-/create" className="landing-primary-action" href="/create" onClick={(event) => handlePageLink(event, "create")}>Create a bounty</a><a data-insights="navigate-/marketplace" className="landing-secondary-action" href="/marketplace" onClick={(event) => handlePageLink(event, "marketplace")}>Browse marketplace</a></div>
               </section>
             </section>
           ) : null}
 
-          {expired ? <div className="session-alert" role="alert">Session expired.<button onClick={() => void connect()}><RefreshCw size={16} />Connect wallet again</button></div> : null}
+          {expired ? <div className="session-alert" role="alert">Session expired.<button data-insights="connect-wallet-again" onClick={() => void connect()}><RefreshCw size={16} />Connect wallet again</button></div> : null}
           {error ? <p className="form-error" role="alert">{error}</p> : null}
           {notice ? <p className="form-success" role="status">{notice}</p> : null}
           {loading ? <p className="loading-state"><Loader2 className="spin" /> Updating Bounties…</p> : null}
 
               {visiblePage === "create" || visiblePage === "marketplace" ? <section className="page-stack">
-                {visiblePage === "create" ? <form id="request" className="panel form-panel create-card" onSubmit={publish}>
+                {visiblePage === "create" ? <form data-insights="request" id="request" className="panel form-panel create-card" onSubmit={publish}>
                   <div className="section-heading"><ClipboardList /><h2>Bounty details</h2></div>
                   <p className="section-copy">Give applicants the information they need to deliver successfully.</p>
                   {copiedFromBountyTitle ? <div className="copied-bounty-notice"><Copy size={18} aria-hidden="true" /><p><strong>Copying “{copiedFromBountyTitle}”</strong><span>The terms are editable and the milestone dates have been moved into the future. This will publish as a separate bounty.</span></p></div> : null}
@@ -3449,7 +3449,7 @@ export default function App() {
                   <div className="form-grid">
                     <div className="classification-field">
                       <label htmlFor="bounty-work-type">Work type</label>
-                      <select id="bounty-work-type" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as RequestDraft["scope"] })}>
+                      <select data-insights="bounty-work-type" id="bounty-work-type" value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value as RequestDraft["scope"] })}>
                         {scopes.map((scope) => <option key={scope.value} value={scope.value}>{scope.label}</option>)}
                         <option value={CUSTOM_CLASSIFICATION_VALUE}>Other</option>
                       </select>
@@ -3457,7 +3457,7 @@ export default function App() {
                     </div>
                     <div className="classification-field">
                       <label htmlFor="bounty-category">Category</label>
-                      <select id="bounty-category" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as RequestDraft["category"] })}>
+                      <select data-insights="bounty-category" id="bounty-category" value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value as RequestDraft["category"] })}>
                         {categories.map((category) => <option key={category.value} value={category.value}>{category.label}</option>)}
                         <option value={CUSTOM_CLASSIFICATION_VALUE}>Other</option>
                       </select>
@@ -3467,20 +3467,20 @@ export default function App() {
                   <label>Description<textarea value={draft.project} onChange={(event) => setDraft({ ...draft, project: event.target.value })} placeholder="Describe the deliverable, context, and requirements. You can include links." maxLength={5000} required /></label>
                   <div className="form-grid">
                     <label>Contact alias<input value={draft.buyer} onChange={(event) => setDraft({ ...draft, buyer: event.target.value })} placeholder="A public alias, not a private email or phone number" maxLength={80} required /><span className="form-hint">Share only the name you want bounty applicants to see.</span></label>
-                    <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
+                    <label>Preferred contact method<select value={draft.providerPreference} onChange={(event) => setDraft({ ...draft, providerPreference: event.target.value })} required>{contactMethods.map((method) => <option key={method.value} value={method.value}>{method.label}</option>)}</select><span className="form-hint"><a data-insights="navigate-chirpybittreesorg/" href="https://chirpy.bittrees.org" target="_blank" rel="noreferrer noopener">Chirpy <ExternalLink size={12} /></a> is the recommended public, privacy-conscious starting point.</span></label>
                     <label>Deadline<input aria-label="Deadline" type="datetime-local" value={draft.deliveryDeadline} min={dateTimeInputValue(new Date())} onChange={(event) => updateDeadline(event.target.value)} required /><span className="form-hint">Shown in your current timezone: {browserTimeZone}.</span></label>
                   </div>
                   <div className="form-grid payment-setup-grid">
                     <label>Total budget<input type="text" inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={draft.budget} onChange={(event) => setDraft({ ...draft, budget: event.target.value })} /></label>
                     <label>
                       Payment network
-                      <select aria-label="Payment network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>
+                      <select data-insights="payment-network" aria-label="Payment network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>
                         {visibleMarketplaceChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}
                       </select>
                     </label>
                     <label>
                       Payment token
-                      <select aria-label="Payment token" value={draft.token} onChange={(event) => void choosePaymentToken(event.target.value)} disabled={!wallet || loading} required>
+                      <select data-insights="payment-token" aria-label="Payment token" value={draft.token} onChange={(event) => void choosePaymentToken(event.target.value)} disabled={!wallet || loading} required>
                         <option value="">{wallet ? "Choose a payment token" : "Connect wallet to choose"}</option>
                         {paymentTokenOptions.length
                           ? paymentTokenOptions.map((token) => <option key={token.value} value={token.value} disabled={token.blocked}>{token.label}</option>)
@@ -3488,7 +3488,7 @@ export default function App() {
                       </select>
                     </label>
                   </div>
-                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id, selectedToken)}</div> : null}
+                  {selectedToken ? <div className="selected-token-card"><div><span>Selected token</span><strong>{tokenIdentityLabel(selectedToken, true)}</strong></div><span className={`token-compatibility-status token-compatibility-status--${tokenCompatibilityPresentationStatus(selectedToken)}`}>{tokenCompatibilityLabel(selectedToken)}</span><p>{tokenCompatibilityCopy(selectedToken)}</p>{tokenCompatibilityBlocksFunding(selectedToken) ? <button data-insights="reinspect-token" className="secondary-button token-reinspect-button" type="button" disabled={loading} onClick={() => void reinspectTokenRecord(selectedToken)}>Reinspect token</button> : null}<code>{selectedToken.checksum_address}</code><a href={selectedToken.explorer_url} target="_blank" rel="noreferrer">Inspect contract <ExternalLink size={13} /></a><p className="token-accounting-note"><ShieldCheck size={15} />Exact ERC20 accounting is required. Transfer-fee, sender-taxed, and rebasing tokens are unsupported and fail closed when escrow balances do not reconcile.</p>{reportForm("token", selectedToken.id, selectedToken)}</div> : null}
                   <p className="form-hint payment-token-note">Standard tokens are ready to choose. Need another ERC20? Use the custom-token option below.</p>
                   <fieldset className="milestone-builder">
                     <legend>Payment milestones</legend>
@@ -3499,10 +3499,10 @@ export default function App() {
                         <label>Deliverable<input value={milestone.title} onChange={(event) => updateMilestone(index, "title", event.target.value)} placeholder="Completed deliverable" required /></label>
                         <label>Amount<input inputMode="decimal" pattern="(?:0|[1-9][0-9]*)(?:\.[0-9]+)?" value={milestone.amount} onChange={(event) => updateMilestone(index, "amount", event.target.value)} required /></label>
                         <label>Delivery date and time<input type="datetime-local" min={index === 0 ? dateTimeInputValue(new Date()) : deadlineInputMinimum(milestoneSchedule[index - 1].deliveryDeadline, 22)} value={milestone.deliveryDeadline} onChange={(event) => updateMilestone(index, "deliveryDeadline", event.target.value)} required /></label>
-                        {milestoneSchedule.length > 1 ? <button className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => removeMilestone(index)}>Remove</button> : null}
+                        {milestoneSchedule.length > 1 ? <button data-insights="remove" className="remove-milestone" type="button" aria-label={`Remove deliverable ${index + 1}`} onClick={() => removeMilestone(index)}>Remove</button> : null}
                       </div>
                     ))}
-                    {milestoneSchedule.length < 32 ? <button className="secondary-button add-milestone" type="button" onClick={addMilestone}>Add milestone</button> : null}
+                    {milestoneSchedule.length < 32 ? <button data-insights="add-milestone" className="secondary-button add-milestone" type="button" onClick={addMilestone}>Add milestone</button> : null}
                     {selectedToken && !scheduleTotalsBudget ? <p className="schedule-error">Deliverable amounts must total exactly {draft.budget || "0"} {selectedToken.symbol || "tokens"}.</p> : null}
                     {!scheduleDatesValid ? <p className="schedule-error">Each delivery date must be in the future and at least 22 days after the previous deliverable.</p> : null}
                   </fieldset>
@@ -3529,7 +3529,7 @@ export default function App() {
                   <p className="custom-token-copy">Choose a supported network and enter the token contract address. Bounties will inspect that contract on the selected network before making it available.</p>
                   <div className="token-policy-notice"><ShieldCheck size={18} /><p><strong>Exact-accounting policy</strong><span>Read-only inspection does not certify transfer behavior. Fee-on-transfer, sender-taxed, and rebasing tokens are unsupported; escrow funding and payouts fail closed unless balance changes reconcile exactly. Token value, liquidity, redemption, issuer conduct, and legal status are not guaranteed.</span></p></div>
                   <form className="token-inspector-form" onSubmit={inspect}>
-                    <label>Token network<select aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{visibleMarketplaceChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
+                    <label>Token network<select data-insights="custom-token-network" aria-label="Custom token network" value={inspectChain} onChange={(event) => choosePaymentNetwork(event.target.value)} required>{visibleMarketplaceChainIds.map((chainId) => <option key={chainId} value={chainId}>{chains[chainId].name}</option>)}</select></label>
                     <label>Token contract address<input value={inspectAddress} onChange={(event) => { setInspectAddress(event.target.value); setInspected(null); setTokenPolicyConfirmed(false); }} pattern="0x[0-9a-fA-F]{40}" placeholder="0x…" required /></label>
                     <button type={wallet ? "submit" : "button"} disabled={wallet ? !tokenPolicyConfirmed || loading : false} onClick={wallet ? undefined : () => void connect()}>{wallet ? "Inspect and add token" : "Connect wallet to add"}</button>
                     <label className="token-policy-confirmation"><input type="checkbox" checked={tokenPolicyConfirmed} onChange={(event) => setTokenPolicyConfirmed(event.target.checked)} required /><span>I understand that inspection adds a contract reference, not a safety or compatibility certification.</span></label>
@@ -3540,11 +3540,11 @@ export default function App() {
                 {visiblePage === "marketplace" ? <section className="page-stack">
                 <section id="orders" className="panel queue marketplace-page">
                   {selectedBountyId ? (
-                    selectedBounty ? bountyDetail(selectedBounty) : <div className="empty-state-panel"><Search /><strong>Bounty not found</strong><span>This bounty is unavailable or no longer visible.</span><button type="button" onClick={closeBountyDetail}>Back to marketplace</button></div>
+                    selectedBounty ? bountyDetail(selectedBounty) : <div className="empty-state-panel"><Search /><strong>Bounty not found</strong><span>This bounty is unavailable or no longer visible.</span><button data-insights="back-to-marketplace" type="button" onClick={closeBountyDetail}>Back to marketplace</button></div>
                   ) : browseOrders.length ? (
                     <>
                       <div className="section-heading"><BriefcaseBusiness /><h2>Marketplace directory</h2></div>
-                      {!wallet ? <div className="marketplace-public-note"><div><strong>Browse without connecting</strong><span>Connect a wallet only when you are ready to apply or take part in a bounty.</span></div><button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button></div> : null}
+                      {!wallet ? <div className="marketplace-public-note"><div><strong>Browse without connecting</strong><span>Connect a wallet only when you are ready to apply or take part in a bounty.</span></div><button data-insights="connect-wallet" type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button></div> : null}
                       <div className="bounty-directory-filters">
                         <label className="bounty-keyword-field">Keywords<input value={marketplaceQuery} onChange={(event) => setMarketplaceQuery(event.target.value)} placeholder="Title, description, token, or requester" /></label>
                         <label>Work type<select value={marketplaceWorkType} onChange={(event) => setMarketplaceWorkType(event.target.value)}><option value="">Any work type</option>{marketplaceWorkTypes.map((scope) => <option key={scope} value={scope}>{workTypeLabel(scope)}</option>)}</select></label>
@@ -3556,8 +3556,8 @@ export default function App() {
                       <div className="bounty-directory-heading">
                         <div><h3>Browse bounties</h3><span>{marketplaceOrders.length} bount{marketplaceOrders.length === 1 ? "y" : "ies"}</span></div>
                         <div className="profile-view-toggle" role="group" aria-label="Bounty view">
-                          <button type="button" aria-pressed={marketplaceView === "tiles"} onClick={() => setMarketplaceView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
-                          <button type="button" aria-pressed={marketplaceView === "list"} onClick={() => setMarketplaceView("list")}><List size={15} aria-hidden="true" />List</button>
+                          <button data-insights="tiles" type="button" aria-pressed={marketplaceView === "tiles"} onClick={() => setMarketplaceView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
+                          <button data-insights="list" type="button" aria-pressed={marketplaceView === "list"} onClick={() => setMarketplaceView("list")}><List size={15} aria-hidden="true" />List</button>
                         </div>
                       </div>
                       {marketplaceOrders.length ? <div className={`bounty-directory-grid bounty-directory-grid--${marketplaceView}`}>{marketplaceOrders.map(bountyDirectoryCard)}</div> : <div className="empty-state-panel"><Search /><strong>No matching bounties</strong><span>Adjust the filters to see more opportunities.</span></div>}
@@ -3576,12 +3576,12 @@ export default function App() {
                       <div className="profile-directory-access">
                         <UserRound size={30} aria-hidden="true" />
                         <div><strong>Connect your wallet to browse profiles.</strong><span>Explore public work preferences, verified marketplace activity, and separate capital-provider and labor-provider ratings.</span></div>
-                        <button type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
+                        <button data-insights="connect-wallet" type="button" onClick={() => void connect()}><WalletCards size={17} />Connect wallet</button>
                       </div>
                     ) : selectedProfile ? (
                       <div className="profile-directory-toolbar">
                         <div><strong>Viewing a public profile</strong><span>Return to the directory to continue browsing participants.</span></div>
-                        <button type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setProfileMessage(null); setProfileEditorOpen(false); }}>Back to profiles</button>
+                        <button data-insights="back-to-profiles" type="button" onClick={() => { setSelectedProfileAddress(null); setPublicProfile(null); setProfileMessage(null); setProfileEditorOpen(false); }}>Back to profiles</button>
                       </div>
                     ) : (
                       <>
@@ -3616,10 +3616,10 @@ export default function App() {
                         <div className="profile-directory-heading">
                           <div><h3>{profileSearchApplied ? "Search results" : "Browse profiles"}</h3><span>{orderedProfiles.length} public profile{orderedProfiles.length === 1 ? "" : "s"}</span></div>
                           <div className="profile-directory-heading-actions">
-                            {profileSearchApplied ? <button className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
+                            {profileSearchApplied ? <button data-insights="clear-search" className="secondary-button" type="button" onClick={clearProfileSearch}>Clear search</button> : null}
                             <div className="profile-view-toggle" role="group" aria-label="Profile view">
-                              <button type="button" aria-pressed={profileDirectoryView === "tiles"} onClick={() => setProfileDirectoryView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
-                              <button type="button" aria-pressed={profileDirectoryView === "list"} onClick={() => setProfileDirectoryView("list")}><List size={15} aria-hidden="true" />List</button>
+                              <button data-insights="tiles" type="button" aria-pressed={profileDirectoryView === "tiles"} onClick={() => setProfileDirectoryView("tiles")}><LayoutGrid size={15} aria-hidden="true" />Tiles</button>
+                              <button data-insights="list" type="button" aria-pressed={profileDirectoryView === "list"} onClick={() => setProfileDirectoryView("list")}><List size={15} aria-hidden="true" />List</button>
                             </div>
                           </div>
                         </div>
@@ -3650,14 +3650,14 @@ export default function App() {
                         </div>
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           profileEditorOpen ? (
-                            <button key="save-public-profile" className="profile-editor-action" type="button" disabled={loading} onClick={() => publicProfileFormRef.current?.requestSubmit()}>Save public profile</button>
+                            <button data-insights="save-public-profile" key="save-public-profile" className="profile-editor-action" type="button" disabled={loading} onClick={() => publicProfileFormRef.current?.requestSubmit()}>Save public profile</button>
                           ) : (
-                            <button key="edit-public-profile" className="profile-editor-action" type="button" onClick={() => setProfileEditorOpen(true)}>Edit profile</button>
+                            <button data-insights="edit-profile" key="edit-public-profile" className="profile-editor-action" type="button" onClick={() => setProfileEditorOpen(true)}>Edit profile</button>
                           )
                         ) : null}
                         {wallet?.toLowerCase() === selectedProfile.address.toLowerCase() ? (
                           profileEditorOpen ? <div className="profile-editor">
-                            <form ref={publicProfileFormRef} id="public-profile-form" key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
+                            <form data-insights="public-profile-form" ref={publicProfileFormRef} id="public-profile-form" key={publicProfile?.profile_updated_at ?? "profile-loading"} onSubmit={(event) => {
                               event.preventDefault();
                               const form = new FormData(event.currentTarget);
                               void act(async () => {
@@ -3685,7 +3685,7 @@ export default function App() {
                               <label>Bio<textarea name="profileBio" defaultValue={publicProfile?.profile_bio ?? ""} maxLength={500} /></label>
                               <label>Profile URL<input name="profileUrl" type="url" defaultValue={publicProfile?.profile_url ?? ""} placeholder="https://…" /></label>
                               <div className="profile-timezone-editor">
-                                <label>Timezone<select name="timezone" defaultValue={publicProfile?.timezone ?? browserTimeZone}>
+                                <label>Timezone<select data-insights="timezone" name="timezone" defaultValue={publicProfile?.timezone ?? browserTimeZone}>
                                   {supportedTimeZoneOptions.map((timezone) => <option key={timezone.value} value={timezone.value}>{timezone.label}</option>)}
                                 </select></label>
                                 <label className="timezone-visibility"><input name="timezonePublic" type="checkbox" defaultChecked={publicProfile?.timezone_public === true} /><span><strong>Show timezone publicly</strong><small>Leave this off to save the timezone privately for your account.</small></span></label>
@@ -3701,13 +3701,13 @@ export default function App() {
                                 {otherWorkTypesEnabled ? <div className="profile-custom-list">
                                   {customProfileWorkTypes.map((value, index) => <div className="profile-custom-row" key={`custom-work-${index}`}>
                                     <label>Other work type {index + 1}<input value={value} onChange={(event) => setCustomProfileWorkTypes((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={64} required placeholder="Enter another work type" /></label>
-                                    <button className="secondary-button" type="button" onClick={() => {
+                                    <button data-insights="remove" className="secondary-button" type="button" onClick={() => {
                                       const next = customProfileWorkTypes.filter((_, itemIndex) => itemIndex !== index);
                                       setCustomProfileWorkTypes(next);
                                       if (!next.length) setOtherWorkTypesEnabled(false);
                                     }}>Remove</button>
                                   </div>)}
-                                  <button className="secondary-button profile-add-custom" type="button" disabled={customProfileWorkTypes.length >= maxCustomProfileSelections} onClick={() => setCustomProfileWorkTypes((current) => [...current, ""])}>Add another work type</button>
+                                  <button data-insights="add-another-work-type" className="secondary-button profile-add-custom" type="button" disabled={customProfileWorkTypes.length >= maxCustomProfileSelections} onClick={() => setCustomProfileWorkTypes((current) => [...current, ""])}>Add another work type</button>
                                 </div> : null}
                               </fieldset>
                               <fieldset className="profile-preference-fieldset">
@@ -3721,13 +3721,13 @@ export default function App() {
                                 {otherCategoriesEnabled ? <div className="profile-custom-list">
                                   {customProfileCategories.map((value, index) => <div className="profile-custom-row" key={`custom-category-${index}`}>
                                     <label>Other category {index + 1}<input value={value} onChange={(event) => setCustomProfileCategories((current) => current.map((item, itemIndex) => itemIndex === index ? event.target.value : item))} maxLength={64} required placeholder="Enter another category" /></label>
-                                    <button className="secondary-button" type="button" onClick={() => {
+                                    <button data-insights="remove" className="secondary-button" type="button" onClick={() => {
                                       const next = customProfileCategories.filter((_, itemIndex) => itemIndex !== index);
                                       setCustomProfileCategories(next);
                                       if (!next.length) setOtherCategoriesEnabled(false);
                                     }}>Remove</button>
                                   </div>)}
-                                  <button className="secondary-button profile-add-custom" type="button" disabled={customProfileCategories.length >= maxCustomProfileSelections} onClick={() => setCustomProfileCategories((current) => [...current, ""])}>Add another category</button>
+                                  <button data-insights="add-another-category" className="secondary-button profile-add-custom" type="button" disabled={customProfileCategories.length >= maxCustomProfileSelections} onClick={() => setCustomProfileCategories((current) => [...current, ""])}>Add another category</button>
                                 </div> : null}
                               </fieldset>
                             </form>
@@ -3736,7 +3736,7 @@ export default function App() {
                                 <summary>Deactivate public profile</summary>
                                 <div>
                                   <p>Hiding your profile removes it from discovery and public profile links. Your details, ratings, reviews, and activity will remain stored so you can reactivate it later.</p>
-                                  <button type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
+                                  <button data-insights="hide-my-profile" type="button" onClick={() => void changeProfileVisibility(false)}><EyeOff size={16} />Hide my profile</button>
                                 </div>
                               </details>
                             ) : null}
@@ -3749,7 +3749,7 @@ export default function App() {
                               <strong>{publicProfile.visibility_source === "moderation" ? "Your profile is hidden by moderation" : "Your public profile is hidden"}</strong>
                               <span>{publicProfile.visibility_source === "moderation" ? "It is unavailable in profile discovery and cannot be reactivated from these settings." : "It is not visible in discovery or through a public profile link. Your profile details, ratings, reviews, and activity remain stored."}</span>
                             </div>
-                            {publicProfile.visibility_source !== "moderation" ? <button type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
+                            {publicProfile.visibility_source !== "moderation" ? <button data-insights="reactivate-profile" type="button" onClick={() => void changeProfileVisibility(true)}>Reactivate profile</button> : null}
                           </div>
                         ) : null}
                         {!profileEditorOpen && (publicProfile?.work_types?.length || publicProfile?.categories?.length || publicProfile?.custom_specialty) ? <div className="profile-specialties profile-specialty-groups" aria-label="Profile work preferences">
@@ -3809,8 +3809,8 @@ export default function App() {
                   <div className="moderator-badge"><ShieldCheck size={16} />{session?.staffRole ? `Authorized ${session.staffRole}` : `Admin audit access · ${moderationAuditRoleLabel(session?.auditRole)}`}</div>
                   <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
                   {session?.staffRole && session.auditRole ? <nav className="moderator-tabs" aria-label="Moderator panel views">
-                    <button type="button" aria-pressed={visibleModeratorTab === "queue"} onClick={() => setModeratorTab("queue")}>Open queue</button>
-                    <button type="button" aria-pressed={visibleModeratorTab === "audit"} onClick={() => setModeratorTab("audit")}>Audit history</button>
+                    <button data-insights="open-queue" type="button" aria-pressed={visibleModeratorTab === "queue"} onClick={() => setModeratorTab("queue")}>Open queue</button>
+                    <button data-insights="audit-history" type="button" aria-pressed={visibleModeratorTab === "audit"} onClick={() => setModeratorTab("audit")}>Audit history</button>
                   </nav> : null}
                   {visibleModeratorTab === "queue" && session?.staffRole ? <div className="moderator-tab-panel">
                     <p>Complete paid token verification requests and review separately submitted safety reports.</p>
@@ -3841,8 +3841,8 @@ export default function App() {
                 </section>
               ) : null}
           <footer className="legal-footer">
-            <div className="footer-trust"><strong>Token-funded work with verifiable terms.</strong><span>Bounties is owned and managed by <a href="https://bittrees.org/">Bittrees</a> and authored by Bittrees Technology.</span></div>
-            <nav aria-label="Footer navigation"><a href="/terms">Terms</a><a href="/acceptable-use">Acceptable Use</a><a href="/privacy">Privacy</a><a href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md" target="_blank" rel="noreferrer noopener">Escrow docs <ExternalLink size={12} /></a></nav>
+            <div className="footer-trust"><strong>Token-funded work with verifiable terms.</strong><span>Bounties is owned and managed by <a data-insights="navigate-bittreesorg/" href="https://bittrees.org/">Bittrees</a> and authored by Bittrees Technology.</span></div>
+            <nav aria-label="Footer navigation"><a data-insights="navigate-/terms" href="/terms">Terms</a><a data-insights="navigate-/acceptable-use" href="/acceptable-use">Acceptable Use</a><a data-insights="navigate-/privacy" href="/privacy">Privacy</a><a data-insights="navigate-githubcom/bittrees-technology/bounties/blob/main/contracts/re" href="https://github.com/Bittrees-Technology/bounties/blob/main/contracts/README.md" target="_blank" rel="noreferrer noopener">Escrow docs <ExternalLink size={12} /></a></nav>
           </footer>
         </section>
       </section>
