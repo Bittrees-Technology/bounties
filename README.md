@@ -1,114 +1,299 @@
 # Bounties
 
-MIT-licensed standalone, wallet-only marketplace for scoped service work.
+**Fund work. Deliver results.**
 
-Buyers can post work requests, scope tasks through full projects, define support and acceptance criteria, select providers, fund verified ERC20 escrow, and complete the participant-controlled delivery and settlement lifecycle.
+Bounties is an open-source, wallet-native marketplace for token-funded work. It
+keeps the scope, proposals, milestone schedule, delivery evidence, participant
+reputation, and ERC20 escrow record together from publication through payment.
 
-The repository is released under MIT. `stigmergic-org/simplebounty` informed the escrow/bounty concept, and this app provides a broader Fiverr-style workflow.
+[Open Bounties](https://bounties.bittrees.org/) ·
+[Browse bounties](https://bounties.bittrees.org/marketplace) ·
+[Create a bounty](https://bounties.bittrees.org/create) ·
+[Discover profiles](https://bounties.bittrees.org/profiles)
 
-See the [architecture decision](docs/adr/0001-production-application-architecture.md) for the wallet, persistence, permission, and deployment boundaries.
+[![Bounties — fund work, deliver results, and use inspectable ERC20 escrow](public/social-preview.png)](https://bounties.bittrees.org/)
 
-## Current scope
+The marketplace application and public site are implemented and deployed.
+Version 3 escrow contracts are deployed with matching runtime bytecode across
+the supported test networks and mainnets. Mainnet value-bearing actions remain
+fail-closed in the application until their separate audit, legal, security, and
+operations release gates are approved. A contract deployment is never treated
+as permission to activate production funds.
 
-- Publish buyer requests across defined-task, deliverable, milestone, project,
-  consultation, audit, and retainer scopes with one to 32 ordered deliverables.
-- Allocate each deliverable a positive token amount and absolute delivery date;
-  allocations must equal the exact ERC20 budget and consecutive dates must be
-  more than 21 days apart to preserve all review and revision windows.
-- Keep full upfront funding as the default, with an opt-in multi-milestone mode
-  that deposits exact sequential allocations as each stage becomes ready.
-- Capture exact ERC20 budget units, buyer/reviewer context, support, and acceptance criteria in Postgres.
-- Allow any wallet to create bounties or proposals without an allowlist or administrator approval.
-- Inspect tokens by chain and contract address, including metadata, bytecode presence, collision risks, and a direct explorer link.
-- Persist proposals, milestones, delivery evidence, verified escrow observations, and notifications. Evidence independently binds its location and the provider-supplied SHA-256 digest of the exact delivered file or canonical bundle bytes; the digest is never derived from the URI.
-- Expose participant wallet actions for atomic create/fund, provider acceptance,
-  delivery commitments, one bounded requester revision per milestone, buyer
-  approval, seven-day release, cancellation, timeout refund, and bilateral
-  exact-split settlement whenever a verified deployment is configured.
-- Let signed-in users report listings, reviews, profiles, and suspected scam tokens, and let operations-provisioned
-  moderators hide illegal or prohibited content from the hosted frontend without
-  gaining any authority over escrow or onchain state.
-- Treat custom-token inspection as identity and metadata review rather than a
-  compatibility certification. Funding and every payout enforce exact sender,
-  escrow, and recipient balance changes so transfer-fee, sender-taxed, and
-  rebasing behavior is rejected or fails closed.
-- Let each participant publish one directional rating and review after the API
-  freshly verifies a Released, Settled, or PartiallyCompleted escrow state.
-- Provide wallet profiles with owner-managed public details and separate reputation
-  summaries for capital-provider payment experience and labor-provider service work.
-- Support Ethereum, Base, and Robinhood Chain on both mainnet and their supported
-  test networks (chain IDs 1, 11155111, 8453, 84532, 4663, and 46630). The current
-  exact-match verified deployments are recorded in the
-  [testnet](contracts/deployments/testnet-v3.json) and
-  [mainnet](contracts/deployments/mainnet-v3.json) v3 manifests. Mainnet contract
-  deployment is complete, while application activation remains unset and
-  fail-closed pending a separate release decision.
-- Ship with mainnet settlement fail-closed; the contract boundary defines mandatory
-  delivery deadlines, one seven-day revision window per milestone, seven-day
-  post-delivery release, and bilateral exact-split settlement, while wallet
-  broadcast controls remain hidden for any network without an explicitly enabled,
-  verified deployment address.
+## Product highlights
 
-## Hard gates
+### Marketplace
 
-Production application activation and value-bearing escrow use remain gated until:
+- Browse public bounties without connecting a wallet; connect only when taking
+  an authenticated action.
+- Publish work as a task, deliverable, milestone engagement, project,
+  consultation, audit, or retainer.
+- Define a precise budget, payment token, resources, acceptance criteria, and
+  one to 32 ordered deliverables with absolute deadlines.
+- Search and order opportunities by keyword, work type, category, status,
+  network, and deadline using tile or list views.
+- Submit proposals with a delivery plan and optional supporting material, then
+  let the requester select a provider before escrow begins.
+- Copy an existing public bounty into a new editable draft without copying its
+  applicants, evidence, or transaction history.
 
-- Legal signs off on escrow/payment terms, contributor/IP language, sanctions/AML posture, and contributor classification.
-- Security signs off on wallet auth, signing, input validation, secrets, release/refund logic, and abuse prevention.
-- The target chain and implemented seven-day release/bilateral settlement policy are approved, followed by testnet review from an auditor and deployment operator.
+### Profiles and reputation
 
-See [escrow production readiness](docs/escrow-production-readiness.md) and the
-[Foundry contract package](contracts/README.md) for the testnet-to-production plan.
+- Publish a wallet profile with a display name, ENS identity and avatar, bio,
+  website, optional public timezone, work types, and service categories.
+- Discover participants by name, ENS, biography, work type, category, and
+  recent completed activity.
+- Keep requester and provider reputation separate: capital providers are rated
+  on payment experience, while labor providers are rated on delivered work.
+- Show completed marketplace activity, directional ratings, reviews, and
+  author responses on public profiles.
+- Allow profile owners to hide and later reactivate their public profile
+  without deleting retained activity or reputation.
 
-## Development
+### ERC20 escrow
+
+- Use exact integer base-unit accounting; native ETH is represented as WETH in
+  this ERC20-only system.
+- Fund the complete bounty up front or opt into exact sequential milestone
+  funding for multi-deliverable work.
+- Bind the accepted scope, milestone schedule, provider, evidence location, and
+  provider-supplied SHA-256 content digest to canonical commitments.
+- Record funding and lifecycle progress only after the server verifies the
+  expected contract, network, receipt, events, participants, token, amount,
+  commitments, and confirmation threshold.
+- Preserve onchain truth when application data is delayed: database records
+  describe escrow but never move funds or override the contract.
+
+### Trust and safety
+
+- Authenticate with Sign-In with Ethereum (EIP-4361), single-use five-minute
+  challenges, opaque HttpOnly sessions, strict origin checks, and session-bound
+  CSRF tokens.
+- Inspect custom ERC20 contracts by network and address, including bytecode,
+  metadata, decimals, supply, proxy/source status, collision warnings, and a
+  direct block-explorer link.
+- Treat token metadata as advisory. Exact sender, escrow, and recipient balance
+  checks reject or fail closed on false-returning, fee-on-transfer,
+  sender-taxed, and rebasing behavior.
+- Let signed-in participants report listings, reviews, profiles, or suspected
+  scam tokens. Authorized moderators can hide content in the hosted interface
+  but cannot modify chain history or control escrowed funds.
+- Keep moderation and governance decisions auditable through role-bounded,
+  append-only records.
+
+## How a bounty works
+
+1. A requester publishes the work, budget, token, milestones, deadlines,
+   resources, and acceptance criteria.
+2. Providers submit proposals and supporting material. The requester selects
+   one provider.
+3. The requester creates and funds the matching escrow, either in full or with
+   the exact first staged allocation.
+4. The selected provider accepts onchain and submits delivery evidence for the
+   active milestone.
+5. The requester approves the delivery, requests the one permitted revision,
+   or allows the seven-day review period to expire.
+6. The active allocation is released. A staged bounty returns to funding for
+   the next milestone; the final release closes the bounty.
+7. After a released, settled, or partially completed escrow is freshly
+   verified onchain, each participant may publish one directional review.
+
+## Escrow lifecycle
+
+```text
+Created -> Funded -> ProviderAccepted -> Delivered -> BuyerApproved -> Released
+    |          |              ^      |       |
+    +----------+-> Cancelled  |      |       +-> Released after review expiry
+               |              +-- Revision (once per milestone)
+               +-------------> Refunded after a missed active deadline
+               \----------------------------> Settled by bilateral exact split
+
+Nonfinal staged release -> AwaitingFunding -> ProviderAccepted
+                                      \-----> PartiallyCompleted if left unfunded
+```
+
+Important contract boundaries:
+
+- The contract has no owner, administrator, pause key, arbiter, token allowlist,
+  unilateral clawback, or dispute authority.
+- The requester may cancel before provider acceptance. After acceptance,
+  participant-controlled delivery, deadline, release, refund, and settlement
+  rules determine the outcome.
+- Each milestone permits one requester revision. The provider receives seven
+  days to submit a different evidence commitment.
+- A delivered milestone has a seven-day review period. After expiry, release is
+  permissionless but always pays the selected provider.
+- Either participant may propose an exact provider payout before final release;
+  only the counterparty can accept it, and the remainder returns atomically to
+  the requester.
+- Direct token transfers are not credited to a bounty. Every funded or paid
+  amount must reconcile exactly.
+
+The full Solidity lifecycle, invariants, commitment formats, and reproducible
+contract setup are documented in [contracts/README.md](contracts/README.md).
+
+## Supported networks
+
+| Network | Chain IDs | Deployment status |
+| --- | --- | --- |
+| Ethereum | Mainnet `1`, Sepolia `11155111` | v3 deployed; mainnet application actions remain separately gated |
+| Base | Mainnet `8453`, Sepolia `84532` | v3 deployed; mainnet application actions remain separately gated |
+| Robinhood Chain | Mainnet `4663`, Testnet `46630` | v3 deployed; mainnet application actions remain separately gated |
+
+The exact addresses, deployment receipts, Safe authority, source-verification
+records, validation blocks, and bytecode hashes are published in the
+[testnet v3](contracts/deployments/testnet-v3.json) and
+[mainnet v3](contracts/deployments/mainnet-v3.json) manifests. Application
+feature flags and per-network configuration remain fail-closed unless an
+operator explicitly enables a reviewed deployment.
+
+Curated display presets include WETH, BTREE, BIT, WBTC, USDC, and USDT. Token
+identity is always the network plus inspected contract address—never its symbol.
+Other ERC20 contracts can enter through the same inspection boundary.
+
+## Architecture
+
+| Layer | Responsibility |
+| --- | --- |
+| React 19 + TypeScript + Vite | Responsive marketplace, wallet connection, profiles, moderation, and transaction preparation |
+| Same-origin Vercel API | SIWE verification, sessions, CSRF, validation, chain inspection, rate limits, and allowlisted state transitions |
+| Supabase Postgres | Accounts, profiles, roles, tokens, bounties, proposals, milestones, evidence, escrow observations, reviews, moderation, and notifications |
+| Row-level security + server routines | Defense-in-depth authorization around the verified wallet account |
+| viem/ethers escrow adapter | Versioned ABI boundary, canonical commitments, transaction preparation, receipt verification, and chain reads |
+| Solidity 0.8.24 + Foundry | Permissionless `BountyEscrow` contract, unit tests, fuzz campaigns, and stateful invariants |
+| Vercel | Production hosting, security headers, same-origin routing, and production migration authority |
+
+The browser never receives a Supabase service-role key or trusts a caller-supplied
+wallet address. It talks only to `/api/wallet-auth` and `/api/bounties/*` on the
+site origin. The server derives identity from the signed-wallet session and
+invokes a fixed set of routes and database routines. The retired Supabase
+Functions remain HTTP 410 tombstones so there is no second authentication or
+mutation implementation to drift.
+
+Read [ADR 0001](docs/adr/0001-production-application-architecture.md) for the
+complete wallet, persistence, permission, contract-adapter, and deployment
+boundaries.
+
+## Repository map
+
+```text
+src/App.tsx                 Product UI and browser journeys
+src/auth/                   SIWE message construction and validation
+src/chain/                  Network config, ABI boundary, commitments, and escrow adapter
+src/persistence/            Same-origin browser client and domain mapping
+src/server/                 Vercel-compatible auth, API, RPC, and rate-limit handlers
+supabase/migrations/        Authoritative Postgres schema, routines, RLS, and audit controls
+contracts/src/              Solidity escrow interface and implementation
+contracts/test/             Unit, fuzz, milestone, malicious-token, and invariant tests
+contracts/deployments/      Immutable deployment and verification manifests
+public/                     Legal pages, search metadata, app icons, and social preview assets
+docs/                       Architecture, local database, readiness, and launch documentation
+```
+
+## Local development
+
+### Prerequisites
+
+- Node.js and npm matching the repository lockfile
+- Docker Desktop or another local Docker engine
+- Supabase CLI for the local database
+- Foundry only when working on the Solidity package
+
+### Start the application
 
 ```bash
-npm install
-npm run audit
-npm run lint
-npm test
-npm run build
+npm ci
+cp .env.example .env.local
+supabase start
+supabase db reset
 npm run dev
 ```
 
-Copy `.env.example` to `.env.local` before running against local services. Keep
-real Supabase URLs, service-role keys, RPC secrets, wallet mnemonics,
-and private keys out of git.
+Use the local Supabase values printed by `supabase start` in `.env.local`.
+Browser-visible `VITE_*` variables may contain public configuration such as a
+verified contract address, but never put a service-role key, private RPC URL,
+signer, mnemonic, or private key in one. See
+[docs/local-supabase.md](docs/local-supabase.md) for migration authority and
+local reset rules.
 
-Local Supabase setup and migration rules are documented in
-[docs/local-supabase.md](docs/local-supabase.md). The local configuration keeps
-email signup disabled; production authentication must remain wallet-only through
-Sign-In with Ethereum (EIP-4361). The five-minute, single-use challenge binds
-the wallet, chain, site origin, request ID, terms/privacy resources, and expiry;
-successful verification creates an opaque HttpOnly session and never authorizes
-a transaction or token spend.
+### Verify the application
 
-Browser code must use same-origin `/api/wallet-auth` and `/api/bounties/*`
-paths only. Local development proxies those requests through the Vite dev
-server using the same Node handlers as production, and Vercel production uses a
-narrow allowlisted server function plus `vercel.json` security
-headers and SPA routing. The production server boundary is therefore hosted on
-Vercel, with hosted Supabase/Postgres behind it; no local server is part of
-production. The old `bounties-api` Supabase Function is a deliberate HTTP 410
-tombstone and must not be restored as an alternate state-changing API. Keep
-direct Supabase origins, anon keys, and service-role keys out of browser-visible
-`VITE_*` variables.
+```bash
+npm run lint
+npm test
+npm run build
+npm run audit
+```
 
-The Vite preview server attaches the production CSP and baseline security
-headers from `vite.config.ts`; the dev server omits only CSP so the React refresh
-bootstrap can run locally. Vercel production adds CSP, HSTS, frame/cross-origin
-policy, and SPA fallback rules from `vercel.json`. Static launch-surface files live in
-`public/`:
-`robots.txt`, `sitemap.xml`, `site.webmanifest`, `favicon.svg`, and
-`social-preview.svg`. Effective product terms, acceptable-use rules, and privacy notice
-are published at `/terms`, `/acceptable-use`, and `/privacy`; entity and jurisdiction
-details remain subject to Operations/legal review. Canonical, sitemap, and social metadata use the production
-`https://bounties.bittrees.org/` origin.
+### Verify the contracts
 
-## Suggested board columns
+After installing the pinned Foundry dependencies described in
+[contracts/README.md](contracts/README.md):
 
-`Backlog/Triage -> Available -> Matched/In Progress -> Delivered/In Review -> Accepted for Payout -> Paid/Closed`
+```bash
+cd contracts
+forge fmt --check
+forge build
+forge test
+```
 
-Disputes are intentionally outside this product. A future independent product at
-`claims.bittrees.org` may handle claims without adding an arbiter or privileged
-operator to Bounties.
+No RPC endpoint, signer, fork, funded wallet, deployment, or broadcast is needed
+for the local contract suite.
+
+## Configuration and deployment
+
+`.env.example` documents all supported server and public configuration. The
+important groups are:
+
+- `APP_ORIGIN`, `SUPABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY` for the
+  same-origin application boundary.
+- `CHAIN_<id>_RPC_URL`, `CHAIN_<id>_BOUNTY_ESCROW_ADDRESS`, legacy-address
+  lists, and confirmation thresholds for server verification.
+- `VITE_CHAIN_<id>_BOUNTY_ESCROW_ADDRESS` for reviewed public addresses used by
+  wallet transaction preparation.
+- `VITE_ESCROW_*_ENABLED` flags for the global boundary, creation, pre-acceptance
+  cancellation, and staged milestone funding.
+- Mainnet BIT settings for the optional paid token-verification request flow.
+
+Production Vercel builds are the sole remote migration authority. Preview and
+development deployments skip migrations. Production migrations run under a
+transaction advisory lock and are recorded in `public.app_schema_migrations`.
+Do not run `supabase db push` against the hosted production database.
+
+Search, social sharing, and install surfaces are published with route-specific
+canonical metadata, structured data, `robots.txt`, `sitemap.xml`, a web app
+manifest, synchronized favicon/app icons, and a 1200×630 social preview. Product
+terms are available at `/terms`, acceptable-use rules at `/acceptable-use`, and
+the privacy notice at `/privacy`.
+
+## Release boundary
+
+The application, database boundary, and v3 contracts are implemented. Enabling
+real-value mainnet activity still requires the immutable evidence packet defined
+in [escrow production readiness](docs/escrow-production-readiness.md), including:
+
+- specification freeze and contract hardening;
+- independent security audit and remediation;
+- legal/compliance approval;
+- complete testnet-v3 lifecycle rehearsal and soak;
+- monitoring, incident response, and rollback readiness; and
+- a separate per-network production canary decision.
+
+These gates are deliberate product behavior, not unfinished UI. Until they pass,
+mainnet transaction controls remain hidden and fail closed.
+
+## Contributing and security
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before proposing a change. A useful
+marketplace issue includes the scope, budget/token, requester authority,
+resources, acceptance criteria, and expected delivery evidence.
+
+Report security issues privately as described in [SECURITY.md](SECURITY.md).
+Never publish a service-role key, RPC secret, private key, mnemonic, session
+token, or funded deployment command.
+
+## License and credit
+
+Bounties is released under the [MIT License](LICENSE). The escrow/bounty concept
+was informed by `stigmergic-org/simplebounty`; this repository is an independent
+Bittrees marketplace implementation with a broader end-to-end service workflow.

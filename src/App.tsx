@@ -90,6 +90,7 @@ import { calculateSettlementSplit, completedSettlementSplit, settlementSplitFrom
 import { submitTokenReviewPayment, TOKEN_REVIEW_FEE_DISPLAY, tokenReviewPaymentPolicy } from "./tokenReviewPayment";
 import { FREE_TOKEN_SAFETY_REASONS, PAID_TOKEN_REVIEW_REASON } from "./tokenReportPolicy";
 import { buildEscrowCancellationMessage, MAX_CANCELLATION_MESSAGE_LENGTH } from "./cancellationMessage";
+import { applyPageSeo } from "./seo";
 import "./styles.css";
 
 function dateTimeInputValue(value: Date): string {
@@ -3226,6 +3227,14 @@ export default function App() {
     [displayedProfiles, profileActivityWindow, profileDirectoryOrder]
   );
   const selectedBounty = selectedBountyId ? browseOrders.find((order) => order.id === selectedBountyId) ?? null : null;
+  useEffect(() => {
+    applyPageSeo({
+      page: activePage,
+      bounty: selectedBounty,
+      profileAddress: selectedProfileAddress,
+      profile: publicProfile
+    });
+  }, [activePage, publicProfile, selectedBounty, selectedProfileAddress]);
   const selectedCanonicalBountyId = selectedBounty?.escrowObservation && isParticipant(selectedBounty) ? selectedBounty.id : null;
   const selectedCanonicalRefreshKey = selectedCanonicalBountyId
     ? [
@@ -3283,7 +3292,7 @@ export default function App() {
         <aside className={`sidebar ${visiblePage === "home" ? "sidebar-home" : ""}`}>
           <header className="sidebar-header" role="banner" aria-label="Bounties account controls">
             <a className="brand-lockup" href="/" onClick={(event) => handlePageLink(event, "home")} aria-label="Bounties home">
-              <span className="brand-mark" aria-hidden="true"><BriefcaseBusiness size={20} /></span>
+              <span className="brand-mark" aria-hidden="true"><img src="/favicon.svg?v=2" alt="" /></span>
               <span><span className="eyebrow">Token-funded work</span><span className="brand-wordmark">Bounties</span></span>
             </a>
             <div className="sidebar-account" aria-label="Account controls" id="account-controls">

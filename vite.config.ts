@@ -58,6 +58,11 @@ export function sameOriginDevelopmentApiPlugin(): Plugin {
 
 export default defineConfig({
   plugins: [sameOriginDevelopmentApiPlugin(), react()],
+  build: {
+    rollupOptions: {
+      input: ["index.html", "marketplace.html", "profiles.html", "create.html"]
+    }
+  },
   server: {
     headers: developmentHeaders
   },
