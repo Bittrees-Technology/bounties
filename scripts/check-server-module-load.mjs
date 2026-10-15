@@ -23,6 +23,9 @@ const productionServerSources = [
 ];
 
 try {
+  for(const file of ['lib/ecosystem-client.mjs','shared/ecosystem-authority.mjs','shared/signed-action.mjs']){
+    const dest=join(temporaryRoot,file);await mkdir(dirname(dest),{recursive:true});await writeFile(dest,await readFile(join(projectRoot,file),'utf8'));
+  }
   for (const sourcePath of productionServerSources) {
     const source = await readFile(join(projectRoot, sourcePath), "utf8");
     const emittedPath = join(temporaryRoot, sourcePath.replace(/\.ts$/, ".js"));
