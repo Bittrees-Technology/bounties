@@ -20,6 +20,7 @@ async function renderConfiguredEscrow() {
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   const directoryCard = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
@@ -38,6 +39,7 @@ it("publishes a listing without opening the wallet funding flow", async () => {
 
   render(<App />);
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   await screen.findByRole("heading", { level: 1, name: /^marketplace$/i });
   await user.click(screen.getByRole("link", { name: /^create bounty$/i }));
@@ -67,6 +69,7 @@ it("keeps applicant acceptance visible when immediate wallet funding does not fi
 
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -92,6 +95,7 @@ it("uses a saved ENS name when an applicant has no preferred profile name", asyn
 
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -109,6 +113,7 @@ it("shows saved profile identities for both bounty participants", async () => {
 
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -139,6 +144,7 @@ it("shows the capital provider while the labor provider views the bounty", async
 
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /selected unfunded work/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -161,6 +167,7 @@ it("shows manual funding after applicant acceptance without redundant preselecti
   render(<App />);
 
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /mobile applicant acceptance/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -184,6 +191,7 @@ it("keeps new creation paused without hiding existing escrow lifecycle actions",
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -202,6 +210,7 @@ it("keeps predecessor escrow actions bound to the record's verified contract", a
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const card = (await screen.findByRole("heading", { name: /two-phase active milestone/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
@@ -228,6 +237,7 @@ it("hydrates a persisted creation lock and safely clears a reverted receipt", as
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   expect(await screen.findByText(/locked against another funding attempt/i)).toBeInTheDocument();
@@ -251,6 +261,7 @@ it("checks pending escrow confirmation without holding the global updating state
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   expect(screen.getByRole("link", { name: /funding confirmation pending/i })).toHaveTextContent("Confirmation pending");
@@ -277,6 +288,7 @@ it("shows a verified funded escrow immediately when the following marketplace re
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
@@ -308,6 +320,7 @@ it("automatically resumes a hydrated lock and reveals lifecycle actions after co
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
 
@@ -339,6 +352,7 @@ it("surfaces terminal canonical mismatches, retains the lock, and stops automati
   const user = userEvent.setup();
   render(<App />);
   await user.click(screen.getByRole("button", { name: /^connect wallet$/i }));
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   const card = (await screen.findByRole("heading", { name: /buyer unfunded escrow/i })).closest("article") as HTMLElement;
   await user.click(within(card).getByRole("link", { name: /view bounty/i }));
   await user.click(await screen.findByRole("button", { name: /check funding confirmation/i }));
@@ -520,6 +534,7 @@ it("shows selected providers why proof submission is locked before funding", asy
 
   render(<App />);
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   await user.click(await screen.findByRole("link", { name: /^browse bounties$/i }));
   const directoryCard = (await screen.findByRole("heading", { name: /selected unfunded work/i })).closest("article") as HTMLElement;
   await user.click(within(directoryCard).getByRole("link", { name: /view bounty/i }));

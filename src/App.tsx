@@ -1,3 +1,4 @@
+import { LoginPanel, EthereumSignIn } from "./shared/login/LoginPanel";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BadgeCheck,
@@ -750,6 +751,14 @@ export default function App() {
   const [draft, setDraft] = useState(emptyDraft);
   const [copiedFromBountyTitle, setCopiedFromBountyTitle] = useState<string | null>(null);
   const [milestoneSchedule, setMilestoneSchedule] = useState(() => [{ title: "Delivery", amount: "250", deliveryDeadline: emptyDraft.deliveryDeadline }]);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const loginDialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = loginDialog.current;
+    if (loginOpen && !dialog?.open) dialog?.showModal();
+    else if (!loginOpen && dialog?.open) dialog.close();
+  }, [loginOpen]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -1536,14 +1545,19 @@ export default function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [runProfileSearch, wallet]);
 
-  async function connect() {
+  async function connect() { setError(null); setLoginOpen(true); }
+
+  async function loginWithWallet() {
+    if (loginBusy) return;
+    setLoginBusy(true);
     try {
       setError(null);
       await signInWithEthereum();
       await refresh();
+      setLoginOpen(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Wallet sign-in failed.");
-    }
+    } finally { setLoginBusy(false); }
   }
 
   async function disconnect() {
@@ -3288,6 +3302,13 @@ export default function App() {
 
   return (
     <main>
+      <dialog ref={loginDialog} className="bt-login-dialog" aria-label="Sign in to Bounties" onCancel={event => { if (loginBusy) event.preventDefault(); else setLoginOpen(false); }} onClose={() => setLoginOpen(false)}>
+        {loginOpen && <><header><h2>Sign in to Bounties</h2><button type="button" aria-label="Close sign-in" disabled={loginBusy} onClick={() => setLoginOpen(false)}>×</button></header>
+        <LoginPanel product="Bounties" description="Use your Ethereum wallet."
+          wallet={<EthereumSignIn busy={loginBusy} onClick={() => void loginWithWallet()}/>}
+          notice={error && <p role="alert">{error}</p>}
+          footer={<p>Wallet approval is required separately for escrow and payments.</p>}/></>}
+      </dialog>
       <section className="workspace">
         <aside className={`sidebar ${visiblePage === "home" ? "sidebar-home" : ""}`}>
           <header className="sidebar-header" role="banner" aria-label="Bounties account controls">

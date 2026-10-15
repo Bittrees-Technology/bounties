@@ -8,6 +8,7 @@ afterEach(() => cleanup());
 
 async function connectWallet(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
   expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
   await user.click(screen.getByRole("link", { name: /^browse bounties$/i }));
   expect(await screen.findByRole("heading", { level: 1, name: /^marketplace$/i })).toBeInTheDocument();
@@ -711,6 +712,7 @@ describe("App", () => {
     expect(screen.queryByText(/wallet reputation/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /profile directory/i })).not.toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
     expect(await screen.findByRole("link", { name: /^my profile$/i })).toBeInTheDocument();
     expect(window.sessionStorage.getItem("bounties.csrf")).toBe("csrf-test");
 
@@ -813,6 +815,7 @@ describe("App", () => {
     render(<App />);
     await user.click(screen.getByRole("link", { name: /^profiles$/i }));
     await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
 
     const ownProfileButton = await screen.findByRole("button", { name: /view test participant profile/i });
     const ownDirectoryCard = ownProfileButton.closest(".profile-directory-card") as HTMLElement;
@@ -833,6 +836,7 @@ describe("App", () => {
     render(<App />);
 
     await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  await user.click(screen.getByRole("button", { name: /^sign in with Ethereum$/i }));
 
     expect(await screen.findByRole("heading", { name: /profile directory/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/^work type$/i)).toHaveValue("audit");
@@ -1293,4 +1297,17 @@ describe("App", () => {
     expect(screen.queryByRole("heading", { name: /^verification requests$/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /complete verification|resolve report/i })).not.toBeInTheDocument();
   });
+});
+
+it("opens shared sign-in without requesting wallet access and allows cancellation", async () => {
+  const user = userEvent.setup();
+  render(<App />);
+  const requestsBefore = vi.mocked(window.ethereum!.request).mock.calls.length;
+  await user.click(screen.getAllByRole("button", { name: /^connect wallet$/i })[0]);
+  expect(screen.getByRole("dialog", { name: "Sign in to Bounties" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Sign in with Ethereum" })).toBeVisible();
+  expect(vi.mocked(window.ethereum!.request).mock.calls.length).toBe(requestsBefore);
+  await user.click(screen.getByRole("button", { name: "Close sign-in" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(vi.mocked(window.ethereum!.request).mock.calls.length).toBe(requestsBefore);
 });

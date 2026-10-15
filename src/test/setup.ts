@@ -1011,3 +1011,9 @@ beforeEach(() => {
     return Response.json({ code: "NOT_FOUND" }, { status: 404 });
   }));
 });
+
+// jsdom has no native dialog lifecycle; mirror the browser open/close state.
+if (typeof HTMLDialogElement !== "undefined") {
+HTMLDialogElement.prototype.showModal = function () { this.setAttribute('open', ''); };
+HTMLDialogElement.prototype.close = function () { this.removeAttribute('open'); this.dispatchEvent(new Event('close')); };
+}
