@@ -3816,7 +3816,7 @@ export default function App() {
               {visiblePage === "moderator" && hasModeratorWorkspaceAccess ? (
                 <section id="moderation" className="panel moderation-panel authorized-panel">
                   <div className="moderator-badge"><ShieldCheck size={16} />{session?.staffRole ? `Authorized ${session.staffRole}` : `Admin audit access · ${moderationAuditRoleLabel(session?.auditRole)}`}</div>
-                  <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>
+                  <div className="section-heading"><EyeOff /><h2>Moderator panel</h2></div>{session?.staffRole === "admin" && <p><a href="https://roles.bittrees.org/role-management?project=bounties">Manage roles</a></p>}
                   {session?.staffRole && session.auditRole ? <nav className="moderator-tabs" aria-label="Moderator panel views">
                     <button data-insights="open-queue" type="button" aria-pressed={visibleModeratorTab === "queue"} onClick={() => setModeratorTab("queue")}>Open queue</button>
                     <button data-insights="audit-history" type="button" aria-pressed={visibleModeratorTab === "audit"} onClick={() => setModeratorTab("audit")}>Audit history</button>
