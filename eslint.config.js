@@ -7,6 +7,7 @@ import tseslint from "typescript-eslint";
 export default [
   { ignores: ["dist", ".vercel", "output", "**/*.d.ts", "contracts/**"] },
   js.configs.recommended,
+  {files:["api/shared-roles-health.mjs","lib/ecosystem-client.mjs","shared/*.mjs"],languageOptions:{globals:globals.node}},
   ...tseslint.configs.recommended,
   {
     files: ["**/*.{ts,tsx}"],
