@@ -1,3 +1,4 @@
+import {ecosystemAccess} from '../../lib/ecosystem-client.mjs';
 import { getAddress } from "viem";
 
 export const SHARED_BITTREES_ROLES_KEY = "bittrees:roles";
@@ -26,6 +27,8 @@ export type SharedModeratorResolution =
       status: "authorized";
       role: "moderator" | "admin";
       walletAddress: string;
+      expiresAt?:number;
+      source?:string;
     }
   | {
       status: "not_authorized";
@@ -73,6 +76,8 @@ export class SharedRoleResolverError extends Error {
 }
 
 export type SharedRoleResolverEnvironment = Readonly<{
+  ROLES_ECOSYSTEM_REQUEST_PRIVATE_KEY?:string;
+  ROLES_ECOSYSTEM_DECISION_PUBLIC_KEY?:string;
   KV_REST_API_URL?: string;
   KV_REST_API_READ_ONLY_TOKEN?: string;
   // Intentionally no KV_REST_API_TOKEN or UPSTASH_REDIS_REST_TOKEN: this
@@ -216,7 +221,7 @@ function failure(error: unknown, walletAddress: string | null, timedOut: boolean
  * the application. It performs a fresh read of the shared Bittrees role map and
  * never accepts role or wallet identity claims from request headers or bodies.
  */
-export async function resolveSharedModerator(
+export async function resolveLegacyModerator(
   verifiedWalletAddress: string,
   options: SharedRoleResolverOptions = {}
 ): Promise<SharedModeratorResolution> {
@@ -266,7 +271,7 @@ export async function resolveSharedModerator(
  * Resolves the read-only moderation-audit capability independently from the
  * moderator capability. Governance tags never authorize moderation actions.
  */
-export async function resolveSharedAuditAccess(
+export async function resolveLegacyAuditAccess(
   verifiedWalletAddress: string,
   options: SharedRoleResolverOptions = {}
 ): Promise<SharedAuditResolution> {
@@ -309,4 +314,28 @@ export async function resolveSharedAuditAccess(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+// Roles signs each exact-source decision. Legacy storage is consulted only after
+// a verified response confirms this project has never been enrolled.
+export async function resolveSharedModerator(wallet:string,options:SharedRoleResolverOptions={}):Promise<SharedModeratorResolution>{
+ let address:string|null=null;
+ try{
+  address=normalizeVerifiedWallet(wallet);
+  const access=await ecosystemAccess('bounties',[address],{env:options.env??process.env,fetcher:options.fetch??fetch,authenticatedWallet:address});
+  if(!access.enrolled)return resolveLegacyModerator(address,options);
+  const role=access.actions.includes('project.admin')?'admin':access.actions.includes('role.moderator')?'moderator':null;
+  return role?{status:'authorized',role,walletAddress:address,expiresAt:access.expiresAt,source:'roles.bittrees.org'}:{status:'not_authorized',role:null,walletAddress:address};
+ }catch(error){return failure(error,address,false);}
+}
+export async function resolveSharedAuditAccess(wallet:string,options:SharedRoleResolverOptions={}):Promise<SharedAuditResolution>{
+ let address:string|null=null;
+ try{
+  address=normalizeVerifiedWallet(wallet);
+  const access=await ecosystemAccess('bounties',[address],{env:options.env??process.env,fetcher:options.fetch??fetch,authenticatedWallet:address});
+  if(!access.enrolled)return resolveLegacyAuditAccess(address,options);
+  const role:SharedAuditRole|null=access.actions.includes('project.admin')?'admin':access.actions.includes('tier.partner')?'partner':access.actions.includes('tier.junior-partner')?'junior_partner':access.actions.includes('tier.associate')?'associate':null;
+  if(!role&&access.unavailableTiers?.length)throw Error('BGOV verification unavailable');
+  return role?{status:'authorized',role,walletAddress:address}:{status:'not_authorized',role:null,walletAddress:address};
+ }catch(error){return failure(error,address,false) as SharedAuditResolution;}
 }

@@ -507,7 +507,8 @@ async function refreshSharedModeratorGrant(session: Session, required: boolean):
       p_actor_id: session.account_id,
       p_wallet_address: session.wallet_address,
       p_authorized: authorized,
-      p_source: "upstash:bittrees:roles"
+      p_source: authorized && resolution.source ? resolution.source : "upstash:bittrees:roles",
+      ...(authorized&&resolution.expiresAt?{p_expires_at:new Date(resolution.expiresAt).toISOString()}:{})
     });
   } catch (error) {
     // Shared moderation is optional for ordinary marketplace reads. A registry

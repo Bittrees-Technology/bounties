@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   SHARED_BITTREES_ROLES_KEY,
-  resolveSharedAuditAccess,
-  resolveSharedModerator,
+  resolveLegacyAuditAccess as resolveSharedAuditAccess,
+  resolveLegacyModerator as resolveSharedModerator,
   type SharedRoleResolverEnvironment
 } from "./sharedRoleResolver";
 
