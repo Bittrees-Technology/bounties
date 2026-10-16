@@ -582,3 +582,7 @@ export const completeTokenVerificationRequest = (
   body: JSON.stringify({ reportId, outcome, publicResponse, internalNote: internalNote || null, expectedVersion })
 });
 export const markNotificationRead = (notificationId: string) => request("/notifications/read", { method: "POST", body: JSON.stringify({ notificationId }) });
+
+export async function restoreSharedCsrf():Promise<void>{
+ try{const r=await fetch("/api/sso/csrf",{credentials:"same-origin",cache:"no-store"});if(!r.ok)return;const d=await r.json();if(/^[a-f0-9]{64}$/.test(d?.csrfToken||""))rememberCsrf(d.csrfToken);}catch{/* Existing local sign-in remains available. */}
+}
