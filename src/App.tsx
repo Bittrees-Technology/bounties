@@ -1,3 +1,5 @@
+import {useSharedSignIn} from "../shared/sso/useSharedSignIn";
+import {restoreSharedCsrf} from "./persistence/supabase";
 import { LoginPanel, EthereumSignIn } from "./shared/login/LoginPanel";
 import { type FormEvent, type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -744,8 +746,11 @@ function moderationAuditRoleLabel(role: MarketplaceSnapshot["auditRole"]): strin
   return "Administrator";
 }
 
+function SharedSignIn({wallet}:{wallet:string|null}){useSharedSignIn(wallet);return null;}
+
 export default function App() {
   const initialProfileSearch = useRef(profileSearchSelectionFromLocation()).current;
+  const [sessionReady,setSessionReady]=useState(false);
   const [session, setSession] = useState<MarketplaceSnapshot | null>(null);
   const [publicMarketplace, setPublicMarketplace] = useState<PublicMarketplaceSnapshot>({ tokens: [], orders: [] });
   const [draft, setDraft] = useState(emptyDraft);
@@ -1351,7 +1356,7 @@ export default function App() {
 
   // Session discovery runs once; subsequent refreshes follow explicit mutations.
   useEffect(() => {
-    void refresh(true);
+    void restoreSharedCsrf().finally(()=>refresh(true).finally(()=>setSessionReady(true)));
     // `refresh` intentionally runs once for session discovery.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -3302,6 +3307,7 @@ export default function App() {
 
   return (
     <main>
+      {sessionReady&&<SharedSignIn wallet={expired?null:session?.account.wallet_address||null}/>}
       <dialog ref={loginDialog} className="bt-login-dialog" aria-label="Sign in to Bounties" onCancel={event => { if (loginBusy) event.preventDefault(); else setLoginOpen(false); }} onClose={() => setLoginOpen(false)}>
         {loginOpen && <><header><h2>Sign in to Bounties</h2><button type="button" aria-label="Close sign-in" disabled={loginBusy} onClick={() => setLoginOpen(false)}>×</button></header>
         <LoginPanel product="Bounties" description="Use your Ethereum wallet."

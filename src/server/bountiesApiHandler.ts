@@ -1,3 +1,4 @@
+import {suppressSharedResume} from "./sharedSignIn.js";
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { AbiCoder, Contract, Interface, JsonRpcProvider, ensNormalize, getAddress, keccak256, toUtf8Bytes } from "ethers";
@@ -1967,12 +1968,12 @@ async function handle(request: Request, action: string): Promise<Response> {
 
   if (action === "logout" && method === "POST") {
     await callRpc("app_revoke_wallet_session", { p_session_id: session.session_id, p_account_id: session.account_id });
-    return new Response(JSON.stringify({ ok: true }), {
+    return suppressSharedResume(new Response(JSON.stringify({ ok: true }), {
       headers: {
         ...headers,
         "set-cookie": "bounties_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0"
       }
-    });
+    }));
   }
 
   if (action === "roles" && method === "POST") {

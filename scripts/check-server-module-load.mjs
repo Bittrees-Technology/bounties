@@ -19,11 +19,13 @@ const productionServerSources = [
   "src/server/sharedRoleResolver.ts",
   "src/server/tokenCompatibility.ts",
   "src/server/bountiesApiHandler.ts",
-  "src/server/walletAuthHandler.ts"
+  "src/server/walletAuthHandler.ts",
+  "src/server/sharedSignIn.ts",
+  "api/sso/[action].ts"
 ];
 
 try {
-  for(const file of ['lib/ecosystem-client.mjs','shared/ecosystem-authority.mjs','shared/signed-action.mjs']){
+  for(const file of ['lib/ecosystem-client.mjs','shared/ecosystem-authority.mjs','shared/signed-action.mjs','shared/sso/client.mjs','shared/sso/profile-model.mjs']){
     const dest=join(temporaryRoot,file);await mkdir(dirname(dest),{recursive:true});await writeFile(dest,await readFile(join(projectRoot,file),'utf8'));
   }
   for (const sourcePath of productionServerSources) {
@@ -41,8 +43,8 @@ try {
     await writeFile(emittedPath, emitted.outputText);
   }
 
-  for (const handler of ["bountiesApiHandler.js", "walletAuthHandler.js"]) {
-    const handlerPath = join(temporaryRoot, "src/server", handler);
+  for (const handler of ["src/server/bountiesApiHandler.js", "src/server/walletAuthHandler.js", "api/sso/[action].js"]) {
+    const handlerPath = join(temporaryRoot, handler);
     await import(pathToFileURL(handlerPath).href);
     process.stdout.write(`Loaded ${relative(projectRoot, handlerPath)} with Node ESM.\n`);
   }

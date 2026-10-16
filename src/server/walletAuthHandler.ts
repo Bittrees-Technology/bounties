@@ -1,3 +1,4 @@
+import {retainNativeCsrf} from "./sharedSignIn.js";
 import { createClient } from "@supabase/supabase-js";
 import { Contract, JsonRpcProvider, getAddress, hashMessage, verifyMessage } from "ethers";
 import { createSiweMessage } from "viem/siwe";
@@ -272,7 +273,7 @@ async function handle(request: Request): Promise<Response> {
 
 export async function handleWalletAuth(request: Request): Promise<Response> {
   try {
-    return await handle(request);
+    return await retainNativeCsrf(await handle(request));
   } catch (error) {
     const expected = error instanceof AuthError || error instanceof ProxyRequestError;
     const internalStatus = expected ? error.status : 503;
