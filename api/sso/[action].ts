@@ -1,7 +1,8 @@
+import type {IncomingMessage,ServerResponse} from "node:http";
 import {bountiesSso,sharedCsrfResponse,ssoDatabase,ssoEnabled,ssoJson} from "../../src/server/sharedSignIn.js";
 import {nodeRequest,nodeResponse} from "../../shared/sso/client.mjs";
 const origin="https://bounties.bittrees.org";
-export default async function handler(req:any,res:any){
+export default async function handler(req:IncomingMessage,res:ServerResponse){
  const request=await nodeRequest(req,origin);
  if(new URL(request.url).pathname.endsWith("/csrf")){
   if(!ssoEnabled())return nodeResponse(ssoJson({error:"Unavailable"},503),res);

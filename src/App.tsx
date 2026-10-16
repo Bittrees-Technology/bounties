@@ -1,3 +1,4 @@
+import {SharedProfileCard} from "../shared/sso/SharedProfileCard.jsx";
 import {useSharedSignIn} from "../shared/sso/useSharedSignIn";
 import {restoreSharedCsrf} from "./persistence/supabase";
 import { LoginPanel, EthereumSignIn } from "./shared/login/LoginPanel";
@@ -3378,6 +3379,7 @@ export default function App() {
         </aside>
 
         <section className={`content content-${visiblePage}`}>
+          {visiblePage==="profile"&&sessionReady&&!expired&&session?.account.wallet_address&&selectedProfileAddress?.toLowerCase()===session.account.wallet_address.toLowerCase()&&<SharedProfileCard sessionRevision={session.account.wallet_address}/>}
           {visiblePage !== "profile" && visiblePage !== "home" ? (
             <header className="topbar">
               <div className="topbar-copy">
