@@ -334,8 +334,7 @@ export async function resolveSharedAuditAccess(wallet:string,options:SharedRoleR
   address=normalizeVerifiedWallet(wallet);
   const access=await ecosystemAccess('bounties',[address],{env:options.env??process.env,fetcher:options.fetch??fetch,authenticatedWallet:address});
   if(!access.enrolled)return resolveLegacyAuditAccess(address,options);
-  const role:SharedAuditRole|null=access.actions.includes('project.admin')?'admin':access.actions.includes('tier.partner')?'partner':access.actions.includes('tier.junior-partner')?'junior_partner':access.actions.includes('tier.associate')?'associate':null;
-  if(!role&&access.unavailableTiers?.length)throw Error('BGOV verification unavailable');
+  const role:SharedAuditRole|null=access.actions.includes('project.admin')?'admin':null;
   return role?{status:'authorized',role,walletAddress:address}:{status:'not_authorized',role:null,walletAddress:address};
  }catch(error){return failure(error,address,false) as SharedAuditResolution;}
 }
