@@ -12,8 +12,8 @@ function gateway(actions:string[],tampered=false){return vi.fn<typeof fetch>(asy
  return Response.json({decision,signature:tampered?'fake':sign(null,Buffer.from(ecosystemDecisionMessage(decision)),issuer.privateKey).toString('base64')});
 });}
 describe('Roles-backed Bounties permissions',()=>{
- it('partner audit access never becomes moderation authority',async()=>{
-  const fetch=gateway(['tier.partner']);expect((await resolveSharedAuditAccess(wallet,{env,fetch})).status).toBe('authorized');expect((await resolveSharedModerator(wallet,{env,fetch})).status).toBe('not_authorized');expect(fetch).toHaveBeenCalledTimes(2);
+ it('Gov Partner membership grants neither Bounties audit nor moderation access',async()=>{
+  const fetch=gateway(['tier.partner']);expect((await resolveSharedAuditAccess(wallet,{env,fetch})).status).toBe('not_authorized');expect((await resolveSharedModerator(wallet,{env,fetch})).status).toBe('not_authorized');expect(fetch).toHaveBeenCalledTimes(2);
  });
  it('an enrolled denial and a forged response cannot restore legacy roles',async()=>{
   const fetch=gateway([]);expect((await resolveSharedAuditAccess(wallet,{env,fetch})).status).toBe('not_authorized');expect(fetch).toHaveBeenCalledTimes(1);

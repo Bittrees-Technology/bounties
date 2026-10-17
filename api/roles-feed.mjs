@@ -9,9 +9,9 @@ export default async function handler(req,res){
  try{
   const url=process.env.POSTGRES_URL_NON_POOLING||process.env.POSTGRES_URL;if(!url)throw Error('Storage unavailable');
   sql=postgres(url,{max:1,prepare:false,connect_timeout:10});
-  const records=await sql`SELECT a.wallet_address, r.role, 'marketplace' AS scope FROM public.account_roles r JOIN public.wallet_accounts a ON a.id=r.account_id UNION ALL SELECT a.wallet_address, s.role, 'moderation' AS scope FROM public.moderation_staff s JOIN public.wallet_accounts a ON a.id=s.account_id LIMIT 1001`;
+  const records=await sql`SELECT a.wallet_address, r.role, 'marketplace' AS scope FROM public.account_roles r JOIN public.wallet_accounts a ON a.id=r.account_id WHERE r.role IN ('buyer','provider') LIMIT 1001`;
   const rows=records.map(r=>({identity:r.wallet_address,kind:'wallet',label:r.role,scope:r.scope}));
-  return res.status(200).json(createRoleFeed('bounties.bittrees.org',rows,{roledefs:['buyer','provider','moderator','admin'],coverageNote:'Explicit marketplace account roles and moderation staff. Short-lived shared Gov decisions, bounty-specific rights and linked identities are not inferred.'}));
+  return res.status(200).json(createRoleFeed('bounties.bittrees.org',rows,{roledefs:['buyer','provider','moderator','admin'],coverageNote:'Private buyer/provider account roles only. Historical moderation staff records are retained but are not current authority. Shared moderation is governed by Roles; bounty-specific and escrow rights remain private.'}));
  }catch{return res.status(503).json({error:'Role feed unavailable'});}
  finally{if(sql)await sql.end({timeout:2});}
 }
