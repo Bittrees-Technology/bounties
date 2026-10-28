@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {URL} from 'node:url';
+const {Request}=globalThis;
 const paths=["../shared/sso/client.mjs"];
 for(const path of paths){
  const {createSsoClient,seal,digest}=await import(new URL(path,import.meta.url));
