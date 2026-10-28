@@ -24,7 +24,7 @@
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
     "viem": "^2.55.13",
-    "vite": "^8.1.4"
+    "vite": "8.1.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
