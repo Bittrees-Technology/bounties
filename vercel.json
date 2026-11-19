@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "trailingSlash": false,
   "headers": [
     {
       "source": "/(.*)",
@@ -90,7 +91,15 @@
       "destination": "/profiles.html"
     },
     {
-      "source": "/:path((?!api(?:/|$)).*)",
+      "source": "/bounties/:id([0-9a-fA-F-]{36})",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/profiles/:address(0[xX][0-9a-fA-F]{40})",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/moderator",
       "destination": "/index.html"
     }
   ]

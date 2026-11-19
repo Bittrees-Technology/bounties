@@ -112,10 +112,15 @@ describe("Vercel deployment boundary", () => {
         { source: "/api/bounties/:path*", destination: "/api/proxy" },
         { source: "/terms", destination: "/terms.html" },
         { source: "/acceptable-use", destination: "/acceptable-use.html" },
-        { source: "/privacy", destination: "/privacy.html" },
-        { source: "/:path((?!api(?:/|$)).*)", destination: "/index.html" }
+        { source: "/privacy", destination: "/privacy.html" }
       ])
     );
+    expect(vercelConfig.trailingSlash).toBe(false);
+    expect(vercelConfig.rewrites.filter(({ destination }) => destination === "/index.html")).toEqual([
+      { source: "/bounties/:id([0-9a-fA-F-]{36})", destination: "/index.html" },
+      { source: "/profiles/:address(0[xX][0-9a-fA-F]{40})", destination: "/index.html" },
+      { source: "/moderator", destination: "/index.html" }
+    ]);
     expect(vercelConfig.redirects).toEqual(expect.arrayContaining([
       { source: "/terms.html", destination: "/terms", permanent: true },
       { source: "/acceptable-use.html", destination: "/acceptable-use", permanent: true },
