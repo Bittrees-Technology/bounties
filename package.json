@@ -39,7 +39,7 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "jsdom": "^25.0.1",
-    "typescript-eslint": "^8.64.0",
+    "typescript-eslint": "^8.73.0",
     "vitest": "^4.1.10"
   }
 }
