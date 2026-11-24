@@ -136,7 +136,8 @@ describe("Vercel deployment boundary", () => {
     }
     expect(securityPolicy("/")).toContain("https://www.googletagmanager.com/gtag/");
     expect(securityPolicy("/")).toContain("https://*.google-analytics.com/g/collect");
-    expect(securityPolicy("/(.+)")).not.toMatch(/googletagmanager|google-analytics/);
+    expect(securityPolicy("/")).toContain("frame-src https://insights.bittrees.org/analytics-preferences.html");
+    expect(securityPolicy("/(.+)")).not.toMatch(/googletagmanager|google-analytics|analytics-preferences\.html/);
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");
     expect(headers["X-Frame-Options"]).toBe("DENY");
   });
