@@ -128,8 +128,15 @@ describe("Vercel deployment boundary", () => {
     ]));
 
     const headers = Object.fromEntries(vercelConfig.headers[0].headers.map(({ key, value }) => [key, value]));
-    expect(headers["Content-Security-Policy"]).toContain("default-src 'self'");
-    expect(headers["Content-Security-Policy"]).toContain("img-src 'self' data: https:");
+    const securityPolicy = (source: string) => vercelConfig.headers
+      .find((rule) => rule.source === source)?.headers.find(({ key }) => key === "Content-Security-Policy")?.value;
+    for (const source of ["/", "/(.+)"]) {
+      expect(securityPolicy(source)).toContain("default-src 'self'");
+      expect(securityPolicy(source)).toContain("img-src 'self' data: https:");
+    }
+    expect(securityPolicy("/")).toContain("https://www.googletagmanager.com/gtag/");
+    expect(securityPolicy("/")).toContain("https://*.google-analytics.com/g/collect");
+    expect(securityPolicy("/(.+)")).not.toMatch(/googletagmanager|google-analytics/);
     expect(headers["X-Content-Type-Options"]).toBe("nosniff");
     expect(headers["X-Frame-Options"]).toBe("DENY");
   });
